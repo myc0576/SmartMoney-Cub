@@ -33,3 +33,74 @@ jobs:
 
       - name: Loop demo Chinese
         run: smcub loop --preset toy --agent-trigger "自进化"
+
+      - name: Plugin contract doctor
+        run: |
+          smcub plugin inspect examples/toy_plugin/plugin.json
+          smcub plugin doctor --plugin-dir examples/toy_plugin --state-db "$RUNNER_TEMP/plugins.db"
+          smcub profile show a-share-review
+          smcub plugin catalog
+
+      - name: Plugin run wraps evidence and blocks future data
+        run: |
+          printf '%s' '{"symbol":"600111","return_pct":-8.5}' > "$RUNNER_TEMP/request.json"
+          smcub plugin run toy.review-tagger \
+            --request "$RUNNER_TEMP/request.json" \
+            --decision-time 2026-09-10T15:00:00+08:00 \
+            --available-at  2026-09-10T14:00:00+08:00 \
+            --plugin-dir examples/toy_plugin \
+            --state-db "$RUNNER_TEMP/plugins.db" > "$RUNNER_TEMP/envelope.json"
+          python -c "import json,sys; d=json.load(open('$RUNNER_TEMP/envelope.json')); assert d['status']=='ok', d; e=d['envelope']; assert e['review_only'] and e['champion_mutated'] is False and e['permission']['order'] is False"
+          if smcub plugin run toy.review-tagger \
+              --decision-time 2026-09-10T15:00:00+08:00 \
+              --available-at  2026-09-11T15:00:00+08:00 \
+              --plugin-dir examples/toy_plugin \
+              --state-db "$RUNNER_TEMP/plugins.db"; then
+            echo "future leakage was not blocked" >&2
+            exit 1
+          fi
+
+      - name: Plugin install refuses remote sources
+        run: |
+          if smcub plugin install https://github.com/akfamily/akshare --state-db "$RUNNER_TEMP/plugins.db"; then
+            echo "remote install was not refused" >&2
+            exit 1
+          fi
+
+      - name: Workbench imports, redaction, and outbound audit
+        run: |
+          smcub store status --json > "$RUNNER_TEMP/store.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/store.json')); assert d['status']=='ok', d; assert d['safety']=='READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE', d"
+
+          printf '%s\n' \
+            '成交日期,成交时间,证券代码,证券名称,操作,成交均价,成交数量,手续费' \
+            '2026-09-01,09:40:00,600111,北方稀土,买入,10.00,1000,5' \
+            '2026-09-03,14:00:00,600111,北方稀土,卖出,11.00,1000,5' \
+            > "$RUNNER_TEMP/fills.csv"
+          smcub import file "$RUNNER_TEMP/fills.csv" --state-dir "$RUNNER_TEMP/conv" --json > "$RUNNER_TEMP/upload.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/upload.json')); assert d['status']=='ok', d; assert d['raw_file_stays_local'] is True, d; assert d['extraction']['row_count']==2, d"
+          extraction_id="$(python -c "import json; print(json.load(open('$RUNNER_TEMP/upload.json'))['extraction']['extraction_id'])")"
+          smcub import commit "$extraction_id" --state-dir "$RUNNER_TEMP/conv" --json > "$RUNNER_TEMP/commit.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/commit.json')); assert d['inserted_count']==2, d; assert d['ledger_status']=='ok', d"
+
+      - name: Workbench never sends raw fields to a provider
+        run: python -m pytest tests/test_redaction.py tests/test_agent_outbound.py -q
+
+      - name: Workbench refuses a non-loopback bind without a token
+        run: |
+          if smcub workbench --host 0.0.0.0 --port 8799 --no-browser --state-dir "$RUNNER_TEMP/conv"; then
+            echo "a public bind was not refused" >&2
+            exit 1
+          fi
+
+      - name: Install the agent skill
+        run: |
+          smcub skill install --target "$RUNNER_TEMP/skill-target" --json > "$RUNNER_TEMP/skill.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/skill.json')); assert d['status']=='ok', d"
+          grep -q "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" "$RUNNER_TEMP/skill-target/SKILL.md"
+
+      - name: Workspace and share pack stay offline and private
+        run: |
+          smcub share-pack --output "$RUNNER_TEMP/share-pack" --write > "$RUNNER_TEMP/share.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/share.json')); assert d['upload'] is False, d; assert d['audit']['status']=='ok', d; assert d['data_origin']=='demo_fixture', d"
+          smcub workspace summary --db "$RUNNER_TEMP/workspace.db"
