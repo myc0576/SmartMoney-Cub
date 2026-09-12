@@ -10,7 +10,7 @@ Current release channel: GitHub Releases. Each release provides a Git tag, wheel
 - Minor (`0.1.x` -> `0.2.0`): backward-compatible CLI commands, schemas, or review capabilities.
 - Major (`0.x` -> `1.0.0`, then `1.x` -> `2.0.0`): incompatible CLI, artifact, schema, or safety-contract changes.
 
-Release `0.1.2` is the current patch release. It makes the installed toy loop independent of the repository checkout. A published version is immutable and must never be reused.
+Release `0.2.0` is the current minor release. It adds the plugin protocol, the review workspace, and the static share pack while keeping the read-only safety contract. A published version is immutable and must never be reused.
 
 ## Existing users
 
@@ -24,7 +24,7 @@ python -m pip install -e ".[dev]"
 smcub --version
 ```
 
-An editable installation normally sees source changes immediately after `git pull`. Reinstall after packaging metadata, entry points, package data, or dependencies change. Release `0.1.2` adds packaged toy data, so reinstall it once.
+An editable installation normally sees source changes immediately after `git pull`. Reinstall after packaging metadata, entry points, package data, or dependencies change. Release `0.2.0` adds plugin entry points and packaged example data, so reinstall it once.
 
 ### pip installation
 
@@ -40,7 +40,7 @@ smcub --version
 pipx is the preferred end-user CLI installation because it isolates the command from unrelated Python environments. Install the current GitHub tag directly:
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.1.2"
+pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.2.0"
 smcub --version
 smcub doctor
 ```

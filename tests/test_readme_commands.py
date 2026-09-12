@@ -24,6 +24,46 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_documented_control_plane_sequence_is_executable(tmp_path):
+    """The advertised toy workflow must run exactly as documented."""
+    decision_dir = tmp_path / "run"
+    decision_time = "2026-06-01T15:31:00+08:00"
+
+    capture = run_cli(
+        "capture-run",
+        "--mode",
+        "after-close",
+        "--preset",
+        "toy",
+        "--root",
+        str(tmp_path),
+        "--decision-time",
+        decision_time,
+    )
+    assert capture.returncode == 0, capture.stderr
+    captured = json.loads(capture.stdout)
+    assert captured["run_dir"]
+
+    # CLI output redacts absolute paths, so locate the run directory on disk.
+    run_dirs = sorted(p for p in tmp_path.rglob("run_manifest.json"))
+    assert len(run_dirs) == 1, run_dirs
+    run_dir = run_dirs[0].parent
+
+    # build-outcome must accept the package resource reference the toy loop records.
+    outcome = run_cli(
+        "build-outcome",
+        str(run_dir),
+        "--horizon",
+        "d1",
+        "--price-source",
+        "smartmoney_cub_harness:data/sample_prices.json",
+    )
+    assert outcome.returncode == 0, outcome.stderr
+    assert json.loads(outcome.stdout)["status"] == "ok"
+
+    evaluated = run_cli("evaluate-run", str(run_dir), "--horizon", "d1")
+    assert evaluated.returncode == 0, evaluated.stderr
+    assert json.loads(evaluated.stdout)["status"] == "evaluated"
 def test_readme_quick_start_loop_command_is_real():
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     zh_readme = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
@@ -81,7 +121,7 @@ def test_versioning_policy_covers_all_supported_update_paths():
     assert "vX.Y.Z" in policy
     assert "does not update automatically" in policy.lower()
     assert "Current release channel: GitHub Releases" in policy
-    assert "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.1.2" in policy
+    assert "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.2.0" in policy
 
 
 def test_local_virtual_environment_is_ignored():

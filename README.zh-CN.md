@@ -48,13 +48,67 @@
 ```bash
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent-zh" --agent-version "1.0" --agent-interface "cli"
 smcub validate-envelope tmp/sandbox/20260601/20260601_153100-after-close/run_envelope.json
-smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`enforcement: declarative`、`verified: false`），不是子进程沙箱。CLI 的 `--sandbox` 只选择一次性的 `tmp/sandbox` 输出目录，并不隔离进程；不可信命令必须放在操作系统或容器沙箱中运行。`evidence_pack.sha256` 用于本地篡改检测，不是经过身份认证的数字签名；任何不一致只会进入 `pending_review` 或 `blocked`，绝不会自动晋级。
 
+## 🚀 启动交互式 Web 工作台 (Dashboard MVP)
+
+无需复杂的前端构建与外部重度依赖，一行命令启动本地现代化复盘与策略陪练工作台：
+
+```bash
+smcub dashboard
+# 或直接通过 Python 模块启动：
+python -m smartmoney_cub_harness.dashboard.server
+```
+
+服务启动后自动打开浏览器 `http://127.0.0.1:8765`：
+- **🌀 易经五阶段情绪罗盘 (Regime Cockpit)**：初生、生长、亢龙、衰退、潜藏的可视化周期时钟与操盘箴言。
+- **📋 同花顺/券商交割单智能体检**：支持拖拽上传 CSV 或一键加载内置典型实战案例，自动计算知行合一纪律评分。
+- **🥊 AI 杠精 · 席位严师冷酷质问**：当头棒喝盘后灵魂三问、违规归因与教训提炼。
+- **🧬 规则进化矩阵 (Challenger → Champion)**：一键采纳候选防御规则，遵循严格的人工确认晋级门禁。
+
+---
+
+## 🧩 Everything is a Plugin（插件协议）
+
+仓库自带插件协议、示例插件与精选目录。外部交易项目不进入核心发布包，用户安装插件后，
+Harness 会自动发现、校验、注入并挂载能力，无需修改核心代码。详见 [docs/plugins.md](docs/plugins.md) 与 [docs/plugin-development.md](docs/plugin-development.md)。
+
+```bash
+smcub plugin inspect examples/toy_plugin/plugin.json
+smcub plugin doctor  --plugin-dir examples/toy_plugin
+smcub plugin run     toy.review-tagger \
+  --request request.json \
+  --decision-time 2026-09-10T15:00:00+08:00 \
+  --available-at  2026-09-10T14:00:00+08:00
+smcub plugin catalog
+smcub profile show a-share-review
+```
+
+自动的部分：发现、校验、依赖注入、激活、证据封装。
+不自动的部分：安装、联网、外部模型、凭证——一律需要用户主动触发。
+
+每个插件输出都会封装为 Evidence Envelope，记录插件版本、源码引用、输入/输出哈希、时间语义与数据质量。
+若 available_at 晚于 decision_time，直接判定为未来数据泄漏并拒绝执行。
+
+## 📓 复盘工作区与分享包
+
+```bash
+smcub workspace import-csv exports/fills.csv
+smcub workspace list-cases --action AVOID
+smcub workspace summary
+smcub share-pack --csv exports/fills.csv --output tmp/share-pack --write
+```
+
+工作区用 SQLite 保存复盘用例、D1/D3 结果、插件证据与规则状态。
+分享包是离线静态 HTML，证券代码、名称、金额与盘中时间会按策略降精度，并经过隐私审计；
+系统不会自动上传。详见 [docs/share-pack.md](docs/share-pack.md) 与 [docs/review-workspace.md](docs/review-workspace.md)。
+
+---
 ## 30 秒上手
 
 任何 agent 里丢一句话，让它按本仓库的安全合同跑 toy 离线闭环。公开仓库只使用 toy offline data。
@@ -93,7 +147,7 @@ python -m venv .venv
 当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新修复 tag 安装，让命令拥有独立环境：
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.1.2"
+pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.2.0"
 ```
 
 未来正式发布到 PyPI 后，可改用更短的安装和升级命令：

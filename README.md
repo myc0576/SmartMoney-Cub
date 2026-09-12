@@ -36,7 +36,7 @@ cd smartmoney-cub-harness
 python -m pip install -e ".[dev]"
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent" --agent-version "1.0" --agent-interface "cli"
 smcub validate-envelope tmp/sandbox/20260601/20260601_153100-after-close/run_envelope.json
-smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
@@ -224,7 +224,7 @@ cd smartmoney-cub-harness
 python -m pip install -e .
 smcub doctor
 smcub capture-run --mode after-close --sandbox --decision-time "2026-06-01T15:30:00+08:00" --command "python examples/toy_strategy/leader_pullback_demo.py"
-smcub build-outcome tmp/sandbox/20260601/20260601_153000-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153000-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub evaluate-run tmp/sandbox/20260601/20260601_153000-after-close --horizon d1
 ```
 
@@ -267,6 +267,46 @@ Toy evaluation:
   "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
 }
 ```
+
+## Everything Is a Plugin
+
+The harness ships a stable plugin protocol, a reference plugin, and a curated
+catalog. External trading projects stay out of the core release and are mounted by
+installing a plugin, not by editing the core. See [docs/plugins.md](docs/plugins.md)
+and [docs/plugin-development.md](docs/plugin-development.md).
+
+```bash
+smcub plugin inspect examples/toy_plugin/plugin.json
+smcub plugin doctor  --plugin-dir examples/toy_plugin
+smcub plugin run     toy.review-tagger \
+  --request request.json \
+  --decision-time 2026-09-10T15:00:00+08:00 \
+  --available-at  2026-09-10T14:00:00+08:00
+smcub plugin catalog
+smcub profile show a-share-review
+```
+
+Discovery, validation, dependency injection, activation, and evidence wrapping are
+automatic. Installation, network access, external models, and credentials are never
+automatic. Every plugin output is wrapped in an evidence envelope that records the
+plugin version, source reference, input and output hashes, time semantics, and data
+quality, and an output whose data became available after the decision time is
+refused as future leakage.
+
+## Review Workspace and Share Pack
+
+```bash
+smcub workspace import-csv exports/fills.csv
+smcub workspace list-cases --action AVOID
+smcub workspace summary
+smcub share-pack --csv exports/fills.csv --output tmp/share-pack --write
+```
+
+The workspace stores cases, D1/D3 outcomes, plugin evidence, and rule state. The
+share pack is a static offline HTML summary whose security codes, names, amounts,
+and intraday timestamps are reduced, then audited for identifiers and local paths.
+It is never uploaded; see [docs/share-pack.md](docs/share-pack.md) and
+[docs/review-workspace.md](docs/review-workspace.md).
 
 ## Development Checks
 

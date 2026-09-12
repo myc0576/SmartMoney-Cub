@@ -33,3 +33,7 @@ artifacts/*
 
 # OpenDesign editor-side render scratch (kept ignored)
 tmp-render/
+
+# GUI node_modules & dist
+gui/node_modules/
+gui/dist/

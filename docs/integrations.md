@@ -32,6 +32,24 @@ Every integration must preserve these rules:
 
 Do not label a project `runtime-integrated` until the repository contains the code path, tests, and safety documentation that prove it.
 
+## Plugin Protocol
+
+External projects are now integrated through the plugin protocol in
+[plugins.md](plugins.md) rather than by editing the core. The runtime discovers,
+validates, loads, and injects plugins automatically; installation, network access,
+and model access stay user-initiated.
+
+The curated catalog is available offline:
+
+```bash
+smcub plugin catalog
+```
+
+It records three integration levels — `companion`, `adapter`, and
+`runtime-plugin` — and the boundary each project must respect. A catalog entry
+grades the project; it never ships as a bundled dependency. The core release keeps
+`dependencies = []` in `pyproject.toml`.
+
 ## Current Matrix
 
 | Project / Category | Status | Harness Role | Required Boundary |

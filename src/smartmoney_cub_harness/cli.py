@@ -17,7 +17,23 @@ from smartmoney_cub_harness.loop import run_agent_loop
 from smartmoney_cub_harness.manifest import validate_run_manifest
 from smartmoney_cub_harness.memory import save_memory_record
 from smartmoney_cub_harness.mentor_fit import build_mentor_fit
-from smartmoney_cub_harness.outcome import build_outcome
+from smartmoney_cub_harness.outcome import build_outcome, resolve_price_source
+from smartmoney_cub_harness.plugin_cli import (
+    plugin_catalog,
+    plugin_disable,
+    plugin_doctor,
+    plugin_enable,
+    plugin_install,
+    plugin_inspect,
+    plugin_list,
+    plugin_logs,
+    plugin_remove,
+    plugin_run,
+    profile_dump,
+    profile_reload,
+    profile_show,
+)
+from smartmoney_cub_harness.plugins.profiles import BUILTIN_PROFILES
 from smartmoney_cub_harness.privacy_audit import inspect_run_artifacts, load_payload_json, privacy_audit
 from smartmoney_cub_harness.registry import register_candidate
 from smartmoney_cub_harness.run_capture import capture_run, get_command_preset, parse_command
@@ -25,10 +41,19 @@ from smartmoney_cub_harness.run_envelope import validate_run_envelope
 from smartmoney_cub_harness.safety import redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.self_evolve import confirm_promotion, run_self_evolve
+from smartmoney_cub_harness.share_cli import build_share_pack_from_source
 from smartmoney_cub_harness.tradingagents_adapter import (
     check_tradingagents_environment,
     ingest_tradingagents_report,
     run_tradingagents_local_bridge,
+)
+from smartmoney_cub_harness.workspace_cli import (
+    workspace_add_case,
+    workspace_import_csv,
+    workspace_list_cases,
+    workspace_record_outcome,
+    workspace_show_case,
+    workspace_summary,
 )
 
 
@@ -218,8 +243,126 @@ def build_parser() -> argparse.ArgumentParser:
     append_ledger.add_argument("--ledger")
 
     save_memory = sub.add_parser("save-memory", help="Write local Markdown memory from a case record")
-    save_memory.add_argument("--case-record", required=True)
+    save_memory.add_argument("case_record")
     save_memory.add_argument("--output")
+
+    dashboard_cmd = sub.add_parser(
+        "dashboard", help="Launch the local AI trading journal & copilot web dashboard"
+    )
+    dashboard_cmd.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
+    dashboard_cmd.add_argument("--port", type=int, default=8765, help="Port number (default: 8765)")
+    dashboard_cmd.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
+
+    plugin_cmd = sub.add_parser("plugin", help="Discover, inspect, and run read-only plugins")
+    plugin_sub = plugin_cmd.add_subparsers(dest="plugin_command", required=True)
+
+    def add_common(parser_obj: argparse.ArgumentParser) -> None:
+        parser_obj.add_argument("--profile", default="default-offline", choices=sorted(BUILTIN_PROFILES))
+        parser_obj.add_argument("--plugin-dir", action="append", default=[])
+        parser_obj.add_argument("--state-db")
+
+    plugin_list_cmd = plugin_sub.add_parser("list", help="List discovered plugins and entry points")
+    add_common(plugin_list_cmd)
+
+    plugin_inspect_cmd = plugin_sub.add_parser("inspect", help="Validate and show a plugin manifest")
+    plugin_inspect_cmd.add_argument("manifest")
+
+    plugin_enable_cmd = plugin_sub.add_parser("enable", help="Activate a discovered plugin")
+    plugin_enable_cmd.add_argument("plugin_id")
+    add_common(plugin_enable_cmd)
+
+    plugin_disable_cmd = plugin_sub.add_parser("disable", help="Deactivate a plugin and roll back its effects")
+    plugin_disable_cmd.add_argument("plugin_id")
+    add_common(plugin_disable_cmd)
+
+    plugin_remove_cmd = plugin_sub.add_parser("remove", help="Revoke a plugin entry while keeping its audit trail")
+    plugin_remove_cmd.add_argument("plugin_id")
+    plugin_remove_cmd.add_argument("--state-db")
+
+    plugin_doctor_cmd = plugin_sub.add_parser("doctor", help="Check plugin tree, capabilities, and gates")
+    add_common(plugin_doctor_cmd)
+
+    plugin_logs_cmd = plugin_sub.add_parser("logs", help="Show recorded plugin lifecycle events")
+    plugin_logs_cmd.add_argument("plugin_id")
+    plugin_logs_cmd.add_argument("--state-db")
+    plugin_logs_cmd.add_argument("--limit", type=int, default=50)
+
+    plugin_run_cmd = plugin_sub.add_parser("run", help="Run a plugin capability as wrapped review evidence")
+    plugin_run_cmd.add_argument("plugin_id")
+    plugin_run_cmd.add_argument("--capability")
+    plugin_run_cmd.add_argument("--request")
+    plugin_run_cmd.add_argument("--decision-time", required=True)
+    plugin_run_cmd.add_argument("--available-at", required=True)
+    plugin_run_cmd.add_argument("--data-source", default="")
+    plugin_run_cmd.add_argument("--data-quality", default="ok")
+    plugin_run_cmd.add_argument("--result-kind", default="review_observation")
+    plugin_run_cmd.add_argument("--workspace-db", help="Persist the wrapped evidence into this workspace")
+    plugin_run_cmd.add_argument("--case-id", help="Link the recorded evidence to a review case")
+    add_common(plugin_run_cmd)
+
+    plugin_sub.add_parser("catalog", help="List curated external projects and integration levels")
+
+    plugin_install_cmd = plugin_sub.add_parser(
+        "install",
+        help="Register a locally obtained plugin (never downloads)",
+    )
+    plugin_install_cmd.add_argument("source", help="Local plugin directory or manifest path")
+    add_common(plugin_install_cmd)
+
+    profile_cmd = sub.add_parser("profile", help="Inspect and reload plugin composition profiles")
+    profile_sub = profile_cmd.add_subparsers(dest="profile_command", required=True)
+    profile_show_cmd = profile_sub.add_parser("show", help="Show one resolved profile and its entry tree")
+    profile_show_cmd.add_argument("name", choices=sorted(BUILTIN_PROFILES))
+    profile_dump_cmd = profile_sub.add_parser("dump", help="Dump every built-in profile as JSON")
+    profile_dump_cmd.add_argument("--output")
+    profile_reload_cmd = profile_sub.add_parser("reload", help="Rebuild the plugin tree explicitly")
+    add_common(profile_reload_cmd)
+
+    share_pack_cmd = sub.add_parser(
+        "share-pack", help="Build a privacy-reduced static HTML review pack for local sharing"
+    )
+    share_pack_cmd.add_argument("--csv", help="Optional broker or 同花顺 CSV; omit to use labelled demo data")
+    share_pack_cmd.add_argument("--output", help="Output directory for the static HTML pack")
+    share_pack_cmd.add_argument("--regime", default="生长")
+    share_pack_cmd.add_argument("--title", default="SmartMoney-Cub Review Pack")
+    share_pack_cmd.add_argument("--write", action="store_true", help="Write the pack to --output")
+
+    workspace_cmd = sub.add_parser(
+        "workspace", help="Query and update the local SQLite review workspace"
+    )
+    workspace_sub = workspace_cmd.add_subparsers(dest="workspace_command", required=True)
+
+    ws_add = workspace_sub.add_parser("add-case", help="Record a review case with its risk contract")
+    ws_add.add_argument("payload", help="JSON payload describing the case")
+    ws_add.add_argument("--db")
+
+    ws_list = workspace_sub.add_parser("list-cases", help="List review cases with optional filters")
+    ws_list.add_argument("--db")
+    ws_list.add_argument("--action")
+    ws_list.add_argument("--symbol")
+    ws_list.add_argument("--regime")
+
+    ws_show = workspace_sub.add_parser("show-case", help="Show one case with outcomes and evidence")
+    ws_show.add_argument("case_id")
+    ws_show.add_argument("--db")
+
+    ws_outcome = workspace_sub.add_parser("record-outcome", help="Record a D1/D3 style outcome")
+    ws_outcome.add_argument("case_id")
+    ws_outcome.add_argument("--horizon", required=True)
+    ws_outcome.add_argument("--return-pct", type=float, required=True)
+    ws_outcome.add_argument("--max-adverse-excursion-pct", type=float)
+    ws_outcome.add_argument("--outcome-time")
+    ws_outcome.add_argument("--detail", default="")
+    ws_outcome.add_argument("--db")
+
+    ws_import = workspace_sub.add_parser("import-csv", help="Import broker CSV round trips as facts")
+    ws_import.add_argument("csv_path")
+    ws_import.add_argument("--db")
+    ws_import.add_argument("--regime", default="")
+
+    ws_summary = workspace_sub.add_parser("summary", help="Show workspace counts and sample limits")
+    ws_summary.add_argument("--db")
+
     return parser
 
 
@@ -272,7 +415,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.get("evidence_status") == "verified" else 2
 
     if args.command == "build-outcome":
-        outcome_path = build_outcome(args.run_dir, horizon=args.horizon, price_source=args.price_source)
+        resolved = resolve_price_source(args.price_source)
+        outcome_path = build_outcome(args.run_dir, horizon=args.horizon, price_source=resolved)
         _print_json({"status": "ok", "outcome_path": str(outcome_path), "safety": SAFETY_DECLARATION})
         return 0
 
@@ -388,6 +532,172 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "save-memory":
         _print_json(save_memory_record(args.case_record, output_path=args.output))
         return 0
+
+    if args.command == "dashboard":
+        from smartmoney_cub_harness.dashboard.server import start_dashboard_server
+
+        start_dashboard_server(host=args.host, port=args.port, open_browser=not args.no_browser)
+        return 0
+
+    if args.command == "plugin":
+        if args.plugin_command == "list":
+            _print_json(
+                plugin_list(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        if args.plugin_command == "inspect":
+            result = plugin_inspect(args.manifest)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "enable":
+            result = plugin_enable(
+                args.plugin_id,
+                profile_name=args.profile,
+                plugin_dirs=args.plugin_dir,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "disable":
+            result = plugin_disable(
+                args.plugin_id,
+                profile_name=args.profile,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "remove":
+            result = plugin_remove(args.plugin_id, state_db=args.state_db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "doctor":
+            _print_json(
+                plugin_doctor(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        if args.plugin_command == "logs":
+            _print_json(plugin_logs(args.plugin_id, state_db=args.state_db, limit=args.limit))
+            return 0
+        if args.plugin_command == "catalog":
+            _print_json(plugin_catalog())
+            return 0
+        if args.plugin_command == "install":
+            result = plugin_install(
+                args.source,
+                profile_name=args.profile,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "run":
+            result = plugin_run(
+                args.plugin_id,
+                capability=args.capability,
+                request_path=args.request,
+                workspace_db=args.workspace_db,
+                case_id=args.case_id,
+                decision_time=args.decision_time,
+                available_at=args.available_at,
+                data_source=args.data_source,
+                data_quality=args.data_quality,
+                result_kind=args.result_kind,
+                profile_name=args.profile,
+                plugin_dirs=args.plugin_dir,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        parser.error(f"unknown plugin command: {args.plugin_command}")
+        return 2
+
+    if args.command == "profile":
+        if args.profile_command == "show":
+            _print_json(profile_show(args.name))
+            return 0
+        if args.profile_command == "dump":
+            _print_json(profile_dump(output_path=args.output))
+            return 0
+        if args.profile_command == "reload":
+            _print_json(
+                profile_reload(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        parser.error(f"unknown profile command: {args.profile_command}")
+        return 2
+
+    if args.command == "share-pack":
+        try:
+            result = build_share_pack_from_source(
+                csv_path=args.csv,
+                output_dir=args.output,
+                regime=args.regime,
+                title=args.title,
+                write=args.write,
+            )
+        except (OSError, ValueError) as exc:
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {"code": type(exc).__name__, "message": str(exc)},
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        _print_json(result)
+        return 0 if result.get("status") == "ok" else 2
+
+    if args.command == "workspace":
+        if args.workspace_command == "add-case":
+            result = workspace_add_case(_read_json(args.payload), db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "list-cases":
+            _print_json(
+                workspace_list_cases(
+                    db_path=args.db,
+                    action=args.action,
+                    symbol=args.symbol,
+                    regime=args.regime,
+                )
+            )
+            return 0
+        if args.workspace_command == "show-case":
+            result = workspace_show_case(args.case_id, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "record-outcome":
+            result = workspace_record_outcome(
+                case_id=args.case_id,
+                horizon=args.horizon,
+                return_pct=args.return_pct,
+                max_adverse_excursion_pct=args.max_adverse_excursion_pct,
+                outcome_time=args.outcome_time,
+                detail=args.detail,
+                db_path=args.db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "import-csv":
+            result = workspace_import_csv(args.csv_path, db_path=args.db, regime=args.regime)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "summary":
+            _print_json(workspace_summary(db_path=args.db))
+            return 0
+        parser.error(f"unknown workspace command: {args.workspace_command}")
+        return 2
 
     parser.error(f"unknown command: {args.command}")
     return 2
