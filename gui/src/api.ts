@@ -49,6 +49,18 @@ export const api = {
   settings: () => request<Record<string, any>>('/api/settings'),
   updateSettings: (payload: Record<string, unknown>) =>
     request<Record<string, any>>('/api/settings', { method: 'POST', body: JSON.stringify(payload) }),
+  addProvider: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings/providers', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProvider: (providerId: string, payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings/providers/' + encodeURIComponent(providerId), {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  removeProvider: (providerId: string) =>
+    request<Record<string, any>>('/api/settings/providers/' + encodeURIComponent(providerId) + '/remove', {
+      method: 'POST', body: JSON.stringify({}),
+    }),
+  discoverModels: (payload: Record<string, unknown>) =>
+    request<{ models: string[] }>('/api/settings/discover', { method: 'POST', body: JSON.stringify(payload) }),
   testProvider: (payload: Record<string, unknown>) =>
     request<Record<string, any>>('/api/settings/test', { method: 'POST', body: JSON.stringify(payload) }),
   audit: (limit = 50) => request<{ audits: AuditRecord[] }>('/api/audit?limit=' + limit),

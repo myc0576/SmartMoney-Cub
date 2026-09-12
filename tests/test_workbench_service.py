@@ -10,7 +10,9 @@ from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
     OFFLINE_PROVIDER_ID,
     credentials_path,
+    install_provider,
     load_credentials,
+    load_settings,
     public_provider_view,
     resolve_provider,
     save_credentials,
@@ -54,7 +56,11 @@ def test_meta_exposes_the_company_gateway_without_a_key(tmp_path) -> None:
 
 def test_a_stored_key_is_reported_as_present_but_never_returned(tmp_path) -> None:
     save_credentials(tmp_path, {"providers": {ALPHATECH_PROVIDER_ID: {"api_key": "sk-secret-value"}}})
-    view = public_provider_view(ALPHATECH_PROVIDER_ID, credentials=load_credentials(tmp_path))
+    view = public_provider_view(
+        ALPHATECH_PROVIDER_ID,
+        credentials=load_credentials(tmp_path),
+        settings=load_settings(tmp_path),
+    )
     assert view["has_key"] is True
     assert view["key_source"] == "local_store"
     assert "sk-secret-value" not in json.dumps(view)
@@ -70,7 +76,9 @@ def test_a_stored_key_is_reported_as_present_but_never_returned(tmp_path) -> Non
 
 
 def test_the_offline_provider_needs_no_key(tmp_path) -> None:
-    provider = resolve_provider(OFFLINE_PROVIDER_ID, credentials={"providers": {}})
+    provider = resolve_provider(
+        OFFLINE_PROVIDER_ID, credentials={"providers": {}}, settings=load_settings(tmp_path)
+    )
     assert provider["protocol"] == "offline"
     assert provider["requires_key"] is False
 

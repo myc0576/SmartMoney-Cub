@@ -9,7 +9,9 @@ from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
     OFFLINE_PROVIDER_ID,
     ProviderError,
+    default_settings,
     load_credentials,
+    load_settings,
     resolve_provider,
     stream_chat,
 )
@@ -146,21 +148,31 @@ class ReviewAgentRuntime:
     # ---- provider path -------------------------------------------------
 
     def resolve_session_provider(self, session: dict[str, Any]) -> dict[str, Any]:
+        """Pick the provider for a turn, falling back to the offline review.
+
+        A provider that was removed, or one with no usable key, must not send an
+        unauthenticated request. In both cases the turn is answered locally.
+        """
         credentials = load_credentials(self.credentials_root)
+        settings = load_settings(self.credentials_root)
         provider_id = session.get("provider_id") or ALPHATECH_PROVIDER_ID
-        try:
-            resolved = resolve_provider(provider_id, credentials=credentials)
-        except ProviderError:
-            # A missing key must not break anything else. Fall back to the local
-            # template so the user still gets a review.
-            return resolve_provider(OFFLINE_PROVIDER_ID, credentials=credentials)
-        if resolved["protocol"] != "offline" and not resolved.get("has_key"):
-            # Never send an unauthenticated request: without a usable key the turn
-            # is answered from local data instead of reaching the network.
-            fallback = resolve_provider(OFFLINE_PROVIDER_ID, credentials=credentials)
-            fallback["fallback_from"] = provider_id
-            fallback["fallback_reason"] = "no_api_key_configured"
+
+        def offline(reason: str, from_provider: str) -> dict[str, Any]:
+            fallback = resolve_provider(
+                OFFLINE_PROVIDER_ID, credentials=credentials, settings=settings
+            )
+            fallback["fallback_from"] = from_provider
+            fallback["fallback_reason"] = reason
             return fallback
+
+        try:
+            resolved = resolve_provider(
+                provider_id, credentials=credentials, settings=settings
+            )
+        except ProviderError:
+            return offline("provider_not_available", provider_id)
+        if resolved["protocol"] != "offline" and not resolved.get("has_key"):
+            return offline("no_api_key_configured", provider_id)
         return resolved
 
     def _build_messages(self, session: dict[str, Any], user_text: str) -> list[dict[str, Any]]:
@@ -237,6 +249,7 @@ class ReviewAgentRuntime:
         context: dict[str, Any],
     ) -> Iterator[dict[str, Any]]:
         model = session.get("model") or provider.get("default_model") or ""
+        effort = session.get("reasoning") or "off"
         prepared = self._prepare(messages, session=session, context=context)
         if prepared.get("blocked"):
             reason = prepared.get("reason")
@@ -254,7 +267,9 @@ class ReviewAgentRuntime:
             rounds += 1
             tool_calls: list[dict[str, Any]] = []
             turn_text = ""
-            for event in stream_chat(provider, model=model, messages=working, tools=TOOL_SPECS):
+            for event in stream_chat(
+                provider, model=model, messages=working, tools=TOOL_SPECS, effort=effort
+            ):
                 if event["kind"] == "delta":
                     turn_text += event["text"]
                     yield {"kind": "delta", "text": event["text"], "safety": SAFETY_DECLARATION}

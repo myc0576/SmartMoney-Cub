@@ -344,7 +344,11 @@ it off:
   sent and how many values were replaced. There is no override switch in the UI.
 
 When no provider key is configured, the assistant answers from local data and sends
-nothing. See [docs/review-agent.md](docs/review-agent.md) and
+nothing.
+
+Providers come from a catalog: add a built-in one, add a custom gateway with its
+protocol, fetch the endpoint's model list, and pick the model and reasoning effort
+from the composer. See [docs/review-agent.md](docs/review-agent.md) and
 [docs/convergence.md](docs/convergence.md).
 
 ## Where to open the interface

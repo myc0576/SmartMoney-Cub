@@ -153,18 +153,52 @@ export interface RuleRecord {
   updated_at: string;
 }
 
+export interface ModelEntry {
+  id: string;
+  label: string;
+  reasoning_efforts: string[];
+  default_effort: string;
+}
+
 export interface ProviderView {
   provider_id: string;
   label: string;
   base_url: string;
   protocol: string;
+  protocol_label?: string;
   default_model: string;
+  models: ModelEntry[];
+  reasoning_efforts: string[];
   requires_key: boolean;
+  removable: boolean;
+  installable: boolean;
   has_key: boolean;
   key_source: string;
   description: string;
-  stored_base_url?: string;
-  stored_model?: string;
+  incomplete?: boolean;
+}
+
+export interface CatalogEntry {
+  provider_id: string;
+  label: string;
+  base_url: string;
+  protocol: string;
+  protocol_label: string;
+  description: string;
+  installed: boolean;
+  has_env_key: boolean;
+  models: ModelEntry[];
+}
+
+export interface ProtocolOption {
+  id: string;
+  label: string;
+}
+
+export interface DefaultSelection {
+  provider_id: string;
+  model: string;
+  reasoning: string;
 }
 
 export interface SessionSummary {
@@ -210,6 +244,8 @@ export interface Meta {
   engine: Record<string, boolean>;
   providers: ProviderView[];
   default_provider: string;
+  default_model: string;
+  default_reasoning: string;
   store_counts: Record<string, number>;
   trend_color_scheme: 'cn' | 'intl';
 }

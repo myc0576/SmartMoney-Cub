@@ -16,13 +16,22 @@ from smartmoney_cub_harness import __version__, analytics
 from smartmoney_cub_harness import extractors
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
-    BUILTIN_PROVIDERS,
+    OFFLINE_PROVIDER_ID,
+    PROVIDER_PROTOCOLS,
     ProviderError,
+    catalog_view,
     credentials_path,
+    install_provider,
+    list_models as provider_models,
     load_credentials,
+    load_settings,
+    list_provider_ids,
+    provider_entry,
     public_provider_view,
+    remove_provider,
     resolve_provider,
-    save_credentials,
+    save_settings,
+    update_provider,
 )
 from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
@@ -80,13 +89,8 @@ class WorkbenchService:
 
     def meta(self) -> dict[str, Any]:
         credentials = load_credentials(self.root)
-        providers = []
-        for provider_id in BUILTIN_PROVIDERS:
-            try:
-                providers.append(public_provider_view(provider_id, credentials=credentials))
-            except ProviderError:
-                # A provider with no base URL yet is simply not offered.
-                continue
+        settings = load_settings(self.root)
+        providers = self.provider_views(settings, credentials)
         return {
             "app": "smartmoney-cub",
             "version": __version__,
@@ -94,7 +98,9 @@ class WorkbenchService:
             "redaction_policy": REDACTION_POLICY_VERSION,
             "engine": extractors.ocr_backend_status(),
             "providers": providers,
-            "default_provider": ALPHATECH_PROVIDER_ID,
+            "default_provider": self.default_selection()["provider_id"],
+            "default_model": self.default_selection()["model"],
+            "default_reasoning": self.default_selection()["reasoning"],
             "store_counts": self.store.counts(),
             "trend_color_scheme": self.store.get_setting("trend_color_scheme", "cn"),
         }
@@ -393,21 +399,74 @@ class WorkbenchService:
 
     # ---- settings ------------------------------------------------------
 
+    def provider_views(
+        self, settings: dict[str, Any], credentials: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        views: list[dict[str, Any]] = []
+        for provider_id in list_provider_ids(settings):
+            try:
+                views.append(
+                    public_provider_view(
+                        provider_id, credentials=credentials, settings=settings
+                    )
+                )
+            except ProviderError:
+                # A provider whose endpoint was cleared is reported as broken
+                # rather than dropped, so the user can see and fix it.
+                entry = settings.get("providers", {}).get(provider_id, {})
+                views.append(
+                    {
+                        "provider_id": provider_id,
+                        "label": entry.get("label", provider_id),
+                        "base_url": entry.get("base_url", ""),
+                        "protocol": entry.get("protocol", "openai-chat"),
+                        "models": entry.get("models") or [],
+                        "reasoning_efforts": [],
+                        "removable": bool(entry.get("removable", True)),
+                        "installable": False,
+                        "has_key": False,
+                        "key_source": "none",
+                        "description": "这个 Provider 还缺少必要的配置。",
+                        "incomplete": True,
+                        "safety": SAFETY_DECLARATION,
+                    }
+                )
+        return views
+
+    def default_selection(self) -> dict[str, str]:
+        """The provider, model, and effort a new session should start from."""
+        settings = load_settings(self.root)
+        provider_id = str(self.store.get_setting("default_provider_id") or ALPHATECH_PROVIDER_ID)
+        known = list_provider_ids(settings)
+        if provider_id not in known:
+            provider_id = known[0] if known else OFFLINE_PROVIDER_ID
+        try:
+            entry = provider_entry(provider_id, settings)
+        except ProviderError:
+            entry = {"models": [], "default_model": ""}
+        models = entry.get("models") or []
+        model = str(self.store.get_setting("default_model") or "") or entry.get("default_model", "")
+        if model and models and model not in {item["id"] for item in models}:
+            model = entry.get("default_model", "")
+        selected = next((item for item in models if item["id"] == model), None)
+        reasoning = str(
+            self.store.get_setting("default_reasoning")
+            or (selected or {}).get("default_effort")
+            or "off"
+        )
+        return {"provider_id": provider_id, "model": model, "reasoning": reasoning}
+
     def settings(self) -> dict[str, Any]:
         credentials = load_credentials(self.root)
-        providers = []
-        for provider_id in BUILTIN_PROVIDERS:
-            try:
-                view = public_provider_view(provider_id, credentials=credentials)
-            except ProviderError:
-                continue
-            stored = (credentials.get("providers") or {}).get(provider_id) or {}
-            view["stored_base_url"] = stored.get("base_url", "")
-            view["stored_model"] = stored.get("default_model", "")
-            providers.append(view)
+        settings = load_settings(self.root)
         return {
             "status": "ok",
-            "providers": providers,
+            "providers": self.provider_views(settings, credentials),
+            "catalog": catalog_view(settings, credentials=credentials),
+            "protocols": [
+                {"id": key, "label": value} for key, value in PROVIDER_PROTOCOLS.items()
+            ],
+            "defaults": self.default_selection(),
             "credentials_file": credentials_path(self.root).name,
             "redaction_policy": REDACTION_POLICY_VERSION,
             "engine": extractors.ocr_backend_status(),
@@ -417,36 +476,127 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def add_provider(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Install a provider from the catalog, or create a custom one."""
+        try:
+            result = install_provider(
+                self.root,
+                str(payload.get("provider_id") or ""),
+                from_catalog=bool(payload.get("from_catalog")),
+                label=str(payload.get("label") or ""),
+                display_name=str(payload.get("display_name") or ""),
+                base_url=str(payload.get("base_url") or ""),
+                protocol=str(payload.get("protocol") or "openai-chat"),
+                api_key=str(payload.get("api_key") or ""),
+                models=payload.get("models"),
+            )
+        except ProviderError as error:
+            raise ApiError(str(error), status=400, code="provider_error") from error
+        return {**result, "settings": self.settings(), "safety": SAFETY_DECLARATION}
+
     def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
-        credentials = load_credentials(self.root)
-        providers = credentials.setdefault("providers", {})
-        for provider_id, values in (payload.get("providers") or {}).items():
-            if provider_id not in BUILTIN_PROVIDERS:
-                raise ApiError(f"unknown provider: {provider_id}")
+        """Update one or more providers, plus the default selection."""
+        providers = payload.get("providers") or {}
+        if not isinstance(providers, dict):
+            raise ApiError("providers must be an object")
+        for provider_id, values in providers.items():
             if not isinstance(values, dict):
                 raise ApiError("provider settings must be an object")
-            entry = providers.setdefault(provider_id, {})
-            if "api_key" in values and str(values["api_key"]).strip():
-                entry["api_key"] = str(values["api_key"]).strip()
-            if "clear_key" in values and values["clear_key"]:
-                entry.pop("api_key", None)
-            if "base_url" in values:
-                entry["base_url"] = str(values["base_url"] or "").strip()
-            if "default_model" in values:
-                entry["default_model"] = str(values["default_model"] or "").strip()
-        result = save_credentials(self.root, credentials)
+            try:
+                update_provider(
+                    self.root,
+                    provider_id,
+                    display_name=values.get("display_name"),
+                    base_url=values.get("base_url"),
+                    protocol=values.get("protocol"),
+                    models=values.get("models"),
+                    default_model=values.get("default_model"),
+                    api_key=values.get("api_key"),
+                    clear_key=bool(values.get("clear_key")),
+                )
+            except ProviderError as error:
+                raise ApiError(str(error), status=400, code="provider_error") from error
+
+        if payload.get("default_provider_id"):
+            self.store.set_setting("default_provider_id", str(payload["default_provider_id"]))
+        if "default_model" in payload:
+            self.store.set_setting("default_model", str(payload["default_model"] or ""))
+        if "default_reasoning" in payload:
+            self.store.set_setting("default_reasoning", str(payload["default_reasoning"] or "off"))
         if payload.get("trend_color_scheme") in {"cn", "intl"}:
             self.store.set_setting("trend_color_scheme", payload["trend_color_scheme"])
-        return {**result, "safety": SAFETY_DECLARATION}
+
+        credentials = load_credentials(self.root)
+        settings = load_settings(self.root)
+        return {
+            "status": "ok",
+            "providers": self.provider_views(settings, credentials),
+            "defaults": self.default_selection(),
+            "note": "secrets stay in the local credentials file and are never returned",
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def remove_provider(self, provider_id: str) -> dict[str, Any]:
+        try:
+            result = remove_provider(self.root, provider_id)
+        except ProviderError as error:
+            raise ApiError(str(error), status=400, code="provider_error") from error
+        if self.store.get_setting("default_provider_id") == provider_id:
+            self.store.set_setting("default_provider_id", ALPHATECH_PROVIDER_ID)
+            self.store.set_setting("default_model", "")
+        return {**result, "settings": self.settings(), "safety": SAFETY_DECLARATION}
+
+    def discover_models(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Ask an endpoint which models it serves, using form values or stored config."""
+        provider_id = str(payload.get("provider_id") or "")
+        credentials = load_credentials(self.root)
+        settings = load_settings(self.root)
+        base_url = str(payload.get("base_url") or "")
+        api_key = str(payload.get("api_key") or "")
+        protocol = str(payload.get("protocol") or "openai-chat")
+
+        if provider_id:
+            try:
+                resolved = resolve_provider(
+                    provider_id,
+                    base_url=base_url or None,
+                    credentials=credentials,
+                    settings=settings,
+                )
+            except ProviderError as error:
+                raise ApiError(str(error), status=400, code="provider_error") from error
+            if protocol:
+                resolved["protocol"] = protocol
+        else:
+            if not base_url:
+                raise ApiError("a base URL is required to fetch models")
+            resolved = {
+                "provider_id": "",
+                "base_url": base_url.rstrip("/"),
+                "protocol": protocol,
+                "api_key": _effective_key(settings, provider_id, api_key, credentials),
+            }
+        if api_key:
+            resolved["api_key"] = api_key
+        if not resolved.get("api_key") and resolved.get("protocol") != "offline":
+            raise ApiError("an API key is required to fetch models")
+
+        try:
+            result = provider_models(resolved)
+        except ProviderError as error:
+            raise ApiError(str(error), status=502, code="provider_error") from error
+        return {**result, "provider_id": provider_id, "safety": SAFETY_DECLARATION}
 
     def test_provider(self, payload: dict[str, Any]) -> dict[str, Any]:
         provider_id = str(payload.get("provider_id") or ALPHATECH_PROVIDER_ID)
         credentials = load_credentials(self.root)
+        settings = load_settings(self.root)
         try:
             provider = resolve_provider(
                 provider_id,
                 base_url=payload.get("base_url"),
                 credentials=credentials,
+                settings=settings,
             )
         except ProviderError as error:
             return {"status": "error", "error": str(error), "safety": SAFETY_DECLARATION}
@@ -466,17 +616,20 @@ class WorkbenchService:
                 "error": "no API key configured for this provider",
                 "safety": SAFETY_DECLARATION,
             }
-        from smartmoney_cub_harness.agent.providers import list_models  # noqa: PLC0415
-
         try:
-            models = list_models(provider)
+            models = provider_models(provider)
         except ProviderError as error:
-            return {"status": "error", "provider_id": provider_id, "error": str(error), "safety": SAFETY_DECLARATION}
+            return {
+                "status": "error",
+                "provider_id": provider_id,
+                "error": str(error),
+                "safety": SAFETY_DECLARATION,
+            }
         return {
             "status": "ok",
             "provider_id": provider_id,
             "reachable": True,
-            "models": models["models"][:100],
+            "models": models["models"][:200],
             "safety": SAFETY_DECLARATION,
         }
 
@@ -522,6 +675,25 @@ class WorkbenchService:
             "checks": checks,
             "safety": SAFETY_DECLARATION,
         }
+
+
+def _effective_key(
+    settings: dict[str, Any],
+    provider_id: str,
+    submitted: str,
+    credentials: dict[str, Any],
+) -> str:
+    """Choose the key for a request: the form first, then the stored key."""
+    if submitted.strip():
+        return submitted.strip()
+    if not provider_id:
+        return ""
+    try:
+        return str(
+            resolve_provider(provider_id, credentials=credentials, settings=settings)["api_key"]
+        )
+    except ProviderError:
+        return ""
 
 
 def _validate_fill(row: dict[str, Any], index: int) -> dict[str, Any]:
@@ -691,6 +863,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/settings":
                 self._json(self.service.settings())
                 return
+            if path == "/api/settings/catalog":
+                self._json(self.service.settings())
+                return
             if path == "/api/audit":
                 self._json(self.service.audits(query))
                 return
@@ -756,6 +931,28 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
+                return
+            if path == "/api/settings/providers":
+                self._json(self.service.add_provider(self._read_json()))
+                return
+            if path.startswith("/api/settings/providers/"):
+                rest = path[len("/api/settings/providers/"):]
+                provider_id, _, action = rest.partition("/")
+                provider_id = urllib.parse.unquote(provider_id)
+                if action == "remove":
+                    self._json(self.service.remove_provider(provider_id))
+                    return
+                if action == "models":
+                    self._json(self.service.discover_models({**self._read_json(), "provider_id": provider_id}))
+                    return
+                if action == "":
+                    payload = self._read_json()
+                    self._json(
+                        self.service.update_settings({"providers": {provider_id: payload}})
+                    )
+                    return
+            if path == "/api/settings/discover":
+                self._json(self.service.discover_models(self._read_json()))
                 return
             if path == "/api/settings/test":
                 self._json(self.service.test_provider(self._read_json()))

@@ -150,7 +150,13 @@ export function App() {
             {tab === 'settings' ? <SettingsView meta={meta} onMetaChange={() => void load()} /> : null}
           </div>
 
-          {assistantOpen ? <AssistantPanel meta={meta} context={assistantContext} /> : null}
+          {assistantOpen ? (
+            <AssistantPanel
+              meta={meta}
+              context={assistantContext}
+              onMetaReload={() => void load()}
+            />
+          ) : null}
         </div>
       </main>
 

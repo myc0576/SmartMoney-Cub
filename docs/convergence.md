@@ -44,7 +44,7 @@ The right panel collapses on a narrow window and becomes a drawer on a phone.
 | Rule library | Challenger and champion rules with their evidence |
 | Import | Local parsing, per-field confidence, correction, and commit |
 | Plugins | Discovered read-only data sources and their capabilities |
-| Settings | Providers, redaction policy, outbound audit, and local diagnostics |
+| Settings | Provider catalog and per-provider model catalog, redaction policy, outbound audit, and local diagnostics |
 
 ## Import contract
 

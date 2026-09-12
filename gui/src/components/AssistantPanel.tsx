@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, streamTurn } from '../api';
 import { Markdown } from './common';
+import { ModelPicker, effortLabel, findModel } from './ModelPicker';
 import type { Meta, SessionEvent, SessionSummary } from '../types';
 
 // The assistant panel mirrors the harness interaction model: a session list, a
@@ -13,10 +14,11 @@ interface TurnState {
   error?: string;
 }
 
-export function AssistantPanel({ meta, context, onClose }: {
+export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   meta: Meta | null;
   context: Record<string, unknown>;
   onClose?: () => void;
+  onMetaReload?: () => void;
 }) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -25,6 +27,13 @@ export function AssistantPanel({ meta, context, onClose }: {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  // The selection applies to the next request, and it is what a new session
+  // starts from, so it lives here rather than inside the picker.
+  const [selection, setSelection] = useState({
+    provider_id: meta?.default_provider || 'alphatech',
+    model: meta?.default_model || '',
+    reasoning: meta?.default_reasoning || 'off',
+  });
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -41,11 +50,53 @@ export function AssistantPanel({ meta, context, onClose }: {
   }, []);
 
   useEffect(() => {
+    if (!meta) return;
+    setSelection((prev) =>
+      prev.model
+        ? prev
+        : {
+            provider_id: meta.default_provider || 'alphatech',
+            model: meta.default_model || '',
+            reasoning: meta.default_reasoning || 'off',
+          },
+    );
+  }, [meta]);
+
+  const applySelection = async (next: { provider_id: string; model: string; reasoning: string }) => {
+    setSelection(next);
+    if (activeId) {
+      // An existing session keeps its own log, so the choice is recorded on it.
+      await api.updateSession(activeId, {
+        provider_id: next.provider_id,
+        model: next.model,
+        reasoning: next.reasoning,
+      });
+      await loadSessions();
+    }
+    await api.updateSettings({
+      default_provider_id: next.provider_id,
+      default_model: next.model,
+      default_reasoning: next.reasoning,
+    });
+    onMetaReload?.();
+  };
+
+  useEffect(() => {
     if (!activeId) {
       setEvents([]);
       return;
     }
-    void api.sessionDetail(activeId).then((detail) => setEvents(detail.events));
+    void api.sessionDetail(activeId).then((detail) => {
+      setEvents(detail.events);
+      const session = detail.session;
+      if (session) {
+        setSelection({
+          provider_id: session.provider_id,
+          model: session.model,
+          reasoning: session.reasoning || 'off',
+        });
+      }
+    });
   }, [activeId]);
 
   useEffect(() => {
@@ -69,7 +120,13 @@ export function AssistantPanel({ meta, context, onClose }: {
     if (!text || busy) return;
     let sessionId = activeId;
     if (!sessionId) {
-      const created = await api.createSession({ title: text.slice(0, 18), context });
+      const created = await api.createSession({
+        title: text.slice(0, 18),
+        context,
+        provider_id: selection.provider_id,
+        model: selection.model,
+        reasoning: selection.reasoning,
+      });
       sessionId = created.session.session_id;
       setActiveId(sessionId);
       await loadSessions();
@@ -134,13 +191,16 @@ export function AssistantPanel({ meta, context, onClose }: {
   };
 
   const activeSession = sessions.find((session) => session.session_id === activeId) || null;
+  const providers = meta?.providers || [];
+  const seatModel = findModel(providers, selection.provider_id, selection.model);
+  const seatProvider = providers.find((item) => item.provider_id === selection.provider_id);
 
   return (
     <aside className="assistant">
       <div className="assistant-head">
         <strong style={{ fontSize: 12 }}>复盘助手</strong>
         <span className="muted" style={{ fontSize: 11 }}>
-          {activeSession ? activeSession.provider_id + (activeSession.model ? ' · ' + activeSession.model : '') : '未选择会话'}
+          {activeSession ? activeSession.title : '未选择会话'}
         </span>
         <div style={{ flex: 1 }} />
         <button className="ghost" onClick={() => setShowSessions((prev) => !prev)} title="会话列表">
@@ -232,15 +292,28 @@ export function AssistantPanel({ meta, context, onClose }: {
             }
           }}
         />
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <span className="muted" style={{ fontSize: 11 }}>
-            原文只在本机解析 · 外发字段已脱敏
-          </span>
-          {busy ? (
-            <button className="ghost" onClick={stop}>停止</button>
-          ) : (
-            <button className="primary" onClick={send} disabled={!input.trim()}>发送</button>
-          )}
+        <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+          <ModelPicker
+            providers={providers}
+            selection={selection}
+            onSelect={(next) => void applySelection(next)}
+          />
+          <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
+            {busy ? (
+              <button className="ghost" onClick={stop}>停止</button>
+            ) : (
+              <button className="primary" onClick={send} disabled={!input.trim()}>发送</button>
+            )}
+          </div>
+        </div>
+        <div className="muted" style={{ fontSize: 10.5, lineHeight: 1.6 }}>
+          {seatProvider ? seatProvider.label : '未选择 Provider'}
+          {seatModel ? ' · ' + (seatModel.label || seatModel.id) : ''}
+          {seatModel && seatModel.reasoning_efforts.length > 1
+            ? ' · 推理强度 ' + effortLabel(selection.reasoning)
+            : ''}
+          <br />
+          原文只在本机解析 · 外发字段已脱敏
         </div>
       </div>
     </aside>

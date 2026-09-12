@@ -18,11 +18,45 @@ data, and there is exactly one write it can perform: proposing a challenger rule
 
 ## Providers
 
+Providers are chosen from a catalog rather than hardcoded. A fresh install ships
+the company gateway and the offline fallback:
+
 | Provider | Purpose |
 | --- | --- |
 | `alphatech` | The preconfigured company gateway at `https://alphatech.net.cn/v1` |
-| `openai-compatible` | Any OpenAI-compatible endpoint you configure |
 | `offline` | Local template review with no network request at all |
+
+**Settings → Models** manages everything else:
+
+- **Add provider** installs an entry from the built-in catalog (DeepSeek, OpenAI,
+  Moonshot/Kimi, Zhipu GLM, and the company gateway). Installing one copies its
+  endpoint, protocol, and model list, all of which stay editable.
+- **Add a custom provider** covers a company gateway or a self-hosted server. It
+  takes a permanent lowercase Provider ID, a display name, a base URL, and one
+  **API protocol**: `openai-chat`, `openai-responses`, or
+  `anthropic-messages`. Protocol must match what the endpoint actually speaks.
+- **Fetch available models** asks the endpoint for its listing and opens a
+  searchable, checkable picker. Nothing is stored until you add the selection.
+  Endpoints that answer in another shape can be given model ids by hand, and they
+  work the same way.
+
+Each model may declare its own reasoning levels. The composer's model seat then
+offers only those levels, and selecting a model applies its default effort.
+
+### Selecting a model
+
+The composer's model seat switches provider, model, and reasoning effort for the
+session. Models stay grouped by provider, the list is searchable, and the effort
+row appears only for a model that advertises more than one level. The selection
+applies to the next request; a session that has already sent one keeps the route
+recorded in its own log. The same choice becomes the default for new sessions.
+
+Exactly one protocol belongs to a provider. A gateway that serves both an OpenAI
+and an Anthropic shape is configured as two providers.
+
+Configuration lives in `providers.json` and secrets in `credentials.json`,
+both under the local state directory. Every field except the Provider ID stays
+editable; to rename a provider, add a new one and remove the old one.
 
 API keys are read from the environment first (`ALPHATECH_API_KEY`, `SMCUB_LLM_API_KEY`) and from a local
 credentials file second. The credentials file is written with owner-only

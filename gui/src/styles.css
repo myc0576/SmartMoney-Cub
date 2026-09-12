@@ -146,3 +146,83 @@ textarea { resize: vertical; min-height: 62px; }
   .assistant.drawer { display: flex; position: fixed; inset: 0 0 0 auto; width: min(420px, 92vw); z-index: 30; }
 }
 
+
+
+/* ---- model picker -------------------------------------------------- */
+
+.picker { position: relative; }
+
+.picker-trigger {
+  display: flex; align-items: center; gap: 6px;
+  background: #12161d; border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 10px; max-width: 260px;
+}
+.picker-trigger:hover { background: var(--panel-2); }
+.picker-trigger.open { border-color: var(--accent); }
+.picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-effort {
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 0 6px; font-size: 10px; color: var(--muted); flex: none;
+}
+.picker-caret { color: var(--muted); font-size: 10px; flex: none; }
+
+.picker-menu {
+  position: absolute; z-index: 50; bottom: calc(100% + 6px); right: 0;
+  width: 320px; max-height: 420px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); overflow: hidden;
+}
+.picker-head { padding: 8px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }
+.picker-search { width: 100%; }
+.picker-title { font-size: 12px; font-weight: 600; }
+.picker-back { background: transparent; border: none; padding: 2px 6px; color: var(--muted); }
+.picker-body { overflow: auto; padding: 4px; flex: 1; }
+.picker-group {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 10.5px; text-transform: none;
+  padding: 8px 8px 4px;
+}
+.picker-group-id { opacity: 0.6; }
+.picker-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
+  border-radius: 7px; padding: 7px 9px; font-size: 12.5px;
+}
+.picker-item:hover { background: var(--panel-2); }
+.picker-item.active { background: #23304a; border-color: var(--accent); }
+.picker-tag { color: var(--muted); font-size: 10px; flex: none; }
+.picker-empty { color: var(--muted); font-size: 11.5px; padding: 12px 10px; line-height: 1.6; }
+.picker-foot { border-top: 1px solid var(--border); padding: 6px 8px; display: flex; justify-content: flex-end; }
+
+/* ---- provider cards ------------------------------------------------ */
+
+.provider-card { background: #12161d; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.provider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.provider-title { font-weight: 600; }
+.provider-id { color: var(--muted); font-size: 11px; margin-left: 8px; }
+.provider-meta { color: var(--muted); font-size: 11px; margin: 6px 0; line-height: 1.6; }
+.provider-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+.model-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.model-chip {
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px;
+  font-size: 11px; background: transparent; color: var(--text);
+}
+.model-chip.active { border-color: var(--accent); background: var(--panel-2); }
+.model-chip .effort { color: var(--muted); margin-left: 5px; font-size: 10px; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(6, 8, 12, 0.62); z-index: 60;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal {
+  width: min(520px, 94vw); max-height: 88vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+}
+.modal h3 { margin: 0 0 4px; font-size: 13.5px; }
+.modal .hint { color: var(--muted); font-size: 11.5px; line-height: 1.6; margin-bottom: 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+.checklist { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.checklist-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+.checklist-row:last-child { border-bottom: none; }
+.checklist-row label { flex: 1; font-size: 12px; }

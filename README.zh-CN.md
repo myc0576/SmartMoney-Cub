@@ -81,6 +81,8 @@ smcub skill install --target codex      # 安装 Agent Skill
 - 收益率、持有周期、执行偏差与统计特征会被保留，否则复盘没有意义。
 - 每次外发都会在本机写入审计记录，说明发送了哪些字段、替换了多少处。
 - 未配置 Provider 密钥时，助手只使用本地数据，不发出任何请求。
+- Provider 来自目录：可添加内置 Provider、添加自定义网关（需指定协议）、从端点拉取模型目录，
+  并在输入框旁的选择器里切换模型与推理强度。详见 [docs/review-agent.md](docs/review-agent.md)。
 
 详见 [docs/review-agent.md](docs/review-agent.md) 与 [docs/convergence.md](docs/convergence.md)。
 
