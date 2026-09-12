@@ -43,5 +43,6 @@ gui/dist/
 !src/smartmoney_cub_harness/workbench/web/
 !src/smartmoney_cub_harness/workbench/web/**
 
-# Source maps and local build scratch are not shipped.
-gui/node_modules/
+# Local reference projects. Archived in the workspace for reference, never part of
+# the harness source, the wheel, or the published repository.
+reference/
