@@ -55,7 +55,39 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 
 Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`enforcement: declarative`、`verified: false`），不是子进程沙箱。CLI 的 `--sandbox` 只选择一次性的 `tmp/sandbox` 输出目录，并不隔离进程；不可信命令必须放在操作系统或容器沙箱中运行。`evidence_pack.sha256` 用于本地篡改检测，不是经过身份认证的数字签名；任何不一致只会进入 `pending_review` 或 `blocked`，绝不会自动晋级。
 
+## 🧭 复盘工作台（1.0 · 本地优先）
+
+工作台是三栏布局：左侧导航，中间业务页，右侧常驻复盘助手。导入券商交割文件或截图，
+校对本地识别结果，然后让助手基于脱敏字段做复盘。
+
+```bash
+npx smartmoney-cub                      # 用户端不需要手工配置 Python
+npx smartmoney-cub install --with-ocr   # 识别截图与扫描 PDF 所需的本地 OCR
+smcub workbench                         # 也可以直接用 Python 包启动
+smcub skill install --target codex      # 安装 Agent Skill
+```
+
+页面：总览（权益曲线、月历热力图、待复盘清单）、交易日志（表格 + 详情抽屉 + 成交版本历史）、
+复盘日历、绩效分析（按标的／市场状态／星期／持有周期／标签归因，并显示样本量）、规则库、
+数据导入、插件、设置（Provider、隐私与诊断）。
+
+### 🔒 默认脱敏
+
+助手默认走脱敏路径，界面不提供关闭开关：
+
+- 券商截图、PDF、CSV 原文**只在本机解析**，**从不上传**到 AlphaTech 或任何其他模型 API。
+- 账号、姓名与直接身份标识会被移除，或替换为设备内稳定的假名。
+- 证券代码、组合名、精确数量、精确金额与精确时间会被替换为假名、区间或 15 分钟时段。
+- 收益率、持有周期、执行偏差与统计特征会被保留，否则复盘没有意义。
+- 每次外发都会在本机写入审计记录，说明发送了哪些字段、替换了多少处。
+- 未配置 Provider 密钥时，助手只使用本地数据，不发出任何请求。
+
+详见 [docs/review-agent.md](docs/review-agent.md) 与 [docs/convergence.md](docs/convergence.md)。
+
+---
+
 ## 🚀 启动交互式 Web 工作台 (Dashboard MVP)
+
 
 无需复杂的前端构建与外部重度依赖，一行命令启动本地现代化复盘与策略陪练工作台：
 
@@ -147,7 +179,7 @@ python -m venv .venv
 当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新修复 tag 安装，让命令拥有独立环境：
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.2.0"
+pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v1.0.0"
 ```
 
 未来正式发布到 PyPI 后，可改用更短的安装和升级命令：

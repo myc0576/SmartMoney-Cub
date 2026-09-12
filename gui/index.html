@@ -1,55 +1,13 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartMoney-Cub · 游资策略陪练与复盘终端</title>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            tv: {
-              base: '#131722',
-              panel: '#1e222d',
-              toolbar: '#2a2e39',
-              border: '#363a45',
-              borderSubtle: '#262b3e',
-              accent: '#2962ff',
-              red: '#f23645',
-              green: '#089981',
-              text: '#d1d4dc',
-              muted: '#787b86',
-              dim: '#50535e'
-            }
-          }
-        }
-      }
-    };
-  </script>
-  <style>
-    /* TradingView 经典滚动条 */
-    ::-webkit-scrollbar {
-      width: 5px;
-      height: 5px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #131722;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #2a2e39;
-      border-radius: 2px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #363a45;
-    }
-  </style>
-</head>
-<body class="bg-[#131722] text-[#d1d4dc] min-h-screen flex flex-col font-sans antialiased selection:bg-[#2962ff] selection:text-white">
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>SmartMoney-Cub 复盘工作台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

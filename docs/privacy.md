@@ -31,3 +31,25 @@ The TradingAgents adapter is optional and user-configured. External LLM/API cred
 ## What Public Examples May Contain
 
 Public examples must use toy offline data only. They may demonstrate schemas, case records, memory files, and ledger events, but not real trades, private watchlists, credentials, cookies, account identifiers, or local private paths.
+
+## Default Redaction for Review Sessions
+
+The review workbench is redaction-first. When the review assistant talks to an
+external model provider, the request carries only redacted structured fields.
+
+- Screenshots, PDFs, and CSV originals never leave the machine. They are parsed
+  locally and stored locally.
+- Account numbers, names, and direct identifiers are removed or replaced with a
+  device-stable pseudonym.
+- Security codes, portfolio names, exact quantities, exact amounts, and exact
+  timestamps are replaced with pseudonyms, range bands, or time buckets.
+- Returns, holding periods, execution deviation, and statistical features are kept,
+  because the review is meaningless without them.
+- Every outbound request is recorded locally in an audit table listing which fields
+  were sent and how many values were replaced. There is no override switch.
+
+This policy applies to the preconfigured company gateway and to every provider
+added later. See [docs/review-agent.md](review-agent.md) for the full table.
+
+When no provider key is configured, the assistant answers from local data and
+sends nothing.

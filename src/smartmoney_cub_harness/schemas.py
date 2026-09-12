@@ -22,6 +22,13 @@ PROMOTION_PACKET_SCHEMA = "smartmoney_cub_promotion_packet.v1"
 TRADINGAGENTS_REVIEW_PACKET_SCHEMA = "smartmoney_cub_tradingagents_review_packet.v1"
 MENTOR_FIT_SCHEMA = "smartmoney_cub_mentor_fit.v1"
 
+# Convergence (local-first review workbench) schemas.
+REVIEW_STORE_SCHEMA = "smartmoney_cub_review_store.v1"
+SOURCE_DOCUMENT_SCHEMA = "smartmoney_cub_source_document.v1"
+AUDIT_SCHEMA = "smartmoney_cub_outbound_audit.v1"
+REVIEW_AGENT_SCHEMA = "smartmoney_cub_review_agent.v1"
+SETTINGS_SCHEMA = "smartmoney_cub_settings.v1"
+
 VALID_ACTION_LABELS = {"SILENT", "ALERT", "ERROR", "WATCH", "AVOID", "EMPTY_POSITION"}
 VALID_DATA_QUALITY_FLAGS = {"ok", "stale", "partial", "missing", "error"}
 VALID_HORIZONS = {"d1": 1, "d3": 3}

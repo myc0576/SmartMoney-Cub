@@ -253,6 +253,52 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_cmd.add_argument("--port", type=int, default=8765, help="Port number (default: 8765)")
     dashboard_cmd.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
 
+    workbench_cmd = sub.add_parser(
+        "workbench", help="Launch the local-first review workbench (A-plan interface)"
+    )
+    workbench_cmd.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    workbench_cmd.add_argument("--port", type=int, default=8787, help="Port (default: 8787)")
+    workbench_cmd.add_argument("--state-dir", default=None, help="Override the local state directory")
+    workbench_cmd.add_argument("--no-browser", action="store_true", help="Do not open a browser")
+    workbench_cmd.add_argument(
+        "--token",
+        default=None,
+        help="Required access token when binding beyond loopback",
+    )
+
+    import_cmd = sub.add_parser("import", help="Import broker records into the local store")
+    import_sub = import_cmd.add_subparsers(dest="import_command", required=True)
+    import_file = import_sub.add_parser("file", help="Import a CSV, PDF, or screenshot file")
+    import_file.add_argument("path")
+    import_file.add_argument("--state-dir", default=None)
+    import_file.add_argument("--portfolio-id", default=None)
+    import_file.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    import_commit = import_sub.add_parser("commit", help="Commit reviewed rows from an extraction")
+    import_commit.add_argument("extraction_id")
+    import_commit.add_argument("--rows", default=None, help="JSON file with corrected rows")
+    import_commit.add_argument("--state-dir", default=None)
+    import_commit.add_argument("--portfolio-id", default=None)
+    import_commit.add_argument("--json", action="store_true")
+    import_sub.add_parser("list", help="List local documents already imported")
+
+    store_cmd = sub.add_parser("store", help="Inspect and maintain the local review store")
+    store_sub = store_cmd.add_subparsers(dest="store_command", required=True)
+    store_status = store_sub.add_parser("status", help="Show local store counts and paths")
+    store_status.add_argument("--state-dir", default=None)
+    store_status.add_argument("--json", action="store_true")
+    store_backup = store_sub.add_parser("backup", help="Copy the local store aside")
+    store_backup.add_argument("destination")
+    store_backup.add_argument("--state-dir", default=None)
+    store_backup.add_argument("--json", action="store_true")
+
+    skill_cmd = sub.add_parser("skill", help="Install the agent skill for a supported host")
+    skill_sub = skill_cmd.add_subparsers(dest="skill_command", required=True)
+    skill_install = skill_sub.add_parser("install", help="Write the skill into a host directory")
+    skill_install.add_argument("--target", default="codex", help="codex, claude, deepseek-harness, or a path")
+    skill_install.add_argument("--force", action="store_true", help="Overwrite an existing skill directory")
+    skill_install.add_argument("--json", action="store_true")
+    skill_sub.add_parser("show", help="Print the packaged skill definition")
+
     plugin_cmd = sub.add_parser("plugin", help="Discover, inspect, and run read-only plugins")
     plugin_sub = plugin_cmd.add_subparsers(dest="plugin_command", required=True)
 
@@ -538,6 +584,58 @@ def main(argv: list[str] | None = None) -> int:
 
         start_dashboard_server(host=args.host, port=args.port, open_browser=not args.no_browser)
         return 0
+
+    if args.command == "workbench":
+        from smartmoney_cub_harness.convergence_cli import run_workbench
+
+        return run_workbench(
+            host=args.host,
+            port=args.port,
+            state_dir=args.state_dir,
+            open_browser=not args.no_browser,
+            token=args.token,
+        )
+
+    if args.command == "import":
+        from smartmoney_cub_harness.convergence_cli import (
+            import_commit,
+            import_file,
+            import_list,
+        )
+
+        if args.import_command == "file":
+            return import_file(
+                args.path,
+                state_dir=args.state_dir,
+                portfolio_id=args.portfolio_id,
+                as_json=args.json,
+            )
+        if args.import_command == "commit":
+            return import_commit(
+                args.extraction_id,
+                rows_path=args.rows,
+                state_dir=args.state_dir,
+                portfolio_id=args.portfolio_id,
+                as_json=args.json,
+            )
+        if args.import_command == "list":
+            return import_list(state_dir=args.state_dir)
+
+    if args.command == "store":
+        from smartmoney_cub_harness.convergence_cli import store_backup, store_status
+
+        if args.store_command == "status":
+            return store_status(state_dir=args.state_dir, as_json=args.json)
+        if args.store_command == "backup":
+            return store_backup(args.destination, state_dir=args.state_dir, as_json=args.json)
+
+    if args.command == "skill":
+        from smartmoney_cub_harness.convergence_cli import skill_install, skill_show
+
+        if args.skill_command == "install":
+            return skill_install(target=args.target, force=args.force, as_json=args.json)
+        if args.skill_command == "show":
+            return skill_show()
 
     if args.command == "plugin":
         if args.plugin_command == "list":

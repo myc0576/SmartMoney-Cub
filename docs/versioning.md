@@ -40,7 +40,7 @@ smcub --version
 pipx is the preferred end-user CLI installation because it isolates the command from unrelated Python environments. Install the current GitHub tag directly:
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.2.0"
+pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v1.0.0"
 smcub --version
 smcub doctor
 ```

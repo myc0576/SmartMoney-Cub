@@ -37,3 +37,11 @@ tmp-render/
 # GUI node_modules & dist
 gui/node_modules/
 gui/dist/
+
+# The built workbench interface is committed on purpose. It ships inside the
+# wheel, and an installed copy must serve an interface without a Node toolchain.
+!src/smartmoney_cub_harness/workbench/web/
+!src/smartmoney_cub_harness/workbench/web/**
+
+# Source maps and local build scratch are not shipped.
+gui/node_modules/

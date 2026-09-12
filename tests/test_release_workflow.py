@@ -27,7 +27,11 @@ def test_release_workflow_validates_version_and_publishes_release_assets():
     assert 'mktemp -d' in workflow
     assert 'actions/upload-artifact@v4' in workflow
     assert 'actions/download-artifact@v4' in workflow
-    assert 'needs: build' in workflow
+    # The release now waits for both the Python distributions and the npm
+    # launcher package, so neither can be published from a stale build.
+    assert 'needs: [build, npm-package]' in workflow
+    assert 'node --check npm/bin/smartmoney-cub.js' in workflow
+    assert 'npm pack' in workflow
     assert 'gh release create' in workflow
     assert '--repo "${GITHUB_REPOSITORY}"' in workflow
     assert 'dist/*' in workflow

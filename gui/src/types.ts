@@ -1,181 +1,216 @@
-export type ColorScheme = 'cn' | 'intl';
-export type TabKey = 'workbench' | 'trades' | 'regime' | 'rules' | 'plugins' | 'workspace';
+export type Tone = 'up' | 'down' | 'flat';
 
-export interface TradeAnalysis {
-  trade_id: string;
+export interface Summary {
+  trade_count: number;
+  win_count: number;
+  loss_count: number;
+  flat_count: number;
+  win_rate: number;
+  profit_factor: number | null;
+  profit_factor_note: string;
+  total_net_pnl: number;
+  total_fees: number;
+  avg_return_pct: number;
+  avg_win_pct: number;
+  avg_loss_pct: number;
+  avg_holding_days: number;
+  max_drawdown: number;
+  open_position_count: number;
+  sample_note: string;
+  equity_curve: { exit_time: string; symbol: string; net_pnl: number; cumulative_pnl: number }[];
+}
+
+export interface RoundTrip {
+  round_trip_id: string;
   symbol: string;
   name: string;
   regime: string;
-  entry_time: string;
-  entry_price: number;
-  exit_time: string;
-  exit_price: number;
-  volume: number;
-  return_pct: number;
-  pnl_amount: number;
-  max_adverse_excursion_pct: number;
   thesis: string;
+  tags: string[];
+  entry_time: string;
+  exit_time: string;
+  entry_price: number;
+  exit_price: number;
+  quantity: number;
+  net_pnl: number;
+  return_pct: number;
+  fees: number;
+  holding_days: number;
   invalidation_price: number | null;
-  discipline_score: number;
-  health_grade: string;
-  badge_color: string;
-  violations: string[];
-  critiques: string[];
-  safety: string;
-  holding_days?: number;
-  cost_basis_assumed?: boolean;
+  matched_lots: { entry_time: string; entry_price: number; quantity: number; buy_fee: number }[];
 }
 
-export interface PortfolioSummary {
-  total_trades: number;
+export interface OpenPosition {
+  position_id: string;
+  symbol: string;
+  name: string;
+  quantity: number;
+  avg_cost: number;
+  opened_at: string;
+}
+
+export interface Issue {
+  code: string;
+  severity: string;
+  symbol: string;
+  fill_id: string;
+  detail: string;
+}
+
+export interface CalendarDay {
+  date: string;
+  trade_count: number;
+  net_pnl: number;
   win_count: number;
-  loss_count: number;
-  win_rate: number;
-  total_profit: number;
-  total_loss: number;
-  profit_loss_ratio: number;
-  avg_discipline_score: number;
-  total_violations: number;
-  violation_categories: Record<string, number>;
-  grade_tag: string;
-  overall_grade: string;
+  trades: { round_trip_id: string; symbol: string; name: string; net_pnl: number; return_pct: number }[];
 }
 
-export interface RegimeInfo {
+export interface Portfolio {
+  portfolio_id: string;
+  name: string;
+  description: string;
+}
+
+export interface Overview {
+  portfolio_id: string;
+  portfolios: Portfolio[];
+  year: number;
+  month: number;
+  summary: Summary;
+  calendar: CalendarDay[];
+  open_positions: OpenPosition[];
+  blocking_issues: Issue[];
+  issues: Issue[];
+  ledger_status: string;
+  round_trips: RoundTrip[];
+  recent_trades: RoundTrip[];
+  fill_count: number;
+  recent_documents: SourceDocument[];
+}
+
+export interface SourceDocument {
+  document_id: string;
+  file_name: string;
+  media_type: string;
+  byte_size: number;
+  source_kind: string;
+  imported_at: string;
+}
+
+export interface CandidateRow {
+  candidate_id: string;
+  row_index: number;
+  trade_date: string | null;
+  trade_time: string | null;
+  symbol: string | null;
+  name: string | null;
+  side: string | null;
+  price: number | null;
+  quantity: number | null;
+  field_confidence: Record<string, number>;
+  raw_text: string;
+  warnings: string[];
+}
+
+export interface Extraction {
+  extraction_id: string;
+  document_id: string;
+  engine: string;
+  engine_version: string;
+  status: string;
+  row_count: number;
+  mean_confidence: number | null;
+  detail: Record<string, unknown>;
+  rows: CandidateRow[];
+}
+
+export interface UploadResult {
+  status: string;
+  document: SourceDocument;
+  extraction: Extraction;
+  engine_status: Record<string, boolean>;
+  raw_file_stays_local: boolean;
+}
+
+export interface KeyValue {
   key: string;
-  name: string;
-  title: string;
-  stage_order: number;
-  sentiment_score: number;
-  description: string;
-  ladder_height_range: string;
-  recommended_position: string;
-  action_stance: string;
-  maxims: string[];
-  allowed_setups: string[];
-  forbidden_actions: string[];
-  color: string;
-  badge_class: string;
+  trade_count: number;
+  win_rate: number;
+  net_pnl: number;
+  avg_return_pct: number;
+  profit_factor: number | null;
+  small_sample: boolean;
 }
 
-export interface ChallengerReview {
-  trade_id: string;
-  persona: {
-    name: string;
-    motto: string;
-    style: string;
-  };
-  critique_quote: string;
-  verdict: string;
-  cross_examination_questions: string[];
-  proposed_rule?: {
-    rule_id: string;
-    family: string;
-    title: string;
-    condition: string;
-    source_trade: string;
-    status: string;
-    tested_samples: number;
-    target_samples: number;
-  } | null;
-  safety: string;
-}
-
-export interface RuleItem {
+export interface RuleRecord {
   rule_id: string;
-  title: string;
-  family?: string;
-  description?: string;
-  condition?: string;
-  status: 'champion' | 'challenger';
-  sample_count?: number;
-  tested_samples?: number;
-  target_samples?: number;
-  win_rate_impact?: string;
-  violation_rate?: string;
-  promoted_at?: string;
-  promotion_note?: string;
-  avoided_loss_est?: string;
-  created_at?: string;
-  source_trade?: string;
+  family: string | null;
+  title: string | null;
+  status: string;
+  metrics: Record<string, unknown>;
+  promotion_note: string | null;
+  promoted_at: string | null;
+  updated_at: string;
 }
 
-export interface AppDataResponse {
-  safety: string;
-  data_origin: 'demo_fixture' | 'user_csv';
-  needs_review: Array<{
-    code: string;
-    severity: string;
-    symbol: string;
-    fill_id: string;
-    detail: string;
-  }>;
-  active_regime: string;
-  active_profile?: string;
-  regime_info: RegimeInfo;
-  regime_phases: Record<string, RegimeInfo>;
-  report: {
-    summary: PortfolioSummary;
-    analyzed_trades: TradeAnalysis[];
-    data_origin: string;
-    ledger_status: string;
-    needs_review: any[];
-    safety: string;
-  };
-  challenger_reviews: ChallengerReview[];
-  rules: {
-    champions: RuleItem[];
-    challengers: RuleItem[];
-    safety: string;
-  };
-}
-
-export interface PluginItem {
-  plugin_id: string;
-  version: string;
-  state: 'ACTIVE' | 'DISABLED' | 'PENDING' | 'FAILED' | 'BLOCKED' | 'REVOKED' | 'DISCOVERED';
-  capabilities: string[];
-  required_services: string[];
-  optional_services: string[];
-  missing_services: string[];
-  isolation: string;
-  blockers: string[];
-  health?: any;
-  last_error?: string | null;
-  generation?: number;
-  safety: string;
-}
-
-export interface PluginCatalogEntry {
-  project: string;
-  repo: string;
-  level: 'companion' | 'adapter' | 'runtime-plugin';
-  capabilities: string[];
-  license: string;
-  maintained: string;
-  boundary: string;
-  network_required: boolean;
-  execution_risk: string;
-  safety: string;
-}
-
-export interface ProfileItem {
-  name: string;
+export interface ProviderView {
+  provider_id: string;
+  label: string;
+  base_url: string;
+  protocol: string;
+  default_model: string;
+  requires_key: boolean;
+  has_key: boolean;
+  key_source: string;
   description: string;
-  allow_network: boolean;
-  allow_external_llm: boolean;
-  allow_credentials: boolean;
-  bundles: Array<{
-    name: string;
-    description: string;
-    entries: any[];
-  }>;
-  entries: Array<{
-    id: string;
-    name: string;
-    enabled: boolean;
-    group: string;
-    config: Record<string, any>;
-    disabled_reason?: string | null;
-  }>;
+  stored_base_url?: string;
+  stored_model?: string;
 }
+
+export interface SessionSummary {
+  session_id: string;
+  title: string;
+  context: Record<string, unknown>;
+  provider_id: string;
+  model: string;
+  reasoning: string;
+  status: string;
+  forked_from: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionEvent {
+  event_id: number;
+  seq: number;
+  kind: string;
+  role: string | null;
+  payload: Record<string, any>;
+  created_at: string;
+}
+
+export interface AuditRecord {
+  audit_id: number;
+  session_id: string | null;
+  provider_id: string;
+  model: string;
+  payload_sha256: string;
+  sent_keys: string[];
+  redaction_summary: Record<string, any>;
+  blocked: boolean;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface Meta {
+  app: string;
+  version: string;
+  safety: string;
+  redaction_policy: string;
+  engine: Record<string, boolean>;
+  providers: ProviderView[];
+  default_provider: string;
+  store_counts: Record<string, number>;
+  trend_color_scheme: 'cn' | 'intl';
+}
+

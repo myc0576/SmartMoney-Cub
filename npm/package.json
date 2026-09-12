@@ -1,0 +1,30 @@
+{
+  "name": "smartmoney-cub",
+  "version": "1.0.0",
+  "description": "Local-first, read-only trading review workbench with a review assistant and a default-redaction outbound policy.",
+  "license": "MIT",
+  "bin": {
+    "smartmoney-cub": "bin/smartmoney-cub.js",
+    "smcub": "bin/smartmoney-cub.js"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "trading-journal",
+    "review",
+    "decision-log",
+    "read-only",
+    "local-first",
+    "harness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myc0576/Smartmoney-Cub.git"
+  }
+}

@@ -1,5 +1,62 @@
 # Changelog
 
+## 1.0.0
+
+The convergence release: a local-first review workbench with a review assistant, an
+import pipeline that parses broker files on the machine, and an outbound policy that
+redacts identity and exact size before any provider request.
+
+### Added
+
+- Review workbench served from the package at `workbench`: a three-region
+  interface with navigation and portfolio switch, a working page, and a docked review
+  assistant. Pages cover overview, trade log, review calendar, performance analytics,
+  rule library, import, plugins, and settings.
+- `npx smartmoney-cub` launcher. It provisions a private Python environment
+  under `~/.smartmoney-cub` on first run, so a user needs no manual Python
+  setup.
+- Local import pipeline for CSV, TSV, PDF, and screenshots. Source bytes are hashed
+  and stored once, parsing runs locally, and every field carries confidence.
+- Immutable documents and fill revisions. A correction appends a revision and marks
+  the previous one superseded, so an edit stays auditable.
+- Review assistant with local session storage, streamed turns, expandable tool cards,
+  stop, and fork. Turns are persisted before they are streamed, so a reload resumes
+  the same conversation.
+- Preconfigured company gateway provider (`https://alphatech.net.cn/v1`), a
+  generic OpenAI-compatible provider, and an offline provider for local review.
+- Outbound redaction with a device-stable salt: account and identity values are
+  removed or pseudonymized, security codes and portfolio names become aliases, exact
+  quantities and amounts become bands, and timestamps become 15-minute buckets.
+  Returns and statistics survive.
+- `outbound_audit` table recording which fields were sent and how many values
+  were replaced, without recording values or keys.
+- `smcub import file|commit|list`, `smcub store status|backup`,
+  `smcub skill install|show`, and `smcub workbench`.
+- Agent skill that drives only the stable JSON CLI and cannot read the database,
+  credentials, or attachments directly.
+- Local OCR as an optional extra (`smartmoney-cub-harness[ocr]`), so
+  screenshots and scanned PDFs can be read without a network call.
+
+### Changed
+
+- The interface ships inside the wheel and uses no CDN, no remote font, and no
+  external asset.
+- A combined broker fee column is now read as a declared fee instead of being ignored
+  and replaced by an estimate.
+- A model provider without a usable key falls back to local review instead of sending
+  an unauthenticated request.
+- Profit factor is documented and reported as gross profit over absolute gross loss,
+  and reads as undefined when a sample has no losing trade.
+
+### Notes
+
+- Screenshots, PDFs, and CSV originals never leave the machine. A payload carrying
+  attachment material is refused, and there is no override switch in the interface.
+- `smcub workbench` binds loopback by default; a non-loopback bind requires an
+  explicit `--token`.
+
+Safety remains `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
+
 ## Unreleased
 
 ### Added

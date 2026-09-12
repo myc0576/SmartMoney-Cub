@@ -308,6 +308,45 @@ and intraday timestamps are reduced, then audited for identifiers and local path
 It is never uploaded; see [docs/share-pack.md](docs/share-pack.md) and
 [docs/review-workspace.md](docs/review-workspace.md).
 
+## Review Workbench (1.0)
+
+The workbench is the local-first interface: import a broker export or a screenshot,
+correct what the local parser read, and review the result with an assistant that
+only sees redacted fields.
+
+```bash
+npx smartmoney-cub                 # no Python setup needed on the user's side
+npx smartmoney-cub doctor
+npx smartmoney-cub install --with-ocr   # local OCR for screenshots and scanned PDFs
+smcub workbench                    # or run it straight from the Python package
+smcub skill install --target codex # install the agent skill
+```
+
+The interface has a left navigation rail, a middle working page, and a docked
+review assistant on the right. Pages: overview with an equity curve and calendar
+heatmap, trade log with a detail drawer and fill revision history, review calendar,
+performance analytics, rule library, import, plugins, and settings.
+
+### Default desensitization
+
+The assistant is redaction-first, and this is on by default with no switch to turn
+it off:
+
+- Broker screenshots, PDFs, and CSV originals are parsed **on this machine only**
+  and are **never uploaded** to AlphaTech or any other model API.
+- Account numbers, names, and direct identifiers are removed or replaced with a
+  device-stable pseudonym.
+- Security codes, portfolio names, exact quantities, exact amounts, and exact
+  timestamps are replaced with pseudonyms, range bands, or 15-minute time buckets.
+- Returns, holding periods, execution deviation, and statistical features are kept,
+  because the review is meaningless without them.
+- Every outbound request is written to a local audit table listing which fields were
+  sent and how many values were replaced. There is no override switch in the UI.
+
+When no provider key is configured, the assistant answers from local data and sends
+nothing. See [docs/review-agent.md](docs/review-agent.md) and
+[docs/convergence.md](docs/convergence.md).
+
 ## Development Checks
 
 ```bash

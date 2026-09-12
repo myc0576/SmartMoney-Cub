@@ -42,6 +42,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pypdfium2>=4.30", "pypdf>=4.0"]
+pdf = ["pypdf>=4.0"]
 
 [project.scripts]
 smcub = "smartmoney_cub_harness.cli:main"
@@ -50,7 +52,12 @@ smcub = "smartmoney_cub_harness.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-smartmoney_cub_harness = ["data/*.json", "dashboard/templates/*.html"]
+smartmoney_cub_harness = [
+  "data/*.json",
+  "dashboard/templates/*.html",
+  "workbench/web/*.html",
+  "workbench/web/assets/*",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "smartmoney_cub_harness.__version__" }

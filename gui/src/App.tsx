@@ -1,223 +1,172 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
-import { AppDataResponse, ColorScheme, TabKey, TradeAnalysis } from './types';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { WorkbenchView } from './components/WorkbenchView';
-import { TradesView } from './components/TradesView';
-import { RegimeView } from './components/RegimeView';
-import { RulesView } from './components/RulesView';
-import { PluginsView } from './components/PluginsView';
-import { WorkspaceView } from './components/WorkspaceView';
-import { SharePackModal } from './components/SharePackModal';
+import type { Meta, Overview } from './types';
+import { AssistantPanel } from './components/AssistantPanel';
+import { OverviewView } from './views/OverviewView';
+import { TradesView } from './views/TradesView';
+import { CalendarView } from './views/CalendarView';
+import { AnalyticsView } from './views/AnalyticsView';
+import { RulesView } from './views/RulesView';
+import { ImportView } from './views/ImportView';
+import { SettingsView } from './views/SettingsView';
+import { PluginsView } from './views/PluginsView';
+import { TradeDrawer } from './views/TradeDrawer';
 
-export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabKey>('workbench');
-  const [colorScheme, setColorScheme] = useState<ColorScheme>('cn'); // 默认 A股红涨绿跌
-  const [data, setData] = useState<AppDataResponse | null>(null);
-  const [selectedTrade, setSelectedTrade] = useState<TradeAnalysis | null>(null);
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+// A-plan layout: navigation and portfolio switch on the left, the working page
+// in the middle, and the review assistant docked on the right.
 
-  const fetchData = async () => {
+type TabKey = 'overview' | 'trades' | 'calendar' | 'analytics' | 'rules' | 'import' | 'plugins' | 'settings';
+
+const TABS: { key: TabKey; label: string; hint: string }[] = [
+  { key: 'overview', label: '总览', hint: '收益、回撤与待复盘' },
+  { key: 'trades', label: '交易日志', hint: '已确认的平仓交易' },
+  { key: 'calendar', label: '复盘日历', hint: '按日查看盈亏' },
+  { key: 'analytics', label: '绩效分析', hint: '归因与样本量' },
+  { key: 'rules', label: '规则库', hint: 'challenger / champion' },
+  { key: 'import', label: '数据导入', hint: '截图 / PDF / CSV' },
+  { key: 'plugins', label: '插件', hint: '只读数据来源' },
+  { key: 'settings', label: '设置', hint: '模型、隐私与诊断' },
+];
+
+export function App() {
+  const [tab, setTab] = useState<TabKey>('overview');
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [scheme, setScheme] = useState<'cn' | 'intl'>('cn');
+  const [error, setError] = useState('');
+  const [assistantOpen, setAssistantOpen] = useState(true);
+  const [openTradeId, setOpenTradeId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
     try {
-      setLoading(true);
-      const res = await api.getData();
-      setData(res);
-    } catch (err) {
-      console.error('Failed to load dashboard data:', err);
-    } finally {
-      setLoading(false);
+      const [metaResult, overviewResult] = await Promise.all([api.meta(), api.overview()]);
+      setMeta(metaResult);
+      setOverview(overviewResult);
+      setScheme(metaResult.trend_color_scheme === 'intl' ? 'intl' : 'cn');
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, []);
 
-  const handleToggleColorScheme = () => {
-    setColorScheme((prev) => (prev === 'cn' ? 'intl' : 'cn'));
-  };
+  useEffect(() => { void load(); }, [load]);
 
-  const handleSelectRegime = async (regime: string) => {
+  const toggleScheme = async () => {
+    const next = scheme === 'cn' ? 'intl' : 'cn';
+    setScheme(next);
     try {
-      await api.setRegime(regime);
-      await fetchData();
-    } catch (e: any) {
-      alert('切换情绪周期失败: ' + e.message);
+      await api.updateSettings({ trend_color_scheme: next });
+    } catch {
+      // A colour preference that fails to persist is not worth blocking on.
     }
   };
 
-  const handleUploadCsv = async (csvContent: string) => {
-    try {
-      const res = await api.uploadCsv(csvContent);
-      await fetchData();
-      setActiveTab('trades');
-      alert(`成功加载 ${res.loaded_trades_count || 0} 笔有效平仓交易记录`);
-    } catch (e: any) {
-      alert('导入交割单失败: ' + e.message);
-    }
-  };
-
-  const handleResetDemo = async () => {
-    if (!confirm('确认恢复预设的典型游资交割单案例吗？')) return;
-    try {
-      await api.resetDemo();
-      await fetchData();
-      setSelectedTrade(null);
-    } catch (e: any) {
-      alert('重置失败: ' + e.message);
-    }
-  };
-
-  const handleAddRule = async (ruleObj: any) => {
-    try {
-      await api.addRule(ruleObj);
-      await fetchData();
-      setActiveTab('rules');
-      alert(`规则 [${ruleObj.rule_id}] 已采纳至 Challenger 候选规则池`);
-    } catch (e: any) {
-      alert('采纳规则失败: ' + e.message);
-    }
-  };
-
-  const handleRequestPromotion = async (ruleId: string) => {
-    try {
-      // 第一阶段：向后端发送请求，获取门禁评估结果
-      const res = await api.requestPromotion(ruleId);
-      if (res.status === 'not_found') {
-        alert(`未找到规则: ${ruleId}`);
-        return;
-      }
-      if (res.blockers && res.blockers.length > 0) {
-        alert(
-          `规则 [${ruleId}] 暂不可晋升为 Champion 现役铁律。\n\n未通过的门禁:\n` +
-          res.blockers.map((b: string) => '  - ' + b).join('\n') +
-          `\n\n系统严格遵循实战样本与风险硬约束，绝不在 UI 中自动假晋级。`,
-        );
-        return;
-      }
-
-      // 第二阶段：门禁已过，要求人工填写确认审核 note
-      const note = prompt(
-        `规则 [${ruleId}] 已满足样本数与风险门禁。\n\n请在下方输入本次显式人工审核确认的理由（此 note 将被写入不可变晋级证据包中）：`,
-      );
-      if (note === null || !note.trim()) {
-        alert('已取消或留空说明。Champion 铁律未发生任何变动。');
-        return;
-      }
-
-      const confirmRes = await api.requestPromotion(ruleId, true, note.trim());
-      if (confirmRes.champion_mutated) {
-        alert(`恭喜！规则 [${ruleId}] 已正式晋级为 Champion 现役核心铁律！审核记录已归档。`);
-        await fetchData();
-      } else {
-        alert('晋级未成功: ' + ((confirmRes.blockers || []).join(', ') || '未知原因'));
-      }
-    } catch (e: any) {
-      alert('晋升请求失败: ' + e.message);
-    }
-  };
-
-  if (loading && !data) {
+  if (error && !overview) {
     return (
-      <div className="min-h-screen bg-[#131722] text-[#d1d4dc] flex flex-col items-center justify-center font-mono text-xs gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-[#2962ff] border-t-transparent animate-spin" />
-        <span>SMARTMONEY-CUB TERMINAL INITIALIZING...</span>
+      <div className="shell">
+        <div style={{ margin: 'auto', textAlign: 'center' }}>
+          <div style={{ marginBottom: 10 }}>无法连接本地复盘服务</div>
+          <div className="muted" style={{ marginBottom: 12, fontSize: 11 }}>{error}</div>
+          <button className="primary" onClick={() => void load()}>重试</button>
+        </div>
       </div>
     );
   }
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-[#131722] text-[#d1d4dc] flex flex-col items-center justify-center text-xs gap-2">
-        <div className="text-rose-400 font-bold">无法连接本地复盘服务</div>
-        <button onClick={fetchData} className="px-3 py-1 bg-[#2a2e39] rounded border border-[#363a45]">
-          重试
-        </button>
-      </div>
-    );
-  }
+  const assistantContext = {
+    portfolio_id: overview?.portfolio_id,
+    round_trip_id: openTradeId || undefined,
+  };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#131722] text-[#d1d4dc]">
-      {/* 极窄左侧边栏 */}
-      <Sidebar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        colorScheme={colorScheme}
-        onToggleColorScheme={handleToggleColorScheme}
-      />
+    <div className="shell">
+      <nav className="sidebar">
+        <div className="brand">
+          SmartMoney-Cub
+          <small>本地复盘工作台 v{meta?.version || '1.0.0'}</small>
+        </div>
+        {TABS.map((item) => (
+          <button
+            key={item.key}
+            className={'nav-item' + (tab === item.key ? ' active' : '')}
+            onClick={() => setTab(item.key)}
+            title={item.hint}
+          >
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <div className="sidebar-footer">
+          {meta?.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'}
+          <div style={{ marginTop: 6 }}>本机 {meta?.store_counts?.fill_record ?? 0} 笔成交 · 全部数据离线保存</div>
+        </div>
+      </nav>
 
-      {/* 主界面内容区 */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* 顶部状态栏 */}
-        <Header
-          activeTab={activeTab}
-          activeRegime={data.active_regime}
-          regimeInfo={data.regime_info}
-          regimePhases={data.regime_phases}
-          dataOrigin={data.data_origin}
-          onSelectRegime={handleSelectRegime}
-          onUploadCsv={handleUploadCsv}
-          onResetDemo={handleResetDemo}
-          onOpenShareModal={() => setIsShareModalOpen(true)}
-        />
+      <main className="main">
+        <header className="topbar">
+          <h1>{TABS.find((item) => item.key === tab)?.label}</h1>
+          <span className="muted" style={{ fontSize: 11 }}>{TABS.find((item) => item.key === tab)?.hint}</span>
+          <div className="spacer" />
+          {overview ? (
+            <select
+              value={overview.portfolio_id}
+              onChange={() => { /* single portfolio in 1.0 */ }}
+              disabled
+              title="1.0 使用本地默认组合"
+            >
+              {overview.portfolios.map((portfolio) => (
+                <option key={portfolio.portfolio_id} value={portfolio.portfolio_id}>{portfolio.name}</option>
+              ))}
+            </select>
+          ) : null}
+          <button className="ghost" onClick={toggleScheme} title="切换涨跌配色">
+            {scheme === 'cn' ? '红涨绿跌' : '绿涨红跌'}
+          </button>
+          {overview && summaryChip(overview)}
+          <button className="ghost" onClick={() => setAssistantOpen((prev) => !prev)}>
+            {assistantOpen ? '收起助手' : '打开助手'}
+          </button>
+        </header>
 
-        {/* 页面视图路由 */}
-        <main className="flex-1 flex overflow-hidden">
-          {activeTab === 'workbench' && (
-            <WorkbenchView
-              summary={data.report.summary}
-              trades={data.report.analyzed_trades}
-              needsReview={data.needs_review}
-              colorScheme={colorScheme}
-              onSelectTrade={(t) => {
-                setSelectedTrade(t);
-                setActiveTab('trades');
-              }}
-              onViewAllTrades={() => setActiveTab('trades')}
-            />
-          )}
+        <div className={'content' + (assistantOpen ? ' with-assistant' : '')}>
+          <div className="page">
+            {tab === 'overview' && overview ? (
+              <OverviewView
+                data={overview}
+                scheme={scheme}
+                onOpenTrade={(id) => {
+                  if (id === '__import__') setTab('import');
+                  else setOpenTradeId(id);
+                }}
+              />
+            ) : null}
+            {tab === 'trades' ? <TradesView scheme={scheme} onOpenTrade={setOpenTradeId} /> : null}
+            {tab === 'calendar' && overview ? (
+              <CalendarView scheme={scheme} initial={{ year: overview.year, month: overview.month }} />
+            ) : null}
+            {tab === 'analytics' ? <AnalyticsView scheme={scheme} /> : null}
+            {tab === 'rules' ? <RulesView /> : null}
+            {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}
+            {tab === 'plugins' ? <PluginsView /> : null}
+            {tab === 'settings' ? <SettingsView meta={meta} onMetaChange={() => void load()} /> : null}
+          </div>
 
-          {activeTab === 'trades' && (
-            <TradesView
-              trades={data.report.analyzed_trades}
-              reviews={data.challenger_reviews}
-              selectedTrade={selectedTrade}
-              onSelectTrade={setSelectedTrade}
-              colorScheme={colorScheme}
-              onAddRuleToChallenger={handleAddRule}
-            />
-          )}
+          {assistantOpen ? <AssistantPanel meta={meta} context={assistantContext} /> : null}
+        </div>
+      </main>
 
-          {activeTab === 'regime' && (
-            <RegimeView
-              activeRegime={data.active_regime}
-              regimePhases={data.regime_phases}
-              onSelectRegime={handleSelectRegime}
-            />
-          )}
-
-          {activeTab === 'rules' && (
-            <RulesView
-              champions={data.rules.champions}
-              challengers={data.rules.challengers}
-              onRequestPromotion={handleRequestPromotion}
-            />
-          )}
-
-          {activeTab === 'plugins' && <PluginsView />}
-
-          {activeTab === 'workspace' && <WorkspaceView />}
-        </main>
-      </div>
-
-      {/* 匿名分享包弹窗 */}
-      <SharePackModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-      />
+      {openTradeId ? (
+        <TradeDrawer tradeId={openTradeId} scheme={scheme} onClose={() => setOpenTradeId(null)} />
+      ) : null}
     </div>
   );
-};
+}
+
+function summaryChip(overview: Overview) {
+  const summary = overview.summary;
+  return (
+    <span className="muted" style={{ fontSize: 11 }}>
+      {summary.trade_count} 笔 · 胜率 {summary.win_rate}% · 净盈亏 {summary.total_net_pnl}
+    </span>
+  );
+}
+

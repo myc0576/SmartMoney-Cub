@@ -300,7 +300,11 @@ def _coerce_fill(raw: dict[str, Any], index: int, issues: list[dict[str, Any]]) 
         trade_time=trade_time,
         price=float(price),
         quantity=quantity,
-        commission=_to_float(_first_present(raw, "commission", "佣金")),
+        # A broker export usually declares one combined fee column rather than
+        # separate commission, stamp duty, and transfer fee columns.
+        commission=_to_float(
+            _first_present(raw, "commission", "佣金", "手续费", "费用", "fee", "费用合计")
+        ),
         stamp_duty=_to_float(_first_present(raw, "stamp_duty", "印花税")),
         transfer_fee=_to_float(_first_present(raw, "transfer_fee", "过户费")),
         invalidation_price=invalidation,
