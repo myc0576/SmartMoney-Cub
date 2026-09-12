@@ -56,9 +56,50 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  npm-package:
+    name: Build and verify the npm launcher package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify the launcher is syntactically valid
+        run: node --check npm/bin/smartmoney-cub.js
+
+      - name: Verify the npm version matches the package version
+        run: |
+          node -e "
+            const pkg = require('./npm/package.json');
+            const fs = require('fs');
+            const init = fs.readFileSync('src/smartmoney_cub_harness/__init__.py', 'utf8');
+            const match = /__version__ = \"([^\"]+)\"/.exec(init);
+            if (!match || pkg.version !== match[1]) {
+              console.error('npm version ' + pkg.version + ' does not match package version ' + (match && match[1]));
+              process.exit(1);
+            }
+            console.log('npm version matches ' + pkg.version);
+          "
+
+      - name: Pack the npm package
+        run: |
+          cd npm
+          npm pack --pack-destination "$RUNNER_TEMP/npm"
+
+      - name: Upload the npm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: ${ runner.temp }/npm/*.tgz
+          if-no-files-found: error
+
+
   github-release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, npm-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -70,10 +111,16 @@ jobs:
           name: python-package-distributions
           path: dist/
 
+      - name: Download the npm package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: npm-dist/
+
       - name: Create release and attach distributions
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}" dist/*
+          gh release create "${GITHUB_REF_NAME}" dist/* npm-dist/*.tgz
           --repo "${GITHUB_REPOSITORY}"
           --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
