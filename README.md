@@ -347,6 +347,28 @@ When no provider key is configured, the assistant answers from local data and se
 nothing. See [docs/review-agent.md](docs/review-agent.md) and
 [docs/convergence.md](docs/convergence.md).
 
+## Where to open the interface
+
+The interface is served by the local workbench, not opened from disk:
+
+```bash
+npx smartmoney-cub        # or: smcub workbench
+# then open http://127.0.0.1:8787
+```
+
+Opening `gui/index.html` directly in a browser shows a blank page on
+purpose. That file is the build entry, so it points at uncompiled sources and there
+is no local API to talk to. The served page carries the same explanation, so an
+accidental `file://` open tells you what to do instead of showing an
+empty screen.
+
+For live editing, run the development server, which proxies `/api` to the
+local service:
+
+```bash
+cd gui && npm install && npm run dev
+```
+
 ## Development Checks
 
 ```bash

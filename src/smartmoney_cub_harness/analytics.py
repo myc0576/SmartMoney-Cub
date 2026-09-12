@@ -88,9 +88,9 @@ def summarize(ledger: dict[str, Any]) -> dict[str, Any]:
         # the number means the same thing everywhere it is quoted.
         "profit_factor": _round(gross_profit / gross_loss) if gross_loss > 0 else None,
         "profit_factor_note": (
-            "gross profit / absolute gross loss"
+            "总盈利 / 总亏损绝对值"
             if gross_loss > 0
-            else "undefined: no losing trades in this sample"
+            else "当前样本没有亏损交易，无法计算"
         ),
         "total_net_pnl": _round(total_pnl),
         "total_fees": _round(total_fees),

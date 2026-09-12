@@ -400,6 +400,25 @@ Your private trading logic should remain in local artifacts on your machine. It 
 
 See [docs/privacy.md](docs/privacy.md) and [docs/public-vs-private-quantkb.md](docs/public-vs-private-quantkb.md).
 
+## 界面入口在哪里
+
+界面由本地工作台服务提供，不能直接从磁盘打开：
+
+```bash
+npx smartmoney-cub        # 或：smcub workbench
+# 然后打开 http://127.0.0.1:8787
+```
+
+直接用浏览器打开 `gui/index.html` 会看到空白页，这是预期行为。那个文件是构建入口，
+引用的是尚未编译的源码，也没有本地接口可以调用。服务返回的页面里带着同样的说明，
+所以误用 `file://` 打开时会告诉你该怎么做，而不是一片空白。
+
+需要热更新时请启动开发服务器，它会把 `/api` 代理到本地服务：
+
+```bash
+cd gui && npm install && npm run dev
+```
+
 ## CLI Commands
 
 ```bash

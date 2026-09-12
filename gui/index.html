@@ -5,9 +5,64 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>SmartMoney-Cub 复盘工作台</title>
+    <style>
+      .boot {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #101318;
+        color: #e6eaf2;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        line-height: 1.75;
+      }
+      .boot main { max-width: 620px; padding: 32px; }
+      .boot h1 { font-size: 17px; margin: 0 0 6px; }
+      .boot p { margin: 0 0 14px; color: #8b93a4; font-size: 13px; }
+      .boot code {
+        background: #171b22;
+        border: 1px solid #262c37;
+        border-radius: 6px;
+        padding: 2px 6px;
+        font-size: 12px;
+      }
+      .boot pre {
+        background: #171b22;
+        border: 1px solid #262c37;
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow: auto;
+        font-size: 12.5px;
+      }
+      .boot .safe { color: #8b93a4; font-size: 11px; margin-top: 18px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown only when the interface could not start. -->
+      <div class="boot">
+        <main>
+          <h1>这是开发入口，不是工作台</h1>
+          <p>
+            这个文件只供构建工具使用。直接用浏览器打开它会得到空白页，因为它引用的是
+            尚未编译的 <code>/src/main.tsx</code>，本地服务也没有在运行。
+          </p>
+          <p>请先启动本地工作台，再打开它打印的地址：</p>
+          <pre>python -m smartmoney_cub_harness.cli workbench
+# 或
+npx smartmoney-cub</pre>
+          <p>之后访问 <code>http://127.0.0.1:8787</code>。界面默认只监听本机回环地址。</p>
+          <p>
+            开发时需要热更新，请在 <code>gui/</code> 目录执行
+            <code>npm install &amp;&amp; npm run dev</code>，它会把 <code>/api</code>
+            代理到本地服务。
+          </p>
+          <div class="safe">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

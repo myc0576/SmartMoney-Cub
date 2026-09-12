@@ -163,7 +163,7 @@ def test_analytics_keeps_sample_size_visible() -> None:
     # One profitable trade and no losing trade means profit factor is undefined
     # rather than a fabricated large number.
     assert summary["profit_factor"] is None
-    assert "undefined" in summary["profit_factor_note"]
+    assert "无法计算" in summary["profit_factor_note"]
 
 
 def test_profit_factor_uses_absolute_gross_loss() -> None:

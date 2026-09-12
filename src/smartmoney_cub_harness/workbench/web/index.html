@@ -5,10 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>SmartMoney-Cub 复盘工作台</title>
+    <style>.boot{color:#e6eaf2;background:#101318;justify-content:center;align-items:center;min-height:100vh;margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;line-height:1.75;display:flex}.boot main{max-width:620px;padding:32px}.boot h1{margin:0 0 6px;font-size:17px}.boot p{color:#8b93a4;margin:0 0 14px;font-size:13px}.boot code{background:#171b22;border:1px solid #262c37;border-radius:6px;padding:2px 6px;font-size:12px}.boot pre{background:#171b22;border:1px solid #262c37;border-radius:8px;padding:12px 14px;font-size:12.5px;overflow:auto}.boot .safe{color:#8b93a4;margin-top:18px;font-size:11px}</style>
     <script type="module" crossorigin src="./assets/index-Bch05UQC.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-Dng_bmhu.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown only when the interface could not start. -->
+      <div class="boot">
+        <main>
+          <h1>这是开发入口，不是工作台</h1>
+          <p>
+            这个文件只供构建工具使用。直接用浏览器打开它会得到空白页，因为它引用的是
+            尚未编译的 <code>/src/main.tsx</code>，本地服务也没有在运行。
+          </p>
+          <p>请先启动本地工作台，再打开它打印的地址：</p>
+          <pre>python -m smartmoney_cub_harness.cli workbench
+# 或
+npx smartmoney-cub</pre>
+          <p>之后访问 <code>http://127.0.0.1:8787</code>。界面默认只监听本机回环地址。</p>
+          <p>
+            开发时需要热更新，请在 <code>gui/</code> 目录执行
+            <code>npm install &amp;&amp; npm run dev</code>，它会把 <code>/api</code>
+            代理到本地服务。
+          </p>
+          <div class="safe">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</div>
+        </main>
+      </div>
+    </div>
   </body>
 </html>
