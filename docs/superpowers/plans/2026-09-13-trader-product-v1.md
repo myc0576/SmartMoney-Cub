@@ -222,13 +222,24 @@ it to a tenant, with a local no-auth mode for offline use and CI.
   (`user_id, tenant_id, display_name, mode, platform_user_id`) and
   `resolve_identity(headers: Mapping[str,str], *, mode: str) -> AuthContext`.
 - `src/smartmoney_cub_harness/trader/auth/alphatech.py` — the platform adapter.
-  Reads a shared-secret-signed identity header (`X-AlphaTech-User`,
-  `X-AlphaTech-Signature`) and verifies an HMAC-SHA256 over
-  `user_id` + timestamp using `ALPHATECH_SSO_SECRET`. Rejects a timestamp older
-  than 300 seconds. Every assumption about the platform protocol is collected in
-  one module-level docstring table so a wrong guess is a one-file change.
-- `tests/test_trader_auth.py` — HMAC accept/reject, replay window, local mode,
-  and missing-secret behavior.
+  **Verified fact (2026-09-13): the alphatech platform is a `new-api` deployment.**
+  Its login is a session cookie, and `GET /api/user/self` returns the current user
+  and `401` when unauthenticated. The adapter therefore supports two modes chosen
+  by `ALPHATECH_AUTH_MODE`:
+  - `session` (default): forward the caller's platform session cookie to
+    `{ALPHATECH_BASE_URL}/api/user/self`; treat a `200` carrying an `id` as
+    identity. Cache the lookup for 60 seconds so it is not a round trip per request.
+  - `hmac`: verify a shared-secret identity header (`X-AlphaTech-User`,
+    `X-AlphaTech-Signature`) as HMAC-SHA256 over `user_id` + timestamp using
+    `ALPHATECH_SSO_SECRET`; reject a timestamp older than 300 seconds. This is the
+    fallback if the platform prefers an explicit signed header over cookie
+    forwarding.
+  Both modes map the platform user id to a stable `tenant_id`. Every assumption
+  about the platform protocol lives in one module-level docstring table so a wrong
+  guess is a one-file change; the mode switches by environment variable.
+- `tests/test_trader_auth.py` — session accept/reject, HMAC accept/reject, replay
+  window, local mode, and missing-secret behavior. The session tests use a stubbed
+  `/api/user/self` response; they never call the live platform.
 
 **Interfaces this task produces (later tasks consume):**
 - `resolve_identity(headers, mode="hosted"|"local") -> AuthContext`
@@ -430,4 +441,3 @@ Broker direct-connect and read-only key sync, multi-user billing and quotas,
 Spaces / mentor-student mode, community and leaderboards, realtime notification
 push, and a mobile client. These are recorded in `docs/trader-product.md` so they
 are not forgotten; none of them is a v1 deliverable.
-
