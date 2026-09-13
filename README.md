@@ -10,7 +10,7 @@
 
 ![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
 
-`smartmoney-cub-harness` is a **local-first, read-only, agent-agnostic control plane for trading review and evidence governance**. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
+`smartmoney-cub-harness` is a **local-first, agent-agnostic trading journal and review harness**: read-only over markets and execution, writable over your own journal. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
@@ -148,11 +148,10 @@ In the AI era, good review does not have to depend on randomly meeting a mentor.
 - Not a single trading strategy.
 - Not a stock-picking bot.
 - Not a signal-selling system.
-- Not a broker or execution bot.
+- Not a broker or execution bot, and not a broker trading channel: it never connects to live execution.
 - Not an automated trading system.
 - Not financial advice.
 - Not a promise that small capital will grow large.
-- Not a broker trading channel: it never connects to live execution.
 
 ## Account & Screenshot Input
 
@@ -401,4 +400,12 @@ MIT. See [LICENSE](LICENSE).
 
 ## Safety & Disclaimer
 
-This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for local review and structured analysis.
+This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for the user's own journal and structured review.
+
+The product keeps your journal in your own local or tenant store, never in this
+repository. It is read-only with respect to markets and execution: it does not
+place orders, cancel orders, modify a broker account, or automate execution. Every
+manifest, decision, outcome, evaluation, registry, doctor output, and generated
+report still carries the safety declaration
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`, which asserts the execution ban and
+nothing more.

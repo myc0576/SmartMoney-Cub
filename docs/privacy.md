@@ -17,11 +17,16 @@ tenant store and are never committed to this repository.
 - `telemetry`: `false`
 - `upload`: `false`
 - `default_data_mode`: `offline_json_fixtures`
-- `market_data_mode`: `offline`
-- `tenant_mode`: `local_single_user`
 - `execution_integrations`: `disabled`
 - `redaction`: `enabled`
 - `safety`: `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+
+### `smcub doctor` defaults
+
+`smcub privacy-audit` does not print these two keys; `smcub doctor` does:
+
+- `market_data_mode`: `offline`
+- `tenant_mode`: `local_single_user`
 
 `network_required: false` means the core is usable with no network. Built-in
 market sources are free and keyless, and are called only when the user asks for

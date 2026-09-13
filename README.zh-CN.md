@@ -41,9 +41,9 @@
 
 `smartmoney-cub-harness` 是一个本地优先的 AI 复盘引擎。它帮你记录每一次决策的完整逻辑，追踪 D1/D3 的结果，把教训变成规则，把规则沉淀成系统。
 
-它不是个股建议软件，不是自动交易系统，不是券商连接器，也不是财务建议系统。它是你的私人只读交易系统训练器。
+它不是个股建议软件，不是自动交易系统，不是券商连接器，也不是财务建议系统。它是你的私人交易日志与复盘伙伴：对市场和执行只读，对你自己的日志可写。
 
-更准确地说，`smartmoney-cub-harness` 是一个**本地优先、只读、不绑定任何 Agent 的交易复盘与证据治理控制平面**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它**不内置 LLM**、**不连接券商**、**不自动交易**，也不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
+更准确地说，`smartmoney-cub-harness` 是一个**本地优先、对市场与执行只读、不绑定任何 Agent 的交易日志与复盘 harness**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它**不内置 LLM**、**不连接券商**、**不自动交易**，也不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
 
 ```bash
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent-zh" --agent-version "1.0" --agent-interface "cli"

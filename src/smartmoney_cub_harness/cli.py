@@ -136,7 +136,10 @@ def doctor() -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="smcub",
-        description="Read-only trading companion harness for decision logging, outcome review, and rule evolution.",
+        description=(
+            "Local-first trading journal and review harness: read-only over markets "
+            "and execution, writable over your own journal."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
