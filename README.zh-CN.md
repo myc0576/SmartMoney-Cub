@@ -361,11 +361,17 @@ TradingAgents 的输出只会进入 reviewer / challenger / evidence / case-revi
 
 交易逻辑和复盘记忆是私有资产。`smartmoney-cub-harness` 的设计原则是：你的交易系统只在你本地进化。
 
+对市场和执行，它永远是只读的；对你的交易日志，它是可写的。你的成交、笔记和回测记录保存在
+本地或你的租户存储里，永远不会提交进这个仓库。
+
 每个 manifest、decision、outcome、evaluation、registry、doctor output 和 loop output 都必须携带：
 
 ```text
 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 ```
+
+这行声明只断言“不执行交易”，不代表系统不能写入：它写入你自己的日志和报告，
+但永远不会下单、撤单或修改券商账户。
 
 项目默认：
 
@@ -376,7 +382,7 @@ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 - No trading execution。
 - No broker automation。
 - CLI 输出前先 redaction。
-- 公开仓库只使用 toy examples。
+- 公开仓库只使用 toy examples；真实交易数据只存在于运行时存储。
 
 它明确不做：
 
@@ -385,7 +391,7 @@ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 - 不修改账户。
 - 不自动化券商。
 - 不连接真实交易执行。
-- 发布真实交易记录、真实 watchlist、账户数据、私有策略 prompt、私有路径、credentials 或 cookies。
+- 把真实交易记录、真实 watchlist、账户数据、私有策略 prompt、私有路径、credentials 或 cookies 提交进仓库。
 
 运行：
 
@@ -396,9 +402,9 @@ smcub doctor
 
 ## Privacy
 
-This project does not collect, upload, sell, or learn your trading logic. By default it has no server, no telemetry, no remote database, and no real account connection.
+This project does not collect, upload, sell, or learn your trading logic. The core runs offline with no telemetry, no remote database, and no real account connection. Hosted tenant mode is opt-in and drives your own tenant store behind the platform login.
 
-Your private trading logic should remain in local artifacts on your machine. It must not be copied into the public repository. Public examples must stay toy-only.
+Your private trading logic and your real trades should remain in your local or tenant store. They must not be copied into the public repository. Public examples must stay toy-only.
 
 See [docs/privacy.md](docs/privacy.md) and [docs/public-vs-private-quantkb.md](docs/public-vs-private-quantkb.md).
 

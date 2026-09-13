@@ -97,13 +97,21 @@ Read-only. Human-in-the-loop. Built for review, discipline, and rule evolution.
 
 ## Safety & Disclaimer
 
-This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for local review and structured analysis.
+This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for the user's own journal and structured review.
+
+The harness is read-only with respect to markets and execution, and writable with
+respect to your own journal. Your trades, notes, and backtest runs live in your
+local or tenant store and are never committed to this repository.
 
 Every manifest, decision, outcome, evaluation, registry, and doctor output carries:
 
 ```text
 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 ```
+
+The declaration asserts the execution ban, and nothing more. It does not mean the
+harness cannot write: it writes your journal and your reports, and it never places,
+cancels, or modifies anything at a broker.
 
 ## The Story
 
@@ -144,6 +152,7 @@ In the AI era, good review does not have to depend on randomly meeting a mentor.
 - Not an automated trading system.
 - Not financial advice.
 - Not a promise that small capital will grow large.
+- Not a broker trading channel: it never connects to live execution.
 
 ## Account & Screenshot Input
 
@@ -384,7 +393,7 @@ python -m smartmoney_cub_harness.cli --help
 
 ## Contributing
 
-Contributions are welcome when they preserve the safety contract. Keep examples offline and toy-only. Do not add live trading execution, broker automation, order placement, order cancellation, account modification, private watchlists, credentials, cookies, local absolute paths, or personal trading records.
+Contributions are welcome when they preserve the safety contract. Keep examples offline and toy-only. Do not add live trading execution, broker automation, order placement, order cancellation, account modification, private watchlists, credentials, cookies, local absolute paths, or committed personal trading records.
 
 ## License
 

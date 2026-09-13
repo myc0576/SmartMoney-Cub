@@ -110,15 +110,24 @@ def doctor() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "cwd": str(Path.cwd()),
+        # network_required documents that the core is usable with no network: the
+        # package imports and runs fully offline. Built-in market sources are
+        # opt-in at call time, so no network is required to import or run the core.
         "network_required": False,
         "telemetry": False,
         "upload": False,
         "credentials_required": False,
         "github_auth_required": False,
+        # external_api_required stays False: built-in market sources are opt-in at
+        # call time, not required to import or run the core.
         "external_api_required": False,
         "broker_api_required": False,
         "execution_integrations": "disabled",
         "default_data_mode": "offline_json_fixtures",
+        # market_data_mode defaults to offline; online sources are opt-in per call.
+        "market_data_mode": "offline",
+        # tenant_mode defaults to the single local user for offline use and CI.
+        "tenant_mode": "local_single_user",
         "launcher": launcher_diagnostics(),
         "safety": SAFETY_DECLARATION,
     }

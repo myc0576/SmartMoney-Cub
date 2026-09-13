@@ -50,7 +50,9 @@ It is not the strategy itself. It is the container where strategy can mature.
 
 The agent can ask better questions, find drift, preserve evidence, and remember past decisions. It cannot take responsibility for the trade.
 
-The system must preserve this boundary in every document, example, and future extension:
+The system must preserve this boundary in every document, example, and future
+extension. Read-only applies to markets and execution; the trader's own journal is
+writable, private, and theirs:
 
 ```text
 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
