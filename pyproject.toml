@@ -42,6 +42,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+hosted = ["psycopg[binary]>=3.2"]
 ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pypdfium2>=4.30", "pypdf>=4.0"]
 pdf = ["pypdf>=4.0"]
 
@@ -55,6 +56,7 @@ where = ["src"]
 smartmoney_cub_harness = [
   "data/*.json",
   "dashboard/templates/*.html",
+  "trader/storage/*.sql",
   "workbench/web/*.html",
   "workbench/web/assets/*",
 ]
