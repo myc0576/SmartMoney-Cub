@@ -129,3 +129,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS audit_log_tenant_created
     ON audit_log (user_id, created_at);
+
+-- Cached symbol metadata: real-time name, ST flag, and data source.
+CREATE TABLE IF NOT EXISTS symbol_info (
+    symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    is_st INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);

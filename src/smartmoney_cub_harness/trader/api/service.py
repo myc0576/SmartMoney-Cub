@@ -673,6 +673,7 @@ class TraderService:
         dimension: str | None = None,
         start: str | None = None,
         end: str | None = None,
+        refresh: bool = False,
     ) -> dict[str, Any]:
         requested = [dimension] if dimension else list(analytics.DIMENSIONS)
         unknown = sorted({name for name in requested if name not in analytics.DIMENSIONS})
@@ -684,13 +685,46 @@ class TraderService:
                 + ", ".join(analytics.DIMENSIONS)
             )
         ledger = self._ledger(ctx, start=start, end=end)
+        symbol_meta: dict[str, dict[str, Any]] = {}
+        if "symbol" in requested:
+            symbols = list({
+                trip["symbol"]
+                for trip in ledger.get("round_trips") or []
+                if trip.get("symbol")
+            })
+            load_fn = getattr(self.store, "load_symbol_metadata", None)
+            if callable(load_fn):
+                symbol_meta = load_fn(symbols)
+            missing = [s for s in symbols if s not in symbol_meta or not symbol_meta[s].get("name")]
+            to_fetch = symbols if refresh else missing
+            if to_fetch:
+                try:
+                    from smartmoney_cub_harness.trader.market.symbols import fetch_symbol_metadata
+
+                    fresh = fetch_symbol_metadata(to_fetch)
+                    if fresh:
+                        save_fn = getattr(self.store, "save_symbol_metadata", None)
+                        if callable(save_fn):
+                            save_fn(list(fresh.values()))
+                        update_fn = getattr(self.store, "update_trade_names", None)
+                        if callable(update_fn):
+                            update_fn(ctx.user_id, {s: v["name"] for s, v in fresh.items()}, force=refresh)
+                        symbol_meta.update(fresh)
+                except Exception:
+                    pass
+
         return {
             "status": "ok",
             "dimension": dimension or "all",
             "breakdown": {
-                name: analytics.group_performance(ledger, dimension=name)
+                name: analytics.group_performance(
+                    ledger,
+                    dimension=name,
+                    symbol_names=symbol_meta if name == "symbol" else None,
+                )
                 for name in requested
             },
+            "symbol_meta": symbol_meta,
             "dimensions": list(analytics.DIMENSIONS),
             "filters": {"from": start or "", "to": end or ""},
             "safety": SAFETY_DECLARATION,

@@ -26,6 +26,23 @@ export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
   const [breakdown, setBreakdown] = useState<Record<string, BreakdownRow[]>>({});
   const [dimension, setDimension] = useState('symbol');
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
+
+  const handleSyncSymbols = async () => {
+    setSyncing(true);
+    setSyncNotice('');
+    try {
+      const breakdownResult = await trader.breakdownAll({ refresh: 'true' });
+      setBreakdown(breakdownResult.breakdown || {});
+      setSyncNotice('已成功从市场同步最新股票名称与 ST 风险警示状态。');
+      setTimeout(() => setSyncNotice(''), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     // One unnamed breakdown request returns every group the view can show, so
@@ -62,10 +79,21 @@ export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
         <Kpi label="最大回撤" value={formatMoney(summary.max_drawdown)} tone={toneOf(summary.max_drawdown, scheme)} />
       </div>
 
+      {syncNotice ? <div className="notice">{syncNotice}</div> : null}
+
       <Panel
         title="归因分析"
         actions={
-          <div className="row">
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              className="ghost"
+              style={{ fontSize: 11 }}
+              onClick={handleSyncSymbols}
+              disabled={syncing}
+              title="从交易所实时行情同步最新股票名称及 ST / 退市状态"
+            >
+              {syncing ? '更新中…' : '更新标的与 ST 状态'}
+            </button>
             {Object.keys(DIMENSION_LABELS).map((key) => (
               <button key={key} className={'chip' + (key === dimension ? ' active' : '')} onClick={() => setDimension(key)}>
                 {DIMENSION_LABELS[key]}
@@ -87,16 +115,24 @@ export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
               <tr><th>分组</th><th className="num">笔数</th><th className="num">胜率</th><th className="num">净盈亏</th><th className="num">平均收益</th><th className="num">盈亏比</th></tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.key}>
-                  <td>{row.key}{row.small_sample ? <span className="muted"> *</span> : null}</td>
-                  <td className="num">{row.trade_count}</td>
-                  <td className="num">{row.win_rate}%</td>
-                  <td className={'num ' + toneOf(row.net_pnl, scheme)}>{formatMoney(row.net_pnl)}</td>
-                  <td className={'num ' + toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</td>
-                  <td className="num">{row.profit_factor === null ? '—' : row.profit_factor}</td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const isSt = row.is_st || (row.name && row.name.toUpperCase().includes('ST'));
+                return (
+                  <tr key={row.key}>
+                    <td>
+                      <span style={{ fontWeight: 600 }}>{row.key}</span>
+                      {row.name ? <span style={{ marginLeft: 6 }}>{row.name}</span> : null}
+                      {isSt ? <span className="badge warn" style={{ marginLeft: 5, fontSize: 10, padding: '0 4px', verticalAlign: 'middle' }}>ST</span> : null}
+                      {row.small_sample ? <span className="muted"> *</span> : null}
+                    </td>
+                    <td className="num">{row.trade_count}</td>
+                    <td className="num">{row.win_rate}%</td>
+                    <td className={'num ' + toneOf(row.net_pnl, scheme)}>{formatMoney(row.net_pnl)}</td>
+                    <td className={'num ' + toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</td>
+                    <td className="num">{row.profit_factor === null ? '—' : row.profit_factor}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

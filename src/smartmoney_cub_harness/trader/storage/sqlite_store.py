@@ -81,6 +81,14 @@ BAR_UPSERT = (
     " WHERE market_bars.user_id = excluded.user_id"
 )
 
+SYMBOL_UPSERT = (
+    "INSERT INTO symbol_info (symbol, name, is_st, source, updated_at)"
+    " VALUES (?, ?, ?, ?, ?)"
+    " ON CONFLICT (symbol) DO UPDATE SET"
+    " name = excluded.name, is_st = excluded.is_st,"
+    " source = excluded.source, updated_at = excluded.updated_at"
+)
+
 
 def resolve_database_path(path: str | Path) -> Path | str:
     """Turn an open_store location into a SQLite database path.
@@ -635,3 +643,80 @@ class SQLiteTenantStore:
             (require_text(user_id, "user_id"), max(1, int(limit))),
         ).fetchall()
         return [AuditRecord.from_row(row).to_dict() for row in rows]
+
+    def update_trade_names(
+        self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False
+    ) -> int:
+        """Update trade names for matching symbols."""
+        resolved = require_text(user_id, "user_id")
+        if not symbol_names:
+            return 0
+        updated = 0
+        with self._transaction() as conn:
+            for symbol, name in symbol_names.items():
+                clean_name = str(name or "").strip()
+                if not clean_name:
+                    continue
+                if force:
+                    cur = conn.execute(
+                        "UPDATE trades SET name = ? WHERE user_id = ? AND symbol = ?",
+                        (clean_name, resolved, symbol),
+                    )
+                else:
+                    cur = conn.execute(
+                        "UPDATE trades SET name = ? WHERE user_id = ? AND symbol = ? AND (name = '' OR name IS NULL)",
+                        (clean_name, resolved, symbol),
+                    )
+                updated += cur.rowcount
+        return updated
+
+    def save_symbol_metadata(self, metadata: Sequence[Mapping[str, Any]]) -> None:
+        """Save symbol names and ST flags to local cache."""
+        if not metadata:
+            return
+        with self._transaction() as conn:
+            for item in metadata:
+                sym = str(item.get("symbol") or "").strip()
+                name = str(item.get("name") or "").strip()
+                if not sym or not name:
+                    continue
+                conn.execute(
+                    SYMBOL_UPSERT,
+                    (
+                        sym,
+                        name,
+                        1 if item.get("is_st") else 0,
+                        str(item.get("source") or ""),
+                        str(item.get("updated_at") or now_iso()),
+                    ),
+                )
+
+    def load_symbol_metadata(
+        self, symbols: Sequence[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Load cached symbol names and ST status."""
+        out: dict[str, dict[str, Any]] = {}
+        with self._transaction() as conn:
+            if symbols:
+                clean_syms = [str(s).strip() for s in symbols if str(s).strip()]
+                if not clean_syms:
+                    return {}
+                placeholders = ",".join("?" for _ in clean_syms)
+                rows = conn.execute(
+                    f"SELECT symbol, name, is_st, source, updated_at FROM symbol_info WHERE symbol IN ({placeholders})",
+                    clean_syms,
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT symbol, name, is_st, source, updated_at FROM symbol_info"
+                ).fetchall()
+            for r in rows:
+                sym = r["symbol"]
+                out[sym] = {
+                    "symbol": sym,
+                    "name": r["name"],
+                    "is_st": bool(r["is_st"]),
+                    "source": r["source"],
+                    "updated_at": r["updated_at"],
+                }
+        return out

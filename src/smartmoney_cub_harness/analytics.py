@@ -141,7 +141,12 @@ def calendar_days(ledger: dict[str, Any], *, year: int, month: int) -> list[dict
     return [buckets[key] for key in sorted(buckets)]
 
 
-def group_performance(ledger: dict[str, Any], *, dimension: str) -> list[dict[str, Any]]:
+def group_performance(
+    ledger: dict[str, Any],
+    *,
+    dimension: str,
+    symbol_names: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Break performance down by a reviewed field, keeping the sample size visible."""
     trips = list(ledger.get("round_trips") or [])
     buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -155,19 +160,38 @@ def group_performance(ledger: dict[str, Any], *, dimension: str) -> list[dict[st
         losses = [trip for trip in group if trip["net_pnl"] < 0]
         gross_profit = sum(trip["net_pnl"] for trip in wins)
         gross_loss = abs(sum(trip["net_pnl"] for trip in losses))
-        rows.append(
-            {
-                "key": key,
-                "trade_count": len(group),
-                "win_rate": _round(len(wins) / len(group) * 100) if group else 0.0,
-                "net_pnl": _round(sum(trip["net_pnl"] for trip in group)),
-                "avg_return_pct": _round(sum(trip["return_pct"] for trip in group) / len(group)),
-                "profit_factor": _round(gross_profit / gross_loss) if gross_loss > 0 else None,
-                # A breakdown with too few trades is shown, but flagged, so a
-                # single lucky trade never reads as a pattern.
-                "small_sample": len(group) < 5,
-            }
-        )
+        item: dict[str, Any] = {
+            "key": key,
+            "trade_count": len(group),
+            "win_rate": _round(len(wins) / len(group) * 100) if group else 0.0,
+            "net_pnl": _round(sum(trip["net_pnl"] for trip in group)),
+            "avg_return_pct": _round(sum(trip["return_pct"] for trip in group) / len(group)),
+            "profit_factor": _round(gross_profit / gross_loss) if gross_loss > 0 else None,
+            # A breakdown with too few trades is shown, but flagged, so a
+            # single lucky trade never reads as a pattern.
+            "small_sample": len(group) < 5,
+        }
+        if dimension == "symbol":
+            resolved_name = ""
+            resolved_st = False
+            if symbol_names and key in symbol_names:
+                meta = symbol_names[key]
+                if isinstance(meta, dict):
+                    resolved_name = str(meta.get("name") or "").strip()
+                    resolved_st = bool(meta.get("is_st", False))
+                elif isinstance(meta, str):
+                    resolved_name = meta.strip()
+            if not resolved_name:
+                for trip in reversed(group):
+                    trip_name = str(trip.get("name") or "").strip()
+                    if trip_name and trip_name != key:
+                        resolved_name = trip_name
+                        break
+            if "ST" in resolved_name.upper():
+                resolved_st = True
+            item["name"] = resolved_name
+            item["is_st"] = resolved_st
+        rows.append(item)
     rows.sort(key=lambda row: (-row["trade_count"], row["key"]))
     return rows
 

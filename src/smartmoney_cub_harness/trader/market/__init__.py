@@ -48,9 +48,17 @@ __all__ = [
     "ProviderResult",
     "SOURCE_QUALITIES",
     "fetch_bars",
+    "fetch_symbol_metadata",
     "get_provider",
     "list_providers",
 ]
+
+def fetch_symbol_metadata(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """Resolve current names and ST status for a list of symbols."""
+    from smartmoney_cub_harness.trader.market.symbols import fetch_symbol_metadata as _fetch
+
+    return _fetch(symbols)
+
 
 # The catalogue is built from metadata only, so listing providers never imports
 # a provider module and never touches the network.

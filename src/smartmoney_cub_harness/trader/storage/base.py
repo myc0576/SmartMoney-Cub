@@ -386,3 +386,16 @@ class TenantStore(Protocol):
         detail: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Append one tenant-scoped audit entry."""
+
+    def update_trade_names(
+        self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False
+    ) -> int:
+        """Update trade names for matching symbols."""
+
+    def save_symbol_metadata(self, metadata: Sequence[Mapping[str, Any]]) -> None:
+        """Save symbol metadata into cache."""
+
+    def load_symbol_metadata(
+        self, symbols: Sequence[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Load cached symbol names and ST status."""

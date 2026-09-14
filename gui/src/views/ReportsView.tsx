@@ -222,16 +222,24 @@ function BreakdownTable({ rows, scheme }: { rows: BreakdownRow[]; scheme: 'cn' |
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <td>{row.key}{row.small_sample ? <span className="muted"> *</span> : null}</td>
-              <td className="num">{row.trade_count}</td>
-              <td className="num">{row.win_rate}%</td>
-              <td className={'num ' + toneOf(row.net_pnl, scheme)}>{formatMoney(row.net_pnl)}</td>
-              <td className={'num ' + toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</td>
-              <td className="num">{row.profit_factor === null ? '—' : row.profit_factor}</td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const isSt = row.is_st || (row.name && row.name.toUpperCase().includes('ST'));
+            return (
+              <tr key={row.key}>
+                <td>
+                  <span style={{ fontWeight: 600 }}>{row.key}</span>
+                  {row.name ? <span style={{ marginLeft: 6 }}>{row.name}</span> : null}
+                  {isSt ? <span className="badge warn" style={{ marginLeft: 5, fontSize: 10, padding: '0 4px', verticalAlign: 'middle' }}>ST</span> : null}
+                  {row.small_sample ? <span className="muted"> *</span> : null}
+                </td>
+                <td className="num">{row.trade_count}</td>
+                <td className="num">{row.win_rate}%</td>
+                <td className={'num ' + toneOf(row.net_pnl, scheme)}>{formatMoney(row.net_pnl)}</td>
+                <td className={'num ' + toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</td>
+                <td className="num">{row.profit_factor === null ? '—' : row.profit_factor}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

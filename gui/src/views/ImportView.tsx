@@ -78,6 +78,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
         rows: rows.map((row) => ({
           trade_id: [row.trade_date, row.trade_time, row.symbol, row.side].join('-'),
           symbol: row.symbol,
+          name: row.name,
           side: row.side,
           price: row.price === '' ? null : Number(row.price),
           quantity: row.quantity === '' ? null : Number(row.quantity),
@@ -106,6 +107,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
         rows: [{
           trade_id: [row.trade_date, row.trade_time, row.symbol, row.side].join('-'),
           symbol: row.symbol,
+          name: row.name,
           side: row.side,
           price: row.price === '' ? null : Number(row.price),
           quantity: row.quantity === '' ? null : Number(row.quantity),

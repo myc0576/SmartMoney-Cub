@@ -469,6 +469,8 @@ export interface TraderSummaryEnvelope extends SafetyEnvelope {
 
 export interface BreakdownRow {
   key: string;
+  name?: string;
+  is_st?: boolean;
   trade_count: number;
   win_rate: number;
   net_pnl: number;

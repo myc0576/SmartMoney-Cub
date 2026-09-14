@@ -89,20 +89,32 @@ export function Sparkline({ points, scheme }: { points: number[]; scheme: 'cn' |
 }
 
 export function Bars({ rows, scheme, labelOf }: {
-  rows: { key: string; net_pnl: number; trade_count: number; small_sample: boolean }[];
+  rows: { key: string; name?: string; is_st?: boolean; net_pnl: number; trade_count: number; small_sample: boolean }[];
   scheme: 'cn' | 'intl';
-  labelOf?: (row: { key: string }) => string;
+  labelOf?: (row: { key: string; name?: string; is_st?: boolean }) => any;
 }) {
   if (!rows.length) return <Empty text="暂无可归因的样本" />;
   const max = Math.max(...rows.map((row) => Math.abs(row.net_pnl)), 1);
   return (
     <div className="grid" style={{ gap: 8 }}>
-      {rows.map((row) => (
-        <div key={row.key} className="row" style={{ gap: 10 }}>
-          <div style={{ width: 120, flex: 'none' }} className="muted">
-            {labelOf ? labelOf(row) : row.key}
-            {row.small_sample ? ' *' : ''}
-          </div>
+      {rows.map((row) => {
+        const isSt = row.is_st || (row.name && row.name.toUpperCase().includes('ST'));
+        return (
+          <div key={row.key} className="row" style={{ gap: 10 }}>
+            <div
+              style={{ width: 170, flex: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              className="muted"
+              title={row.name ? (row.key + ' ' + row.name) : row.key}
+            >
+              {labelOf ? labelOf(row) : (
+                <span>
+                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>{row.key}</span>
+                  {row.name ? <span style={{ marginLeft: 6 }}>{row.name}</span> : null}
+                  {isSt ? <span className="badge warn" style={{ marginLeft: 5, fontSize: 10, padding: '0 4px', verticalAlign: 'middle' }}>ST</span> : null}
+                </span>
+              )}
+              {row.small_sample ? ' *' : ''}
+            </div>
           <div style={{ flex: 1 }}>
             <div className={'bar ' + (row.net_pnl >= 0 ? 'gain' : 'loss')}>
               <span style={{ width: Math.max(3, (Math.abs(row.net_pnl) / max) * 100) + '%' }} />
@@ -115,7 +127,8 @@ export function Bars({ rows, scheme, labelOf }: {
             {row.trade_count} 笔
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

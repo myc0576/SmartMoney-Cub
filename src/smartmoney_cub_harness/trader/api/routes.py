@@ -210,11 +210,14 @@ def _analytics_summary(request: Request) -> dict[str, Any]:
 
 
 def _analytics_breakdown(request: Request) -> dict[str, Any]:
+    refresh_param = _one(request.query, "refresh")
+    refresh = str(refresh_param or "").lower() in ("1", "true", "yes")
     return request.service.analytics_breakdown(
         request.ctx,
         dimension=_one(request.query, "dimension"),
         start=_one(request.query, "from"),
         end=_one(request.query, "to"),
+        refresh=refresh,
     )
 
 

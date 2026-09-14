@@ -692,3 +692,86 @@ class PostgresTenantStore:
             (require_text(user_id, "user_id"), max(1, int(limit))),
         )
         return [AuditRecord.from_row(row).to_dict() for row in rows]
+
+    def update_trade_names(
+        self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False
+    ) -> int:
+        resolved = require_text(user_id, "user_id")
+        if not symbol_names:
+            return 0
+        updated = 0
+        with self._transaction() as conn:
+            for symbol, name in symbol_names.items():
+                clean_name = str(name or "").strip()
+                if not clean_name:
+                    continue
+                if force:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE trades SET name = %s WHERE user_id = %s AND symbol = %s",
+                            (clean_name, resolved, symbol),
+                        )
+                        updated += cur.rowcount
+                else:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE trades SET name = %s WHERE user_id = %s AND symbol = %s AND (name = '' OR name IS NULL)",
+                            (clean_name, resolved, symbol),
+                        )
+                        updated += cur.rowcount
+        return updated
+
+    def save_symbol_metadata(self, metadata: Sequence[Mapping[str, Any]]) -> None:
+        if not metadata:
+            return
+        upsert_sql = (
+            "INSERT INTO symbol_info (symbol, name, is_st, source, updated_at)"
+            " VALUES (%s, %s, %s, %s, %s)"
+            " ON CONFLICT (symbol) DO UPDATE SET"
+            " name = EXCLUDED.name, is_st = EXCLUDED.is_st,"
+            " source = EXCLUDED.source, updated_at = EXCLUDED.updated_at"
+        )
+        with self._transaction() as conn:
+            with conn.cursor() as cur:
+                for item in metadata:
+                    sym = str(item.get("symbol") or "").strip()
+                    name = str(item.get("name") or "").strip()
+                    if not sym or not name:
+                        continue
+                    cur.execute(
+                        upsert_sql,
+                        (
+                            sym,
+                            name,
+                            1 if item.get("is_st") else 0,
+                            str(item.get("source") or ""),
+                            str(item.get("updated_at") or now_iso()),
+                        ),
+                    )
+
+    def load_symbol_metadata(
+        self, symbols: Sequence[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        if symbols:
+            clean_syms = [str(s).strip() for s in symbols if str(s).strip()]
+            if not clean_syms:
+                return {}
+            rows = self._fetchall(
+                "SELECT symbol, name, is_st, source, updated_at FROM symbol_info WHERE symbol = ANY(%s)",
+                (clean_syms,),
+            )
+        else:
+            rows = self._fetchall(
+                "SELECT symbol, name, is_st, source, updated_at FROM symbol_info"
+            )
+        for r in rows:
+            sym = r["symbol"]
+            out[sym] = {
+                "symbol": sym,
+                "name": r["name"],
+                "is_st": bool(r["is_st"]),
+                "source": r["source"],
+                "updated_at": r["updated_at"],
+            }
+        return out
