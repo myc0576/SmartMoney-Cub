@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
-import type { KeyValue, Summary } from '../types';
+import { trader } from '../api';
+import type { BreakdownRow, TraderSummary } from '../types';
 import { Bars, Kpi, Panel, formatMoney, formatPct, toneOf } from '../components/common';
+
+/**
+ * Performance attribution: the headline metrics and the groups behind them.
+ *
+ * Both reads go to the journal — /api/trader/analytics/summary for the metrics
+ * and /api/trader/analytics/breakdown for the groups — where this view used to
+ * read the review workbench's analytics route, a different store that the
+ * import never wrote. The KPI labels are unchanged; the sample note under the
+ * bars comes from the summary so the two halves of the page cannot disagree.
+ */
 
 const DIMENSION_LABELS: Record<string, string> = {
   symbol: '按标的',
@@ -12,17 +22,32 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [breakdown, setBreakdown] = useState<Record<string, KeyValue[]>>({});
+  const [summary, setSummary] = useState<TraderSummary | null>(null);
+  const [breakdown, setBreakdown] = useState<Record<string, BreakdownRow[]>>({});
   const [dimension, setDimension] = useState('symbol');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    void api.analytics().then((result) => {
-      setSummary(result.summary);
-      setBreakdown(result.breakdown);
-    });
+    // One unnamed breakdown request returns every group the view can show, so
+    // switching a chip never costs a fetch.
+    void Promise.all([trader.summary(), trader.breakdownAll()])
+      .then(([summaryResult, breakdownResult]) => {
+        setSummary(summaryResult);
+        setBreakdown(breakdownResult.breakdown || {});
+        setError('');
+      })
+      // Clearing the summary would leave this page on its loading line forever,
+      // so a failed read is reported as a failed read instead.
+      .catch((failure) => setError(failure instanceof Error ? failure.message : String(failure)));
   }, []);
 
+  if (error && !summary) {
+    return (
+      <div className="grid" style={{ gap: 14 }}>
+        <div className="notice">绩效分析读取失败：{error}</div>
+      </div>
+    );
+  }
   if (!summary) return <div className="muted">加载中…</div>;
   const rows = breakdown[dimension] || [];
 
@@ -50,7 +75,9 @@ export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
         }
       >
         <Bars rows={rows} scheme={scheme} />
-        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>带 * 的分组样本不足 5 笔，只作提示，不构成规律。</div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          {summary.sample_note} 带 * 的分组样本不足 5 笔，只作提示，不构成规律。
+        </div>
       </Panel>
 
       <Panel title="分组明细">
@@ -77,4 +104,3 @@ export function AnalyticsView({ scheme }: { scheme: 'cn' | 'intl' }) {
     </div>
   );
 }
-

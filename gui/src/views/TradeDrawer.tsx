@@ -1,24 +1,37 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
-import type { RoundTrip } from '../types';
-import { Badge, Empty, formatMoney, formatPct, toneOf } from '../components/common';
+import { trader } from '../api';
+import type { TradeLogDetail, TradeLogEntry } from '../types';
+import { Empty, formatMoney, formatPct, toneOf } from '../components/common';
+
+/** The journal stores optional fields, so the drawer reads them defensively. */
+function money(value: number | undefined): string {
+  return formatMoney(value === undefined ? 0 : value);
+}
+
+function pct(value: number | undefined): string {
+  return formatPct(value === undefined ? 0 : value);
+}
+
+function lotsOf(detail: TradeLogDetail) {
+  return detail.matched_lots || detail.trade.matched_lots || [];
+}
 
 export function TradeDrawer({ tradeId, scheme, onClose }: {
   tradeId: string;
   scheme: 'cn' | 'intl';
   onClose: () => void;
 }) {
-  const [trade, setTrade] = useState<RoundTrip | null>(null);
-  const [revisions, setRevisions] = useState<Record<string, any>[]>([]);
+  const [detail, setDetail] = useState<TradeLogDetail | null>(null);
   const [error, setError] = useState('');
+  const trade: TradeLogEntry | null = detail ? detail.trade : null;
 
   useEffect(() => {
-    api.tradeDetail(tradeId)
-      .then((detail) => {
-        setTrade(detail.trade);
-        setRevisions(detail.fill_revisions);
-      })
-      .catch((failure) => setError(failure instanceof Error ? failure.message : String(failure)));
+    // Read the journal, like every other view. The workbench detail endpoint
+    // serves a different store, so a journal id resolved to a 404 there and the
+    // drawer reported an error over data the trading log had just listed.
+    trader.trade(tradeId)
+      .then((payload: TradeLogDetail) => setDetail(payload))
+      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
   }, [tradeId]);
 
   return (
@@ -44,32 +57,29 @@ export function TradeDrawer({ tradeId, scheme, onClose }: {
         {trade ? (
           <div className="grid" style={{ gap: 14 }}>
             <div className="grid kpi">
-              <div className="panel"><div className="kpi-label">收益</div><div className={'kpi-value ' + toneOf(trade.return_pct, scheme)}>{formatPct(trade.return_pct)}</div></div>
-              <div className="panel"><div className="kpi-label">净盈亏</div><div className={'kpi-value ' + toneOf(trade.net_pnl, scheme)}>{formatMoney(trade.net_pnl)}</div></div>
-              <div className="panel"><div className="kpi-label">持有</div><div className="kpi-value">{trade.holding_days} 天</div></div>
-              <div className="panel"><div className="kpi-label">费用</div><div className="kpi-value">{formatMoney(trade.fees)}</div></div>
+              <div className="panel"><div className="kpi-label">收益</div><div className={'kpi-value ' + toneOf(trade.return_pct, scheme)}>{pct(trade.return_pct)}</div></div>
+              <div className="panel"><div className="kpi-label">净盈亏</div><div className={'kpi-value ' + toneOf(trade.net_pnl, scheme)}>{money(trade.net_pnl)}</div></div>
+              <div className="panel"><div className="kpi-label">持有</div><div className="kpi-value">{trade.holding_days === undefined ? '—' : trade.holding_days + ' 天'}</div></div>
+              <div className="panel"><div className="kpi-label">费用</div><div className="kpi-value">{money(trade.fees)}</div></div>
             </div>
 
             <div className="panel">
               <div className="row" style={{ gap: 16 }}>
                 <div><span className="muted">市场状态 </span>{trade.regime || '—'}</div>
-                <div><span className="muted">开仓 </span>{trade.entry_time} @ {trade.entry_price}</div>
-                <div><span className="muted">平仓 </span>{trade.exit_time} @ {trade.exit_price}</div>
+                <div><span className="muted">开仓 </span>{trade.entry_time || '—'} @ {trade.entry_price === undefined ? '—' : trade.entry_price}</div>
+                <div><span className="muted">平仓 </span>{trade.exit_time || '—'} @ {trade.exit_price === undefined ? '—' : trade.exit_price}</div>
               </div>
-              {trade.invalidation_price !== null ? (
-                <div style={{ marginTop: 6 }}><span className="muted">计划止损 </span>{trade.invalidation_price}</div>
-              ) : null}
               <div style={{ marginTop: 8 }} className="muted">开仓理由：{trade.thesis || '未记录'}</div>
-              {trade.tags.length ? <div style={{ marginTop: 8 }}>{trade.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div> : null}
+              {trade.tags && trade.tags.length ? <div style={{ marginTop: 8 }}>{trade.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div> : null}
             </div>
 
             <div className="panel">
               <h2>配对明细</h2>
-              {trade.matched_lots.length === 0 ? <Empty text="没有配对到买入批次" /> : (
+              {lotsOf(detail!).length === 0 ? <Empty text="没有配对到买入批次" /> : (
                 <table>
                   <thead><tr><th>买入时间</th><th className="num">价格</th><th className="num">数量</th><th className="num">分摊买入费用</th></tr></thead>
                   <tbody>
-                    {trade.matched_lots.map((lot, index) => (
+                    {lotsOf(detail!).map((lot, index) => (
                       <tr key={index}>
                         <td className="muted">{lot.entry_time}</td>
                         <td className="num">{lot.entry_price}</td>
@@ -82,34 +92,14 @@ export function TradeDrawer({ tradeId, scheme, onClose }: {
               )}
             </div>
 
-            <div className="panel">
-              <h2>成交版本历史</h2>
-              <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>
-                修正会写入新版本，旧版本保留可查，不会被覆盖。
-              </div>
-              <div className="scroll-x">
-                <table>
-                  <thead><tr><th>日期</th><th>方向</th><th className="num">价格</th><th className="num">数量</th><th className="num">版本</th><th>来源</th><th>状态</th></tr></thead>
-                  <tbody>
-                    {revisions.map((row) => (
-                      <tr key={row.fill_id}>
-                        <td className="muted">{row.trade_date} {row.trade_time}</td>
-                        <td>{row.side === 'BUY' ? '买入' : '卖出'}</td>
-                        <td className="num">{row.price}</td>
-                        <td className="num">{Number(row.quantity).toLocaleString('zh-CN')}</td>
-                        <td className="num">{row.revision}</td>
-                        <td className="muted">{row.edited_by}</td>
-                        <td>{row.superseded ? <Badge kind="warn">已被修正</Badge> : <Badge kind="ok">当前</Badge>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* The fill-revision history panel was removed: it belonged to the
+                review workbench's versioned fill records, and the journal does
+                not expose that feed. Showing the matched lots here under a
+                "revision history" heading would have labelled pairing rows as
+                edit history, so the panel is gone rather than mislabelled. */}
           </div>
         ) : null}
       </div>
     </div>
   );
 }
-

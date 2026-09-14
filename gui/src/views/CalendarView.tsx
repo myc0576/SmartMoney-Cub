@@ -1,25 +1,40 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
-import type { CalendarDay } from '../types';
+import { trader } from '../api';
+import type { TraderCalendarDay } from '../types';
 import { Panel, formatMoney, toneOf } from '../components/common';
+
+/**
+ * The review calendar: closed round trips aggregated by exit day.
+ *
+ * The days come from /api/trader/calendar, the journal's own store. This view
+ * used to read the review workbench's calendar, which is a different database:
+ * an import wrote the journal and left this grid empty. The day shape this view
+ * renders is the trader route's own — date, trade count, net pnl, win count and
+ * the rows behind them — so the grid, the month total, and the day sheet all
+ * read the journal the import filled.
+ */
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
 export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initial: { year: number; month: number } }) {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
-  const [days, setDays] = useState<CalendarDay[]>([]);
-  const [selected, setSelected] = useState<CalendarDay | null>(null);
+  const [days, setDays] = useState<TraderCalendarDay[]>([]);
+  const [selected, setSelected] = useState<TraderCalendarDay | null>(null);
 
   useEffect(() => {
-    void api.calendar({ year, month }).then((result) => setDays(result.days));
+    // A month the route cannot answer empties the grid rather than the page.
+    void trader
+      .calendar({ year, month })
+      .then((result) => setDays(result.days || []))
+      .catch(() => setDays([]));
   }, [year, month]);
 
   const first = new Date(year, month - 1, 1);
   const startOffset = (first.getDay() + 6) % 7;
   const total = new Date(year, month, 0).getDate();
   const byDate = new Map(days.map((day) => [day.date, day]));
-  const cells: (CalendarDay | null)[] = [
+  const cells: (TraderCalendarDay | null)[] = [
     ...Array.from({ length: startOffset }, () => null),
     ...Array.from({ length: total }, (_, index) => {
       const date = year + '-' + String(month).padStart(2, '0') + '-' + String(index + 1).padStart(2, '0');

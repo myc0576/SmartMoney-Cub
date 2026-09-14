@@ -1,9 +1,10 @@
 import type {
-  AuditRecord, Extraction, KeyValue, Meta, Overview, RoundTrip, RuleRecord,
-  SessionEvent, SessionSummary, Summary, UploadResult,
+  AuditRecord, Extraction, Meta, Overview, RuleRecord,
+  SessionEvent, SessionSummary, UploadResult,
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
-  Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderCalendar,
-  TradeLogDetail, TraderHealth, TraderMeta, TraderSummaryEnvelope, TraderTrades,
+  Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
+  TraderCalendar, TradeLogDetail, TraderHealth, TraderMeta, TraderSummaryEnvelope,
+  TraderTrades,
 } from './types';
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
@@ -67,6 +68,11 @@ export const trader = {
       .then((envelope) => ({ ...envelope.summary, counts: envelope.counts })),
   breakdown: (params: { dimension: string; from?: string; to?: string }) =>
     request<TraderBreakdown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
+  // An unnamed dimension asks the same route for every group at once, which is
+  // the shape the grouping view renders. The named form above stays for the
+  // callers that want one dimension.
+  breakdownAll: (params: { from?: string; to?: string } = {}) =>
+    request<TraderBreakdownMap>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
   calendar: (params: { year: number; month: number }) =>
     request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(params)).toString()),
 
@@ -94,20 +100,6 @@ export const api = {
   meta: () => request<Meta>('/api/meta'),
   overview: (params: { portfolio_id?: string; year?: number; month?: number } = {}) =>
     request<Overview>('/api/overview?' + new URLSearchParams(clean(params)).toString()),
-  trades: (params: { portfolio_id?: string; symbol?: string; regime?: string } = {}) =>
-    request<{ trades: RoundTrip[]; open_positions: Overview['open_positions']; issues: Overview['issues']; count: number }>(
-      '/api/trades?' + new URLSearchParams(clean(params)).toString(),
-    ),
-  tradeDetail: (id: string) =>
-    request<{ trade: RoundTrip; fill_revisions: Record<string, any>[] }>('/api/trades/' + encodeURIComponent(id)),
-  calendar: (params: { portfolio_id?: string; year?: number; month?: number }) =>
-    request<{ year: number; month: number; days: Overview['calendar'] }>(
-      '/api/calendar?' + new URLSearchParams(clean(params)).toString(),
-    ),
-  analytics: (params: { portfolio_id?: string } = {}) =>
-    request<{ summary: Summary; breakdown: Record<string, KeyValue[]>; dimensions: string[] }>(
-      '/api/analytics?' + new URLSearchParams(clean(params)).toString(),
-    ),
   rules: () => request<{ rules: RuleRecord[] }>('/api/rules'),
   plugins: () => request<Record<string, any>>('/api/plugins'),
   documents: (params: { portfolio_id?: string } = {}) =>

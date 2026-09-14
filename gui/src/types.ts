@@ -132,16 +132,6 @@ export interface UploadResult {
   raw_file_stays_local: boolean;
 }
 
-export interface KeyValue {
-  key: string;
-  trade_count: number;
-  win_rate: number;
-  net_pnl: number;
-  avg_return_pct: number;
-  profit_factor: number | null;
-  small_sample: boolean;
-}
-
 export interface RuleRecord {
   rule_id: string;
   family: string | null;
@@ -372,6 +362,8 @@ export interface TradeLogEntry {
   created_at?: string;
   mae?: number | null;
   mfe?: number | null;
+  /** The journal's detail route carries the buy lots a close was matched against. */
+  matched_lots?: { entry_time: string; entry_price: number; quantity: number; buy_fee: number }[];
 }
 
 export interface TraderTrades extends SafetyEnvelope {
@@ -477,6 +469,21 @@ export interface BreakdownRow {
 export interface TraderBreakdown extends SafetyEnvelope {
   dimension: string;
   rows: BreakdownRow[];
+}
+
+/**
+ * The body of GET /api/trader/analytics/breakdown when no dimension is named.
+ *
+ * The same route answers in two shapes depending on its argument: one named
+ * dimension returns a flat `rows` list (see TraderBreakdown), while an unnamed
+ * request groups every dimension at once under `breakdown`. A caller that shows
+ * all the groups asks once here instead of one single-dimension request per
+ * group, which is what the view this replaced used to do against the workbench.
+ */
+export interface TraderBreakdownMap extends SafetyEnvelope {
+  dimension: string;
+  breakdown: Record<string, BreakdownRow[]>;
+  dimensions: string[];
 }
 
 export interface TraderCalendarDay {
