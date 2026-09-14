@@ -202,6 +202,17 @@ def build_parser() -> argparse.ArgumentParser:
     loop_cmd.add_argument("--agent-trigger", default="")
     loop_cmd.add_argument("--horizon", choices=["d1", "d3"], default="d1")
     loop_cmd.add_argument("--json", action="store_true", help="Print the final loop summary as JSON")
+    # run_agent_loop already accepted a root; the CLI simply never exposed it, so
+    # every invocation wrote its run directories into the process's working
+    # directory. That made the loop untestable without littering the checkout,
+    # and enough repeated runs exhausted unique_run_dir's 999-sibling cap and
+    # broke the suite. An explicit root lets a caller (and CI) keep runs out of
+    # the tree they are building in.
+    loop_cmd.add_argument(
+        "--root",
+        default=".",
+        help="Directory the run artifacts are written under (default: the current directory)",
+    )
 
     mentor_fit = sub.add_parser("mentor-fit", help="Build offline toy mentor-fit style anchor JSON")
     mentor_fit.add_argument("input", help="JSON payload with toy cases and optional public templates")
@@ -527,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
                 preset=args.preset,
                 horizon=args.horizon,
                 agent_trigger=args.agent_trigger,
+                root=args.root,
             )
         )
         return 0

@@ -11,12 +11,12 @@ from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+def run_cli(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
     return subprocess.run(
         [sys.executable, "-m", "smartmoney_cub_harness.cli", *args],
-        cwd=REPO_ROOT,
+        cwd=cwd,
         env=env,
         text=True,
         capture_output=True,
@@ -64,7 +64,7 @@ def test_documented_control_plane_sequence_is_executable(tmp_path):
     evaluated = run_cli("evaluate-run", str(run_dir), "--horizon", "d1")
     assert evaluated.returncode == 0, evaluated.stderr
     assert json.loads(evaluated.stdout)["status"] == "evaluated"
-def test_readme_quick_start_loop_command_is_real():
+def test_readme_quick_start_loop_command_is_real(tmp_path):
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     zh_readme = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
     command = 'smcub loop --preset toy --agent-trigger "自进化"'
@@ -74,7 +74,15 @@ def test_readme_quick_start_loop_command_is_real():
     assert SAFETY_DECLARATION in readme
     assert SAFETY_DECLARATION in zh_readme
 
-    result = run_cli("loop", "--preset", "toy", "--agent-trigger", "自进化")
+    # The documented invocation is checked verbatim above; here the same loop is
+    # run with its artifacts rooted in tmp_path. Running it against the checkout
+    # accumulated run directories in the repository until unique_run_dir's
+    # 999-sibling cap was hit and this test began failing for a reason that had
+    # nothing to do with the README.
+    result = run_cli(
+        "loop", "--preset", "toy", "--agent-trigger", "自进化",
+        "--root", str(tmp_path), cwd=tmp_path,
+    )
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
