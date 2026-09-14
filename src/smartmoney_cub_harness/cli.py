@@ -42,6 +42,7 @@ from smartmoney_cub_harness.safety import redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.self_evolve import confirm_promotion, run_self_evolve
 from smartmoney_cub_harness.share_cli import build_share_pack_from_source
+from smartmoney_cub_harness.trader_cli import run_trader_serve
 from smartmoney_cub_harness.tradingagents_adapter import (
     check_tradingagents_environment,
     ingest_tradingagents_report,
@@ -277,6 +278,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Required access token when binding beyond loopback",
     )
+
+    trader_cmd = sub.add_parser(
+        "trader", help="Run the trader product's HTTP surface (journal, analytics, backtest)"
+    )
+    trader_sub = trader_cmd.add_subparsers(dest="trader_command", required=True)
+    trader_serve = trader_sub.add_parser(
+        "serve", help="Serve the trader product and the review workbench on one port"
+    )
+    trader_serve.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    trader_serve.add_argument("--port", type=int, default=8787, help="Port (default: 8787)")
+    trader_serve.add_argument(
+        "--mode",
+        choices=["local", "hosted"],
+        default="local",
+        help="local is a single offline user; hosted resolves an alphatech identity",
+    )
+    trader_serve.add_argument(
+        "--database-url",
+        default=None,
+        help="Postgres URL for the tenant store; required in hosted mode",
+    )
+    trader_serve.add_argument(
+        "--state-dir", default=None, help="Local store directory (local mode only)"
+    )
+    trader_serve.add_argument(
+        "--token",
+        default=None,
+        help="Required access token when binding beyond loopback",
+    )
+    trader_serve.add_argument("--no-browser", action="store_true", help="Do not open a browser")
 
     import_cmd = sub.add_parser("import", help="Import broker records into the local store")
     import_sub = import_cmd.add_subparsers(dest="import_command", required=True)
@@ -603,6 +634,17 @@ def main(argv: list[str] | None = None) -> int:
         return run_workbench(
             host=args.host,
             port=args.port,
+            state_dir=args.state_dir,
+            open_browser=not args.no_browser,
+            token=args.token,
+        )
+
+    if args.command == "trader":
+        return run_trader_serve(
+            host=args.host,
+            port=args.port,
+            mode=args.mode,
+            database_url=args.database_url,
             state_dir=args.state_dir,
             open_browser=not args.no_browser,
             token=args.token,

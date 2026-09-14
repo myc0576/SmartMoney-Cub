@@ -748,6 +748,10 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     service: WorkbenchService
     asset_dir: Path | None = None
     access_token: str | None = None
+    # The trader product rides on the same socket. When a caller supplies a
+    # TraderService the /api/trader/* surface is mounted; otherwise the
+    # workbench serves exactly what it always did.
+    trader_service: Any = None
 
     server_version = "smartmoney-cub/" + __version__
 
@@ -818,9 +822,50 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
 
     # ---- GET -----------------------------------------------------------
 
+    def _trader(self, method: str) -> bool:
+        """Serve one /api/trader request, or report that it is not ours.
+
+        Why this sits ahead of the workbench route chain: the trader product is
+        a separate surface with its own identity model, and mounting it here
+        means one process serves both. When no trader service is configured the
+        prefix falls through to the routes below and behavior is unchanged.
+
+        The trader surface is deliberately not gated by the local access token:
+        a hosted deployment authenticates each request against the platform,
+        and a local one runs as the single local user. Adding a second secret in
+        front of a surface that already resolves an identity would only make the
+        two disagree about who the caller is.
+        """
+        service = getattr(self, "trader_service", None)
+        if service is None:
+            return False
+        from smartmoney_cub_harness.trader.api import routes as trader_routes
+
+        parsed = urllib.parse.urlparse(self.path)
+        if not parsed.path.startswith(trader_routes.TRADER_API_PREFIX):
+            return False
+        body = b""
+        if method == "POST":
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 0:
+                body = self.rfile.read(length)
+        status, payload = trader_routes.dispatch(
+            service,
+            method,
+            parsed.path,
+            query=urllib.parse.parse_qs(parsed.query),
+            headers=self.headers,
+            body=body,
+            content_type=self.headers.get("Content-Type") or "",
+        )
+        self._json(payload, status=status)
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._authorized():
             self._json({"status": "error", "error": "invalid access token"}, status=401)
+            return
+        if self._trader("GET"):
             return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -896,6 +941,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if not self._authorized():
             self._json({"status": "error", "error": "invalid access token"}, status=401)
+            return
+        if self._trader("POST"):
             return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -1007,9 +1054,19 @@ def start_workbench(
     open_browser: bool = True,
     access_token: str | None = None,
     workspace_db: str | None = None,
+    trader_service: Any = None,
+    trader_store: Any = None,
     ready: Callable[[str], None] | None = None,
 ) -> None:
     service = WorkbenchService(root, workspace_db=workspace_db)
+    if trader_service is not None and trader_store is not None:
+        raise ValueError("pass either trader_service or trader_store, not both")
+    owned_trader_store = None
+    if trader_service is None and trader_store is not None:
+        from smartmoney_cub_harness.trader.api import TraderService
+
+        trader_service = TraderService(trader_store)
+        owned_trader_store = trader_store
     handler = type(
         "BoundWorkbenchHandler",
         (WorkbenchHandler,),
@@ -1017,6 +1074,7 @@ def start_workbench(
             "service": service,
             "asset_dir": Path(asset_dir) if asset_dir else None,
             "access_token": access_token,
+            "trader_service": trader_service,
         },
     )
     server = ThreadingHTTPServer((host, port), handler)
@@ -1032,3 +1090,7 @@ def start_workbench(
     finally:
         server.server_close()
         service.close()
+        if owned_trader_store is not None:
+            close = getattr(owned_trader_store, "close", None)
+            if callable(close):
+                close()
