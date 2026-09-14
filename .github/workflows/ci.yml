@@ -210,3 +210,24 @@ jobs:
           assert 'db' in compose and 'app' in compose, 'compose is missing a service'
           print('deploy configuration: healthcheck, non-root user, both services present')
           "
+
+      - name: The committed interface must match its source
+        run: |
+          # The built interface is committed on purpose so an installed wheel needs
+          # no Node toolchain. The cost of that choice is drift: editing gui/src and
+          # forgetting to rebuild ships a stale interface, and nothing would say so.
+          #
+          # This runs after the build step above, which is what makes it work: the
+          # build regenerates web/ from gui/src into this same checkout, so the
+          # build output now differs from the committed copy exactly when the
+          # committed one is stale. Checked with 'status --porcelain' rather than
+          # 'diff --quiet' because a rebuild can also leave a *deleted* old asset
+          # and an *untracked* new one, which 'diff' alone does not report.
+          drift="$(git status --porcelain -- src/smartmoney_cub_harness/workbench/web)"
+          if [ -n "$drift" ]; then
+            echo "the committed interface is stale: gui/src changed without a rebuild." >&2
+            echo "Run 'cd gui && npm run build' and commit the result." >&2
+            echo "$drift" >&2
+            exit 1
+          fi
+          echo "the committed interface matches a fresh build"
