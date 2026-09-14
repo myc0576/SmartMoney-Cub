@@ -1,0 +1,176 @@
+/*
+ * Design tokens for the trader product surface.
+ *
+ * Two naming systems live here on purpose. The `--color-*` names below follow
+ * TradingView's semantic convention, which is where the palette values come
+ * from: accent #2962FF, body text #0F0F0F in light mode, and a border/surface
+ * ramp rather than raw greys at call sites. The short names further down
+ * (`--bg`, `--panel`, `--text` ...) are the names the interface already used
+ * before this file existed; styles.css keeps referencing them, so they are now
+ * defined as aliases of the semantic tokens rather than as independent values.
+ * One palette, one place to change it.
+ *
+ * What is deliberately NOT taken from TradingView: the button system. The
+ * product's buttons stay dense and panel-based, so only colour, chart styling,
+ * and motion come from the other design language.
+ *
+ * Positive and negative stay red-up/green-up swappable. The up/down pair is
+ * `--pos: #38d39f` / `--neg: #f04f68`, and `--up`/`--down` are the palette
+ * slots the existing colour-scheme toggle flips between. A single fixed
+ * green-up convention would break that toggle, so the semantics are kept
+ * separate from the values.
+ */
+
+:root {
+  /* --- TradingView semantic tokens -------------------------------------- */
+  --color-accent: #2962ff;
+  --color-accent-hover: #1e53e5;
+  --color-accent-active: #1a4bcb;
+
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f6f7f9;
+  --color-background-tertiary: #eceff4;
+
+  --color-surface-primary: #ffffff;
+  --color-surface-secondary: #f6f7f9;
+  --color-surface-elevated: #ffffff;
+
+  --color-content-primary: #0f0f0f;
+  --color-content-secondary: #4a4f5c;
+  --color-content-tertiary: #767c8a;
+  --color-content-inverse: #ffffff;
+  /* Text drawn on the accent fill. The accent is the same blue in both
+     themes, so this stays white rather than following content-inverse. */
+  --color-content-on-accent: #ffffff;
+
+  --color-border-primary: #e0e3ea;
+  --color-border-secondary: #eceff4;
+  --color-border-strong: #c6cbd6;
+
+  --color-content-primary-positive: var(--pos);
+  --color-content-primary-negative: var(--neg);
+
+  --color-status-warning: #e2a33b;
+  --color-status-error: #f04f68;
+  --color-status-success: #2fbf71;
+
+  /* Backdrops and shadows carry the theme: a light surface needs a lighter
+     scrim than a dark one, and one fixed rgba cannot serve both. */
+  --color-backdrop: rgba(15, 15, 15, 0.32);
+  --color-shadow: rgba(15, 15, 15, 0.14);
+
+  --color-surface-selected: #dbe4ff;
+  --color-surface-danger: #fdecec;
+  --color-surface-warning: #fdf6e6;
+  --color-border-danger: #f3b9b9;
+  --color-content-danger: #b4342f;
+  --color-content-warning: #8a6416;
+  --color-status-success-fill: #e2f7ea;
+  --color-status-success-content: #1f7a45;
+  --color-status-warning-fill: #fdf0d5;
+  --color-status-warning-content: #8a6416;
+  --color-status-error-fill: #fde8e6;
+  --color-status-error-content: #b4342f;
+
+  /* --- price movement --------------------------------------------------- */
+  --pos: #38d39f;
+  --neg: #f04f68;
+
+  /* --- motion ----------------------------------------------------------- */
+  /* Short and functional: a hover that reads as a response, not a performance. */
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --motion-slow: 200ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- legacy aliases --------------------------------------------------- */
+  --bg: var(--color-background-primary);
+  --panel: var(--color-surface-primary);
+  --panel-2: var(--color-surface-secondary);
+  --border: var(--color-border-primary);
+  --text: var(--color-content-primary);
+  --muted: var(--color-content-tertiary);
+  --accent: var(--color-accent);
+  --warn: var(--color-status-warning);
+  /*
+   * `--up` is the colour a gain is painted with and `--down` the colour a loss
+   * is painted with, and they are slots rather than meanings: the default is
+   * the A-share convention (red up, green down), and the toggle in App.tsx
+   * swaps which class a positive number receives. So `--up` binds to `--neg`
+   * and `--down` to `--pos`. Binding them the other way round would silently
+   * invert the default and make the toggle label a lie.
+   */
+  --up: var(--neg);
+  --down: var(--pos);
+  /* The inset surfaces (inputs, calendar cells, code blocks) sit one step
+     below the panel colour in both themes. */
+  --inset: var(--color-background-tertiary);
+  --chart-grid: var(--color-border-secondary);
+  --chart-axis: var(--color-content-tertiary);
+}
+
+/*
+ * Dark is the product's default presentation. The toggle in App.tsx sets
+ * data-theme on the document element; index.html ships dark so the boot frame
+ * and the app agree before React mounts.
+ */
+[data-theme="dark"] {
+  --color-background-primary: #101318;
+  --color-background-secondary: #171b22;
+  --color-background-tertiary: #12161d;
+
+  --color-surface-primary: #171b22;
+  --color-surface-secondary: #1d222b;
+  --color-surface-elevated: #1d222b;
+
+  --color-content-primary: #e6eaf2;
+  --color-content-secondary: #b9c0cd;
+  --color-content-tertiary: #8b93a4;
+  --color-content-inverse: #0f0f0f;
+  --color-content-on-accent: #ffffff;
+
+  --color-border-primary: #262c37;
+  --color-border-secondary: #1f2530;
+  --color-border-strong: #39414f;
+
+  --color-status-warning: #e2a33b;
+  --color-status-error: #f04f68;
+  --color-status-success: #2fbf71;
+
+  /* The dark fills are the ones the interface shipped with before the palette
+     was split, chosen so a status chip reads at the same weight on a dark
+     panel as on a light one. */
+  --color-surface-selected: #23304a;
+  --color-surface-danger: #3a2224;
+  --color-surface-warning: #1a1a14;
+  --color-border-danger: #5a2a2e;
+  --color-content-danger: #ffb4ae;
+  --color-content-warning: #f0d9a8;
+  --color-status-success-fill: #16351f;
+  --color-status-success-content: #6fe39a;
+  --color-status-warning-fill: #3a2f12;
+  --color-status-warning-content: #f0c675;
+  --color-status-error-fill: #3a1d1f;
+  --color-status-error-content: #ff9d95;
+
+  --color-backdrop: rgba(6, 8, 12, 0.62);
+  --color-shadow: rgba(0, 0, 0, 0.45);
+
+  /* The accent lifts slightly off pure chroma on a dark surface so the
+     TradingView blue keeps the same perceived weight in both themes. */
+  --color-accent: #2962ff;
+  --color-accent-hover: #4173ff;
+  --color-accent-active: #1e53e5;
+}
+
+/*
+ * Motion is decoration here, never information, so honouring the system
+ * preference costs nothing: every transition collapses to instant.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+  }
+}

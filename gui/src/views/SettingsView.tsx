@@ -114,11 +114,13 @@ export function SettingsView({ meta, onMetaChange }: { meta: Meta | null; onMeta
       </Panel>
 
       <Panel title="本地诊断">
+        {/* A doctor payload that lacks `checks` is still a successful read; the
+            section renders an empty state rather than throwing on the map. */}
         {doctor ? (
           <table>
             <thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead>
             <tbody>
-              {(doctor.checks as { name: string; status: string; detail: string }[]).map((check) => (
+              {((doctor.checks as { name: string; status: string; detail: string }[] | undefined) || []).map((check) => (
                 <tr key={check.name}>
                   <td>{check.name}</td>
                   <td>{check.status === 'ok' ? <Badge kind="ok">正常</Badge> : <Badge kind="warn">{check.status}</Badge>}</td>

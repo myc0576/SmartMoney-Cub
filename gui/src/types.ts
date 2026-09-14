@@ -250,3 +250,296 @@ export interface Meta {
   trend_color_scheme: 'cn' | 'intl';
 }
 
+/* ---- trader product ------------------------------------------------- */
+
+/**
+ * The execution ban, carried on every trader response.
+ *
+ * Modelled as a field rather than a base interface so an omitting response is
+ * a type error at the call site rather than a silent gap. The server is the
+ * authority: these types describe what it sends, they do not assert it.
+ */
+export interface SafetyEnvelope {
+  safety: string;
+}
+
+export interface TraderHealth extends SafetyEnvelope {
+  status: string;
+  mode: string;
+  store: string;
+  market_data_mode: string;
+  tenant_mode: string;
+}
+
+export interface TraderMeta extends SafetyEnvelope {
+  app: string;
+  version: string;
+  schema: string;
+  mode: string;
+  tenant_mode: string;
+  market_data_mode: string;
+  currencies: string[];
+  intervals: string[];
+  dimensions: string[];
+  playbook_fields: string[];
+  backtest_dsl_version: number;
+}
+
+export interface MarketProvider {
+  provider_id: string;
+  label: string;
+  markets: string[];
+  requires_key: boolean;
+  source_quality: string;
+  description: string;
+}
+
+export interface MarketProviders extends SafetyEnvelope {
+  providers: MarketProvider[];
+}
+
+export interface MarketBar {
+  symbol: string;
+  interval: string;
+  open_time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface MarketBars extends SafetyEnvelope {
+  provider_id: string;
+  symbol: string;
+  interval: string;
+  fetched_at: string;
+  source_quality: string;
+  warnings: string[];
+  bars: MarketBar[];
+}
+
+/**
+ * One row of the journal, as `/api/trader/trades` returns it.
+ *
+ * One interface rather than two, deliberately. The endpoint is the only list
+ * route, and the detail route is addressed by round trip id, so a row may be
+ * addressed as either. Modelling both id fields as optional keeps a single
+ * shape that a caller can render whichever the store filled in, instead of two
+ * incompatible readings of the same URL.
+ *
+ * A field is optional when the store may legitimately not have it: an unpaired
+ * execution has no exit, and a partially reviewed row has no tags.
+ */
+export interface TradeLogEntry {
+  trade_id?: string;
+  round_trip_id?: string;
+  account_id?: string;
+  symbol: string;
+  name?: string;
+  side?: string;
+  entry_time?: string;
+  exit_time?: string;
+  entry_price?: number;
+  exit_price?: number;
+  trade_date?: string;
+  trade_time?: string;
+  price?: number;
+  quantity: number;
+  net_pnl?: number;
+  return_pct?: number;
+  fee?: number;
+  fees?: number;
+  holding_days?: number;
+  regime?: string;
+  tags?: string[];
+  thesis?: string;
+  created_at?: string;
+  mae?: number | null;
+  mfe?: number | null;
+}
+
+export interface TraderTrades extends SafetyEnvelope {
+  trades: TradeLogEntry[];
+  count: number;
+  limit?: number;
+  offset?: number;
+}
+
+/** The highest precision the detail route returns for one journal row. */
+export interface TradeLogDetail extends SafetyEnvelope {
+  trade: TradeLogEntry;
+  matched_lots?: { entry_time: string; entry_price: number; quantity: number; buy_fee: number }[];
+}
+
+export interface TraderAccount {
+  account_id: string;
+  name: string;
+  broker: string;
+  currency: string;
+  initial_balance: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TraderAccounts extends SafetyEnvelope {
+  accounts: TraderAccount[];
+}
+
+export interface TraderSummary extends SafetyEnvelope {
+  trade_count: number;
+  win_count: number;
+  loss_count: number;
+  flat_count: number;
+  win_rate: number;
+  profit_factor: number | null;
+  profit_factor_note: string;
+  total_net_pnl: number;
+  total_fees: number;
+  gross_profit?: number;
+  gross_loss?: number;
+  avg_return_pct: number;
+  avg_win_pct: number;
+  avg_loss_pct: number;
+  avg_holding_days: number;
+  max_drawdown: number;
+  open_position_count: number;
+  sample_note: string;
+  equity_curve: { exit_time: string; symbol: string; net_pnl: number; cumulative_pnl: number }[];
+}
+
+export interface BreakdownRow {
+  key: string;
+  trade_count: number;
+  win_rate: number;
+  net_pnl: number;
+  avg_return_pct: number;
+  profit_factor: number | null;
+  small_sample: boolean;
+}
+
+export interface TraderBreakdown extends SafetyEnvelope {
+  dimension: string;
+  rows: BreakdownRow[];
+}
+
+export interface TraderCalendarDay {
+  date: string;
+  trade_count: number;
+  net_pnl: number;
+  win_count: number;
+  trades: { round_trip_id: string; symbol: string; name?: string; net_pnl: number; return_pct: number }[];
+}
+
+export interface TraderCalendar extends SafetyEnvelope {
+  year: number;
+  month: number;
+  days: TraderCalendarDay[];
+}
+
+export interface Playbook {
+  playbook_id: string;
+  name: string;
+  description: string;
+  setup: string;
+  entry_rules: string[];
+  exit_rules: string[];
+  risk_rules: string[];
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Playbooks extends SafetyEnvelope {
+  playbooks: Playbook[];
+  stats: Record<string, PlaybookStats>;
+}
+
+/** Per-playbook outcome, keyed by playbook name in Playbooks.stats. */
+export interface PlaybookStats {
+  trade_count: number;
+  win_rate: number;
+  net_pnl: number;
+  avg_return_pct: number;
+  profit_factor: number | null;
+  small_sample: boolean;
+}
+
+export interface BacktestRunSummary {
+  run_id: string;
+  strategy_name: string;
+  symbol: string;
+  interval: string;
+  started_at: string;
+  created_at: string;
+  metrics: Record<string, number | string | null>;
+}
+
+export interface BacktestRuns extends SafetyEnvelope {
+  runs: BacktestRunSummary[];
+}
+
+export interface BacktestEquityPoint {
+  index: number;
+  open_time: string;
+  equity: number;
+  cash?: number;
+  position?: number;
+}
+
+export interface BacktestTrade {
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_time: string;
+  exit_time: string;
+  entry_price: number;
+  exit_price: number;
+  pnl: number;
+  return_pct?: number;
+  exit_reason?: string;
+  hold_bars?: number;
+}
+
+export interface BacktestRunDetail extends SafetyEnvelope {
+  run_id: string;
+  strategy_name: string;
+  symbol: string;
+  interval: string;
+  started_at: string;
+  spec: Record<string, unknown>;
+  metrics: Record<string, number | string | null>;
+  equity_curve: BacktestEquityPoint[];
+  trades: BacktestTrade[];
+  bar_count?: number;
+  initial_cash?: number;
+  final_equity?: number;
+}
+
+export interface ReplaySession extends SafetyEnvelope {
+  session_id: string;
+  symbol: string;
+  interval: string;
+  provider: string;
+  start_time: string;
+  end_time: string;
+  cursor: number;
+  bar_count: number;
+  bars: MarketBar[];
+  markers: ReplayMarker[];
+  notes: string;
+  created_at: string;
+}
+
+/** A trade annotation drawn on the replay chart. */
+export interface ReplayMarker {
+  marker_id?: string;
+  time: string;
+  price: number;
+  kind: string;
+  label?: string;
+}
+
+export interface ReplaySessions extends SafetyEnvelope {
+  sessions: ReplaySession[];
+}

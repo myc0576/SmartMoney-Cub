@@ -60,7 +60,7 @@ export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initi
               <button
                 key={day.date}
                 className="cell"
-                style={{ textAlign: 'left', background: active ? undefined : '#12161d' }}
+                style={{ textAlign: 'left', background: active ? undefined : 'var(--inset)' }}
                 onClick={() => setSelected(day)}
               >
                 <div className="day">{Number(day.date.slice(-2))}</div>
@@ -97,4 +97,3 @@ export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initi
     </div>
   );
 }
-

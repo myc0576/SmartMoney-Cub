@@ -1,16 +1,9 @@
-:root {
-  --bg: #101318;
-  --panel: #171b22;
-  --panel-2: #1d222b;
-  --border: #262c37;
-  --text: #e6eaf2;
-  --muted: #8b93a4;
-  --up: #f0524d;
-  --down: #2fbf71;
-  --accent: #5b8cff;
-  --warn: #e2a33b;
-  font-synthesis-weight: none;
-}
+/* No :root block here. tokens.css owns the palette; this file only composes
+   it. The short names (`--bg`, `--panel`, `--border` ...) are defined there as
+   aliases of the `--color-*` semantic tokens, so the rules below need no edit
+   when the palette changes. */
+
+:root { font-synthesis-weight: none; }
 
 * { box-sizing: border-box; }
 
@@ -23,17 +16,29 @@ body {
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  transition: background var(--motion-slow) var(--motion-ease),
+    color var(--motion-slow) var(--motion-ease);
 }
 
 button { font: inherit; color: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
+
+/* The palette itself lives in tokens.css: `--color-*` holds the semantic
+   names, and the short names below are aliases of them. Adding a transition
+   duration and an inset surface here keeps the existing rules readable while
+   the values come from one place. */
 
 .shell { display: flex; height: 100%; overflow: hidden; }
 
 .sidebar {
   width: 196px; flex: none; background: var(--panel);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
-  padding: 14px 10px; gap: 4px;
+  padding: 14px 10px; gap: 4px; overflow-y: auto;
+}
+.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.nav-section {
+  color: var(--muted); font-size: 10px; letter-spacing: 0.08em;
+  padding: 6px 9px 3px; text-transform: none;
 }
 .brand { font-weight: 700; letter-spacing: 0.02em; padding: 4px 8px 12px; }
 .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 2px; }
@@ -41,9 +46,12 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 9px; border-radius: 6px; border: 1px solid transparent;
   background: transparent; text-align: left; width: 100%;
+  transition: background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 .nav-item:hover { background: var(--panel-2); }
-.nav-item.active { background: var(--panel-2); border-color: var(--border); }
+.nav-item.active { background: var(--panel-2); border-color: var(--border); border-left: 2px solid var(--color-accent); }
 .sidebar-footer { margin-top: auto; color: var(--muted); font-size: 10px; padding: 8px; line-height: 1.6; word-break: break-word; }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -68,12 +76,12 @@ input, select, textarea { font: inherit; color: inherit; }
 .assistant-foot { border-top: 1px solid var(--border); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 
 .bubble { padding: 9px 11px; border-radius: 8px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-.bubble.user { background: #23304a; align-self: flex-end; max-width: 90%; }
+.bubble.user { background: var(--color-surface-selected); align-self: flex-end; max-width: 90%; }
 .bubble.assistant { background: var(--panel-2); border: 1px solid var(--border); }
-.bubble.error { background: #3a2224; border: 1px solid #5a2a2e; color: #ffb4ae; }
+.bubble.error { background: var(--color-surface-danger); border: 1px solid var(--color-border-danger); color: var(--color-content-danger); }
 
 .tool-card {
-  border: 1px solid var(--border); border-radius: 8px; background: #12161d;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--inset);
   overflow: hidden;
 }
 .tool-card summary { padding: 7px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
@@ -82,6 +90,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .panel h2 { font-size: 13px; margin: 0 0 10px; font-weight: 600; }
 .grid { display: grid; gap: 12px; }
+
+/* A page-level fade, not a per-panel animation: one 160ms fade when the page
+   inside the tab changes reads as a panel swap without drawing attention to
+   every card on screen. It is decoration only, so the reduced-motion block in
+   tokens.css collapses it to zero along with every other transition. */
+.page > .grid { animation: panel-fade var(--motion-base) var(--motion-ease); }
+@keyframes panel-fade {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
 .grid.kpi { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .grid.split { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 
@@ -100,25 +118,38 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .tag { display: inline-block; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); font-size: 11px; color: var(--muted); margin-right: 4px; }
 .badge { padding: 1px 7px; border-radius: 999px; font-size: 11px; }
-.badge.ok { background: #16351f; color: #6fe39a; }
-.badge.warn { background: #3a2f12; color: #f0c675; }
-.badge.error { background: #3a1d1f; color: #ff9d95; }
+/* The badge fills are semantic status tokens rather than raw hex, so a light
+   theme does not have to restate them: only the token values change. */
+.badge.ok { background: var(--color-status-success-fill); color: var(--color-status-success-content); }
+.badge.warn { background: var(--color-status-warning-fill); color: var(--color-status-warning-content); }
+.badge.error { background: var(--color-status-error-fill); color: var(--color-status-error-content); }
 
-button.primary { background: var(--accent); border: none; border-radius: 7px; padding: 7px 14px; color: #fff; }
-button.ghost { background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; }
+button.primary {
+  background: var(--accent); border: none; border-radius: 7px; padding: 7px 14px;
+  color: var(--color-content-inverse);
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+button.primary:hover { background: var(--color-accent-hover); }
+button.primary:active { background: var(--color-accent-active); }
+button.ghost {
+  background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
 button.ghost:hover { background: var(--panel-2); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { color: var(--muted); font-size: 11px; }
 input, select, textarea {
-  background: #12161d; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px;
+  background: var(--inset); border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px;
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--color-accent); }
 textarea { resize: vertical; min-height: 62px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.calendar .cell { background: #12161d; border: 1px solid var(--border); border-radius: 8px; padding: 6px; min-height: 62px; }
+.calendar .cell { background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 6px; min-height: 62px; }
 .calendar .cell.empty { background: transparent; border: none; }
 .calendar .day { color: var(--muted); font-size: 11px; }
 .calendar .pnl { font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
@@ -129,7 +160,7 @@ textarea { resize: vertical; min-height: 62px; }
 .bar.gain > span { background: var(--up); }
 .bar.loss > span { background: var(--down); }
 
-.notice { border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 8px; padding: 10px 12px; background: #1a1a14; color: #f0d9a8; }
+.notice { border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 8px; padding: 10px 12px; background: var(--color-surface-warning); color: var(--color-content-warning); }
 .empty { color: var(--muted); padding: 22px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; }
 .drop { border: 1px dashed var(--border); border-radius: 10px; padding: 22px; text-align: center; color: var(--muted); }
 .drop.over { border-color: var(--accent); color: var(--text); }
@@ -154,8 +185,9 @@ textarea { resize: vertical; min-height: 62px; }
 
 .picker-trigger {
   display: flex; align-items: center; gap: 6px;
-  background: #12161d; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--inset); border: 1px solid var(--border); border-radius: 7px;
   padding: 6px 10px; max-width: 260px;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 .picker-trigger:hover { background: var(--panel-2); }
 .picker-trigger.open { border-color: var(--accent); }
@@ -170,7 +202,7 @@ textarea { resize: vertical; min-height: 62px; }
   position: absolute; z-index: 50; bottom: calc(100% + 6px); right: 0;
   width: 320px; max-height: 420px; display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); overflow: hidden;
+  box-shadow: 0 12px 32px var(--color-shadow); overflow: hidden;
 }
 .picker-head { padding: 8px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }
 .picker-search { width: 100%; }
@@ -189,14 +221,14 @@ textarea { resize: vertical; min-height: 62px; }
   border-radius: 7px; padding: 7px 9px; font-size: 12.5px;
 }
 .picker-item:hover { background: var(--panel-2); }
-.picker-item.active { background: #23304a; border-color: var(--accent); }
+.picker-item.active { background: var(--color-surface-selected); border-color: var(--accent); }
 .picker-tag { color: var(--muted); font-size: 10px; flex: none; }
 .picker-empty { color: var(--muted); font-size: 11.5px; padding: 12px 10px; line-height: 1.6; }
 .picker-foot { border-top: 1px solid var(--border); padding: 6px 8px; display: flex; justify-content: flex-end; }
 
 /* ---- provider cards ------------------------------------------------ */
 
-.provider-card { background: #12161d; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.provider-card { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
 .provider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .provider-title { font-weight: 600; }
 .provider-id { color: var(--muted); font-size: 11px; margin-left: 8px; }
@@ -211,7 +243,7 @@ textarea { resize: vertical; min-height: 62px; }
 .model-chip .effort { color: var(--muted); margin-left: 5px; font-size: 10px; }
 
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(6, 8, 12, 0.62); z-index: 60;
+  position: fixed; inset: 0; background: var(--color-backdrop); z-index: 60;
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .modal {
@@ -226,3 +258,43 @@ textarea { resize: vertical; min-height: 62px; }
 .checklist-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-bottom: 1px solid var(--border); }
 .checklist-row:last-child { border-bottom: none; }
 .checklist-row label { flex: 1; font-size: 12px; }
+
+/* ---- charts --------------------------------------------------------- */
+
+/* SVG paint is set by class, not by a presentation attribute. `stroke=
+   "var(--pos)"` is not a value the SVG attribute grammar accepts, so the
+   colours are declared here and reach the shape through the cascade. */
+.chart-grid { stroke: var(--chart-grid); fill: none; }
+.chart-axis { fill: var(--chart-axis); }
+.candle-wick.candle-up { stroke: var(--up); }
+.candle-wick.candle-down { stroke: var(--down); }
+.candle-body.candle-up { fill: var(--up); stroke: var(--up); }
+.candle-body.candle-down { fill: var(--down); stroke: var(--down); }
+.marker-dot { stroke: var(--panel); }
+.marker-dot.marker-entry, .marker-label.marker-entry { fill: var(--color-accent); }
+.marker-dot.marker-exit, .marker-label.marker-exit { fill: var(--chart-axis); }
+.chart-line.candle-up { stroke: var(--up); }
+.chart-line.candle-down { stroke: var(--down); }
+.spark-line.spark-up { stroke: var(--up); }
+.spark-line.spark-down { stroke: var(--down); }
+.spark-line.spark-flat { stroke: var(--muted); }
+
+/* ---- sortable table headers ----------------------------------------- */
+
+/* The whole header is the hit target, so the button inherits the cell's
+   alignment instead of resetting to the browser default. */
+.th-sort {
+  background: transparent; border: none; padding: 0; width: 100%;
+  color: inherit; font: inherit; text-align: inherit;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+th.num .th-sort { text-align: right; }
+.th-sort:hover { color: var(--text); }
+
+/* ---- evaluation meters ---------------------------------------------- */
+
+.meter { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; margin-top: 6px; }
+.meter > span { display: block; height: 100%; background: var(--color-accent); }
+.meter.loss > span { background: var(--neg); }
+
+.stage-row { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--inset); }

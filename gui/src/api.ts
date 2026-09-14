@@ -1,6 +1,9 @@
 import type {
   AuditRecord, Extraction, KeyValue, Meta, Overview, RoundTrip, RuleRecord,
   SessionEvent, SessionSummary, Summary, UploadResult,
+  BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
+  Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderCalendar,
+  TradeLogDetail, TraderHealth, TraderMeta, TraderSummary, TraderTrades,
 } from './types';
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
@@ -23,6 +26,64 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return payload as T;
 }
+
+// The trader product lives under /api/trader/* on the same local service, so
+// one process serves the review workbench and the journal. The route list is
+// frozen by the backend task; the calls below mirror it one-for-one.
+export const trader = {
+  health: () => request<TraderHealth>('/api/trader/health'),
+  meta: () => request<TraderMeta>('/api/trader/meta'),
+
+  marketProviders: () => request<MarketProviders>('/api/trader/market/providers'),
+  marketBars: (params: {
+    provider: string; symbol: string; interval: string;
+    start?: string; end?: string; limit?: number;
+  }) => request<MarketBars>('/api/trader/market/bars?' + new URLSearchParams(clean(params)).toString()),
+
+  trades: (params: {
+    account_id?: string; symbol?: string; from?: string; to?: string;
+    limit?: number; offset?: number;
+  } = {}) => request<TraderTrades>('/api/trader/trades?' + new URLSearchParams(clean(params)).toString()),
+  trade: (roundTripId: string) =>
+    request<TradeLogDetail>('/api/trader/trades/' + encodeURIComponent(roundTripId)),
+  importTrades: (payload: { format?: string; content: string; account_id?: string }) =>
+    request<TraderTrades & { imported: number }>('/api/trader/trades/import', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+
+  accounts: () => request<TraderAccounts>('/api/trader/accounts'),
+  createAccount: (payload: {
+    name: string; broker?: string; currency?: string; initial_balance?: number;
+  }) => request<{ account: TraderAccounts['accounts'][number]; safety: string }>('/api/trader/accounts', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+
+  summary: (params: { from?: string; to?: string; account_id?: string } = {}) =>
+    request<TraderSummary>('/api/trader/analytics/summary?' + new URLSearchParams(clean(params)).toString()),
+  breakdown: (params: { dimension: string; from?: string; to?: string }) =>
+    request<TraderBreakdown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
+  calendar: (params: { year: number; month: number }) =>
+    request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(params)).toString()),
+
+  playbooks: () => request<Playbooks>('/api/trader/playbooks'),
+  createPlaybook: (payload: Partial<Playbook> & { name: string }) =>
+    request<{ playbook: Playbook; safety: string }>('/api/trader/playbooks', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+
+  runBacktest: (payload: { strategy: Record<string, unknown>; provider?: string; symbol?: string; interval?: string;
+    start?: string; end?: string; initial_cash?: number; fees_bps?: number }) =>
+    request<BacktestRunDetail>('/api/trader/backtest/run', { method: 'POST', body: JSON.stringify(payload) }),
+  backtestRuns: () => request<BacktestRuns>('/api/trader/backtest/runs'),
+  backtestRun: (runId: string) =>
+    request<BacktestRunDetail>('/api/trader/backtest/runs/' + encodeURIComponent(runId)),
+
+  createReplaySession: (payload: { provider: string; symbol: string; interval: string;
+    start?: string; end?: string; limit?: number; notes?: string }) =>
+    request<ReplaySession>('/api/trader/replay/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  replaySession: (sessionId: string) =>
+    request<ReplaySession>('/api/trader/replay/sessions/' + encodeURIComponent(sessionId)),
+};
 
 export const api = {
   meta: () => request<Meta>('/api/meta'),
@@ -154,4 +215,3 @@ export function readFileAsBase64(file: File): Promise<string> {
 }
 
 export type { Extraction };
-

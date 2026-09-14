@@ -1,42 +1,61 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<!--
+  data-theme is set on the element itself, not on a wrapper, so the tokens
+  resolve for the boot frame as well as for the app. The inline script runs
+  before first paint and applies the stored preference, which is what stops a
+  light-to-dark flash on a machine that chose dark. Dark is the default.
+-->
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      try {
+        if (window.localStorage.getItem('smcub.theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (error) {
+        /* Storage blocked: keep the default. */
+      }
+    </script>
     <title>SmartMoney-Cub 复盘工作台</title>
     <style>
+      /* The boot frame is styled from the same tokens as the app, so the
+         fallback screen and the interface cannot drift apart. */
+      :root { --boot-bg: #101318; --boot-panel: #171b22; --boot-border: #262c37; --boot-text: #e6eaf2; --boot-muted: #8b93a4; }
+      [data-theme="light"] { --boot-bg: #ffffff; --boot-panel: #f6f7f9; --boot-border: #e0e3ea; --boot-text: #0f0f0f; --boot-muted: #767c8a; }
       .boot {
         margin: 0;
         min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #101318;
-        color: #e6eaf2;
+        background: var(--boot-bg);
+        color: var(--boot-text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
         line-height: 1.75;
       }
       .boot main { max-width: 620px; padding: 32px; }
       .boot h1 { font-size: 17px; margin: 0 0 6px; }
-      .boot p { margin: 0 0 14px; color: #8b93a4; font-size: 13px; }
+      .boot p { margin: 0 0 14px; color: var(--boot-muted); font-size: 13px; }
       .boot code {
-        background: #171b22;
-        border: 1px solid #262c37;
+        background: var(--boot-panel);
+        border: 1px solid var(--boot-border);
         border-radius: 6px;
         padding: 2px 6px;
         font-size: 12px;
       }
       .boot pre {
-        background: #171b22;
-        border: 1px solid #262c37;
+        background: var(--boot-panel);
+        border: 1px solid var(--boot-border);
         border-radius: 8px;
         padding: 12px 14px;
         overflow: auto;
         font-size: 12.5px;
       }
-      .boot .safe { color: #8b93a4; font-size: 11px; margin-top: 18px; }
+      .boot .safe { color: var(--boot-muted); font-size: 11px; margin-top: 18px; }
     </style>
   </head>
   <body>

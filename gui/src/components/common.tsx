@@ -75,12 +75,15 @@ export function Sparkline({ points, scheme }: { points: number[]; scheme: 'cn' |
     .map((value, index) => (index === 0 ? 'M' : 'L') + (index * step).toFixed(1) + ' ' + (height - ((value - min) / span) * height).toFixed(1))
     .join(' ');
   const last = points[points.length - 1];
-  const color = last === 0 ? '#8b93a4' : (last > 0) === (scheme === 'cn') ? '#f0524d' : '#2fbf71';
+  // The rising/falling colour of the curve follows the same preference the
+  // tables use, so the chart and the numbers never disagree about which
+  // direction is red.
+  const toneClass = last === 0 ? 'spark-flat' : ((last > 0) === (scheme === 'cn') ? 'spark-up' : 'spark-down');
   const zeroY = height - ((0 - min) / span) * height;
   return (
     <svg viewBox={'0 0 ' + width + ' ' + height} style={{ width: '100%', height: 140 }}>
-      <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="#262c37" strokeDasharray="3 4" />
-      <path d={path} fill="none" stroke={color} strokeWidth="2" />
+      <line x1="0" y1={zeroY} x2={width} y2={zeroY} className="chart-grid" strokeDasharray="3 4" />
+      <path d={path} fill="none" className={'spark-line ' + toneClass} strokeWidth="2" />
     </svg>
   );
 }
@@ -177,7 +180,7 @@ function inline(text: string): React.ReactNode[] {
     }
     if (part.startsWith('\`') && part.endsWith('\`')) {
       return (
-        <code key={index} style={{ background: '#12161d', padding: '1px 4px', borderRadius: 4 }}>
+        <code key={index} style={{ background: 'var(--inset)', padding: '1px 4px', borderRadius: 4 }}>
           {part.slice(1, -1)}
         </code>
       );
