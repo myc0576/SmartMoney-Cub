@@ -11,7 +11,15 @@ from __future__ import annotations
 from smartmoney_cub_harness.trader.auth.identity import (
     AuthContext,
     AuthError,
+    MODE_HOSTED,
+    MODE_LOCAL,
     resolve_identity,
 )
 
-__all__ = ["AuthContext", "AuthError", "resolve_identity"]
+__all__ = [
+    "AuthContext",
+    "AuthError",
+    "MODE_HOSTED",
+    "MODE_LOCAL",
+    "resolve_identity",
+]
