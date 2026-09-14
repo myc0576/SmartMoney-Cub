@@ -231,6 +231,14 @@ own journal, an unauthenticated request is refused with 401, a request with a
 tampered signature is refused, every refusal still carries the safety declaration,
 and the rows land under separate tenant ids in Postgres.
 
+It checks **both** identity modes. Session mode runs first, because it is the
+default this document sets and the only mode a browser can reach: the frontend
+sends no auth header and relies on the platform cookie the browser already holds,
+so the check stands up a local stub that answers `/api/user/self` the way the
+platform does. Signed-header mode is the fallback and is checked second. A
+deployment can pass every signed-header test and still refuse every real user, so
+both are asserted rather than one assumed.
+
 ```bash
 pip install "smartmoney-cub-harness[hosted]" pgserver
 SMARTMONEY_HOSTED_E2E=1 python scripts/hosted-e2e.py

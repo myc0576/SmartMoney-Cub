@@ -13,6 +13,11 @@ It is opt-in because it needs a database and a driver:
 
 Without SMARTMONEY_HOSTED_E2E it prints why it skipped and exits 0, so it can sit
 in a pipeline without becoming a false failure on a machine that cannot host one.
+
+It checks both platform auth modes. Session mode is the default a hosted
+deployment runs, and it is checked first because it is the one a real browser
+reaches: the caller's platform cookie is forwarded to the platform, and the
+frontend sends no auth header of its own. Signed-header mode is the fallback.
 """
 from __future__ import annotations
 
@@ -27,6 +32,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
 
 SECRET = "hosted-e2e-secret"
 PORT = int(os.environ.get("SMCUB_E2E_PORT", "8831"))
@@ -190,6 +197,9 @@ def main() -> int:
 
         print()
         print("ALL HOSTED-MODE CHECKS PASSED")
+        print()
+        if session_mode_check(database_url) != 0:
+            return 1
         return 0
     finally:
         process.terminate()
@@ -199,6 +209,128 @@ def main() -> int:
             process.kill()
 
 
+class _PlatformStub(BaseHTTPRequestHandler):
+    """Answers /api/user/self the way the platform does.
+
+    new-api returns 401 when the session is absent or invalid, and the user
+    object when it is valid. Standing this up locally is what lets the default
+    session mode be checked without the real platform.
+    """
+
+    valid_cookie = "session=hosted-e2e-session"
+
+    def log_message(self, *args) -> None:  # noqa: D102 - silence the test server
+        return
+
+    def do_GET(self) -> None:  # noqa: N802 - the handler interface dictates the name
+        if self.path.split("?")[0] != "/api/user/self":
+            self.send_response(404)
+            self.end_headers()
+            return
+        if self.valid_cookie not in (self.headers.get("Cookie") or ""):
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"success":false}')
+            return
+        body = json.dumps({"id": 42, "username": "e2e-user", "display_name": "E2E User"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def session_mode_check(database_url: str) -> int:
+    """Check the default hosted auth mode: the platform session cookie.
+
+    Why this is separate from the signed-header check above: session mode is what
+    a hosted deployment runs by default, and it is the only mode a browser can
+    reach, because the frontend sets no auth header and relies on the cookie jar.
+    A deployment could pass every signed-header test and still refuse every real
+    user; that is exactly the gap this closes.
+    """
+    platform_port = PORT + 10
+    app_port = PORT + 11
+    stub = ThreadingHTTPServer(("127.0.0.1", platform_port), _PlatformStub)
+    threading.Thread(target=stub.serve_forever, daemon=True).start()
+    print(f"[8] stub platform on {platform_port} (answers /api/user/self)")
+
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(REPO / "src")
+    environment["ALPHATECH_AUTH_MODE"] = "session"
+    environment["ALPHATECH_BASE_URL"] = f"http://127.0.0.1:{platform_port}"
+    environment.pop("ALPHATECH_SSO_SECRET", None)
+    state_dir = tempfile.mkdtemp(prefix="smcub-e2e-session-")
+    process = subprocess.Popen(
+        [
+            sys.executable, "-m", "smartmoney_cub_harness.cli", "trader", "serve",
+            "--mode", "hosted", "--database-url", database_url,
+            "--port", str(app_port), "--no-browser", "--state-dir", state_dir,
+        ],
+        cwd=REPO, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+
+    def call(cookie: str | None, path: str = "/api/trader/health"):
+        headers = {"Cookie": cookie} if cookie else {}
+        request = urllib.request.Request(f"http://127.0.0.1:{app_port}{path}", headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return response.status, json.load(response)
+        except urllib.error.HTTPError as error:
+            return error.code, json.loads(error.read().decode() or "{}")
+        except Exception as error:  # the server may still be starting
+            return 0, {"error": str(error)}
+
+    try:
+        status = 0
+        for _ in range(60):
+            status, _ = call(_PlatformStub.valid_cookie)
+            if status == 200:
+                break
+            time.sleep(0.5)
+        if status != 200:
+            print("[9] FAIL: the session-mode server never became ready")
+            if process.stdout:
+                print(process.stdout.read()[-1200:])
+            return 1
+
+        status, body = call(_PlatformStub.valid_cookie)
+        identity = body.get("user_id", "")
+        print(f"[9] valid platform session -> {status} | identity {identity}")
+        if status != 200 or not identity.endswith("42"):
+            print("[9] FAIL: a valid platform session was not resolved to the platform user")
+            return 1
+
+        status, _ = call("session=wrong")
+        print(f"[10] invalid session -> {status}")
+        if status != 401:
+            print("[10] FAIL: an invalid session was accepted")
+            return 1
+
+        status, body = call(None)
+        print(f"[11] no session -> {status}")
+        if status != 401 or body.get("safety") != SAFETY:
+            print("[11] FAIL: an anonymous request was accepted, or the refusal lost the declaration")
+            return 1
+
+        status, body = call(_PlatformStub.valid_cookie, "/api/trader/trades")
+        print(f"[12] journal readable through the cookie -> {status} | trades {body.get('count')}")
+        if status != 200:
+            print("[12] FAIL: the session could not read its own journal")
+            return 1
+
+        print()
+        print("ALL SESSION-MODE CHECKS PASSED")
+        return 0
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except Exception:
+            process.kill()
+        stub.shutdown()
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
-
