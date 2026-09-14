@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { api, readFileAsBase64 } from '../api';
+import { api, readFileAsBase64, trader } from '../api';
 import type { Extraction, UploadResult } from '../types';
 import { Banner, Panel } from '../components/common';
 
@@ -70,25 +70,27 @@ export function ImportView({ onImported }: { onImported: () => void }) {
     setBusy(true);
     setError('');
     try {
-      const result = await api.commitImport({
-        extraction_id: upload.extraction.extraction_id,
-        document_id: upload.document.document_id,
+      // Write into the tenant journal, which is the store every view reads. The
+      // workbench commit route writes to a different database, so imported rows
+      // used to land somewhere the dashboard never looked — and in hosted mode
+      // an unpartitioned local file, outside tenant isolation entirely.
+      const result = await trader.importTrades({
         rows: rows.map((row) => ({
-          ...row,
+          trade_id: [row.trade_date, row.trade_time, row.symbol, row.side].join('-'),
+          symbol: row.symbol,
+          side: row.side,
           price: row.price === '' ? null : Number(row.price),
           quantity: row.quantity === '' ? null : Number(row.quantity),
           fee: row.fee === '' ? 0 : Number(row.fee),
+          trade_date: row.trade_date,
+          trade_time: row.trade_time,
+          thesis: row.thesis,
         })),
       });
-      if (result.status === 'rejected') {
-        setError('有 ' + (result.rejected?.length || 0) + ' 行未通过校验，已全部拒绝，没有任何记录写入。');
-        setStatus('');
-      } else {
-        setStatus('已写入 ' + result.inserted_count + ' 行，跳过重复 ' + (result.skipped?.length || 0) + ' 行。');
-        setUpload(null);
-        setRows([]);
-        onImported();
-      }
+      setStatus('已写入 ' + result.inserted_count + ' 行，更新 ' + result.updated_count + ' 行。');
+      setUpload(null);
+      setRows([]);
+      onImported();
     } catch (commitError) {
       setError(commitError instanceof Error ? commitError.message : String(commitError));
     } finally {
@@ -100,11 +102,18 @@ export function ImportView({ onImported }: { onImported: () => void }) {
     setBusy(true);
     setError('');
     try {
-      await api.addManualFill({
-        ...row,
-        price: row.price === '' ? null : Number(row.price),
-        quantity: row.quantity === '' ? null : Number(row.quantity),
-        fee: row.fee === '' ? 0 : Number(row.fee),
+      await trader.importTrades({
+        rows: [{
+          trade_id: [row.trade_date, row.trade_time, row.symbol, row.side].join('-'),
+          symbol: row.symbol,
+          side: row.side,
+          price: row.price === '' ? null : Number(row.price),
+          quantity: row.quantity === '' ? null : Number(row.quantity),
+          fee: row.fee === '' ? 0 : Number(row.fee),
+          trade_date: row.trade_date,
+          trade_time: row.trade_time,
+          thesis: row.thesis,
+        }],
       });
       setStatus('已手工补录 1 笔。');
       onImported();
@@ -261,4 +270,3 @@ function ManualEntry({ onSubmit, busy }: { onSubmit: (row: DraftRow) => Promise<
     </Panel>
   );
 }
-

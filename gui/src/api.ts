@@ -3,8 +3,8 @@ import type {
   SessionEvent, SessionSummary, UploadResult,
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
   Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
-  TraderCalendar, TradeLogDetail, TraderHealth, TraderMeta, TraderSummaryEnvelope,
-  TraderTrades,
+  TraderCalendar, TradeLogDetail, TraderHealth, TraderImportResult, TraderMeta,
+  TraderSummaryEnvelope, TraderTrades,
 } from './types';
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
@@ -47,10 +47,15 @@ export const trader = {
   } = {}) => request<TraderTrades>('/api/trader/trades?' + new URLSearchParams(clean(params)).toString()),
   trade: (roundTripId: string) =>
     request<TradeLogDetail>('/api/trader/trades/' + encodeURIComponent(roundTripId)),
-  importTrades: (payload: { format?: string; content: string; account_id?: string }) =>
-    request<TraderTrades & { imported: number }>('/api/trader/trades/import', {
-      method: 'POST', body: JSON.stringify(payload),
-    }),
+  /** Writes fills into the tenant journal. Send rows, or raw CSV text. */
+  importTrades: (payload: {
+    rows?: Array<Record<string, unknown>>;
+    content?: string;
+    format?: string;
+    account_id?: string;
+  }) => request<TraderImportResult>('/api/trader/trades/import', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
 
   accounts: () => request<TraderAccounts>('/api/trader/accounts'),
   createAccount: (payload: {

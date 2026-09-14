@@ -383,6 +383,17 @@ export interface TraderTrades extends SafetyEnvelope {
   ledger_status?: string;
 }
 
+/** The journal's import acknowledgement. It reports what was written rather than
+ *  echoing the ledger, so a caller cannot mistake it for a trade list. */
+export interface TraderImportResult extends SafetyEnvelope {
+  format: string;
+  submitted_count: number;
+  inserted: string[];
+  updated: string[];
+  inserted_count: number;
+  updated_count: number;
+}
+
 /** The highest precision the detail route returns for one journal row. */
 export interface TradeLogDetail extends SafetyEnvelope {
   trade: TradeLogEntry;
