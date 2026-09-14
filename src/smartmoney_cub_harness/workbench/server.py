@@ -830,8 +830,16 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         token gating everything whose contents depend on the tenant, and serving
         everything else is safe because the shell is the same bytes for everyone
         and reveals nothing: every number it shows arrives through a gated call.
+
+        The comparison is on path segments rather than a prefix string, so the bare
+        '/api' counts as an API path too. A plain 'startswith("/api/")' test let
+        '/api' through the gate -- it returned 200 without a token while '/api/'
+        correctly returned 401. Serving the shell there turned out to be harmless,
+        but the rule should not depend on that: the safe reading of "under /api" is
+        every spelling of it, and a future handler mounted at '/api' would have been
+        exposed by the looser test.
         """
-        return not path.startswith("/api/")
+        return not (path == "/api" or path.startswith("/api/"))
 
     # ---- GET -----------------------------------------------------------
 

@@ -936,6 +936,12 @@ def test_the_interface_loads_without_a_token_while_the_data_does_not(tmp_path) -
         assert status == 401, status
         assert _json.loads(body)["safety"] == SAFETY_DECLARATION
 
+        # Every spelling of an API path needs the token, including the bare '/api'
+        # with no trailing slash, which a plain prefix test let through the gate.
+        for spelling in ("/api", "/api/", "/api/trader", "/api/overview", "/api/audit"):
+            status, _ = get(spelling)
+            assert status == 401, (spelling, status)
+
         # And with the token, both work.
         status, _ = get("/api/trader/health", token="deploy-token")
         assert status == 200, status
@@ -946,4 +952,3 @@ def test_the_interface_loads_without_a_token_while_the_data_does_not(tmp_path) -
         server.server_close()
         store.close()
         workbench.close()
-
