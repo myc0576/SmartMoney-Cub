@@ -5,7 +5,13 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('/Users/myc/Smartmoney-Cub/node_modules/playwright');
+/* Resolve playwright from the repository's own node_modules, wherever the
+ * repository happens to live. The previous form was an absolute path to one
+ * developer's checkout, which meant the harness only ran on that machine and a
+ * committed file published a local account name and directory layout. */
+const { chromium } = require(require.resolve('playwright', {
+  paths: [path.join(__dirname, '..')],
+}));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
 const OUT = process.argv[3] || path.join(__dirname, '..', 'artifacts', 'visual');
