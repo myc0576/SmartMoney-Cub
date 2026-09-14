@@ -338,11 +338,18 @@ worse than none, because it hides the failure it exists to catch.
   requires it. That split is deliberate: the shell is identical bytes for everyone
   and shows nothing on its own, because every number it displays arrives through a
   gated call.
-- **The local workbench API is not the product.** `/api/overview`,
-`/api/settings`, and `/api/assistant/*` read the container's own state
-directory and carry no tenant identity. Publish only `/trader/api/trader/*`;
-`deploy/nginx.conf` shows how to close the rest when one host serves several
-people.
+- **The local workbench API is not the product, and the shipped config closes
+  it.** `/api/overview`, `/api/settings`, and `/api/assistant/*` read the
+  container's own state directory and carry no tenant identity, so every visitor
+  the proxy serves would see the same data -- including other users' assistant
+  sessions. `deploy/nginx.conf` therefore publishes only
+  `/trader/api/trader/*` and returns `403` for the rest of `/trader/api/`, and
+  `scripts/preflight.py` asserts that boundary rather than trusting it.
+  Commenting those two blocks out is correct only on a host that serves one
+  person and is reachable by no one else; the blocks carry a comment saying so.
+  The access token does **not** close this on its own: nginx injects it for
+  every visitor, because a browser cannot send a custom header on a page load,
+  so it cannot tell one person from another.
 - **Never commit a real deployment's `.env`.** The compose file takes every
   secret from the environment for exactly this reason.
 - **Hosted extra is opt-in.** The core install has no runtime dependency and

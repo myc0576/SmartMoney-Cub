@@ -195,6 +195,39 @@ def main() -> int:
                 else:
                     check("the response carries the safety declaration", has_declaration)
 
+            # The trust boundary, checked because getting it wrong is invisible
+            # from the outside: the proxy injects the access token for every
+            # visitor, so the token cannot tell one person from another, and a
+            # published workbench surface would show each of them the same
+            # container-local state. Confirm the shipped rules close it, and that
+            # the tenant-scoped surface stays open.
+            boundary_paths = (
+                "/trader/api/settings",
+                "/trader/api/assistant/sessions",
+                "/trader/api/overview",
+            )
+            leaked = []
+            for path in boundary_paths:
+                status, _ = request(f"http://127.0.0.1:{proxy_port}{path}")
+                if status == 403:
+                    continue
+                # A refusal from the app (401) still means the proxy forwarded it,
+                # which is exactly the exposure: the app has no tenant identity to
+                # refuse on for these routes in local mode.
+                leaked.append(f"{path}={status}")
+            check(
+                "the workbench API is closed at the trust boundary",
+                not leaked,
+                ", ".join(leaked),
+            )
+
+            status, _ = request(f"http://127.0.0.1:{proxy_port}/trader/api/trader/health")
+            check(
+                "the tenant-scoped API stays reachable through the proxy",
+                status in (200, 401),
+                f"got {status}",
+            )
+
         print()
         print("[4] the product refuses a misconfigured deployment")
         for name, value in (("ALPHATECH_AUTH_MODE", "typo"),):
