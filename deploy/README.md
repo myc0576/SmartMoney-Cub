@@ -252,6 +252,31 @@ are the part worth repeating against your real deployment.
 Without `SMARTMONEY_HOSTED_E2E=1` the script prints why it skipped and exits 0,
 so it never turns into a false failure on a machine that cannot host a database.
 
+### Check the proxy config and the container healthcheck
+
+Two more pieces of this deployment are executable and worth running before you
+trust them:
+
+```bash
+pip install crossplane
+python scripts/nginx-check.py       # parses nginx.conf; catches the syntax and
+                                    # unknown-variable faults that stop nginx starting
+```
+
+An nginx config that fails to parse, or that references a variable no `map`
+defines, takes the whole site down and never appears in a test suite. This check
+parses the shipped config, confirms every variable is either built in or mapped,
+and confirms the pieces a hosted deployment depends on are present. crossplane is
+a parser rather than nginx, so on a host with nginx installed run
+`nginx -t -c` for the authoritative answer — the check says so when it passes.
+
+The container's `HEALTHCHECK` is likewise a claim about the image. It is a plain
+Python URL request, so it can be run directly against a server started the way the
+container starts one, including the access token the container passes — the part
+most likely to be wrong. A correct token must report healthy, and a wrong token or
+a stopped app must report unhealthy; a healthcheck that passes in both states is
+worse than none, because it hides the failure it exists to catch.
+
 - **Back up the journal.** In hosted mode it is the `db_data` volume (compose)
   or your Postgres instance. It is the user's own data and it is never in the
   repository.
