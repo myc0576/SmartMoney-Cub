@@ -358,3 +358,56 @@ def test_http_requires_the_token_when_one_is_configured(tmp_path) -> None:
         server.shutdown()
         server.server_close()
         service.close()
+
+
+def test_every_json_error_response_carries_the_safety_declaration(tmp_path) -> None:
+    """A refusal is a response too, and the contract covers it.
+
+    Regression: five error paths built their body without the declaration, so a
+    client error was the one reply that did not state the product's safety
+    contract. The GET paths that serve the interface shell are excluded on
+    purpose -- those are the SPA for client-side routing, not API bodies.
+    """
+    service = _service(tmp_path)
+    handler = type(
+        "TestHandler",
+        (WorkbenchHandler,),
+        {"service": service, "asset_dir": None, "access_token": None},
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    import urllib.error
+    import urllib.request
+
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def post(path: str, body: dict):
+        request = urllib.request.Request(
+            base + path,
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, response.read().decode("utf-8")
+        except urllib.error.HTTPError as error:
+            return error.code, error.read().decode("utf-8")
+
+    try:
+        # An unknown endpoint, a known endpoint refusing bad input, and a
+        # malformed body. Each is a refusal rather than a success.
+        cases = [
+            post("/api/nonexistent", {}),
+            post("/api/assistant/sessions/nope/messages", {}),
+            post("/api/settings/providers/NOPE/remove", {}),
+        ]
+        for status, text in cases:
+            assert status >= 400, (status, text)
+            assert text.lstrip().startswith("{"), text[:120]
+            assert '"safety"' in text, f"HTTP {status} body omits the declaration: {text[:160]}"
+            assert SAFETY_DECLARATION in text, text[:160]
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.close()

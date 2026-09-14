@@ -993,10 +993,29 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 self._json(self.service.doctor())
                 return
         except ApiError as error:
-            self._json({"status": "error", "error": str(error), "code": error.code}, status=error.status)
+            # The declaration belongs on every response, refusals included. These
+            # two paths omitted it, so a client error was the one reply that did
+            # not state the product's safety contract.
+            self._json(
+                {
+                    "status": "error",
+                    "error": str(error),
+                    "code": error.code,
+                    "safety": SAFETY_DECLARATION,
+                },
+                status=error.status,
+            )
             return
         except KeyError as error:
-            self._json({"status": "error", "error": f"not found: {error}", "code": "not_found"}, status=404)
+            self._json(
+                {
+                    "status": "error",
+                    "error": f"not found: {error}",
+                    "code": "not_found",
+                    "safety": SAFETY_DECLARATION,
+                },
+                status=404,
+            )
             return
 
         if self._static(path):
@@ -1088,13 +1107,36 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 self._json(self.service.test_provider(self._read_json()))
                 return
         except ApiError as error:
-            self._json({"status": "error", "error": str(error), "code": error.code}, status=error.status)
+            self._json(
+                {
+                    "status": "error",
+                    "error": str(error),
+                    "code": error.code,
+                    "safety": SAFETY_DECLARATION,
+                },
+                status=error.status,
+            )
             return
         except KeyError as error:
-            self._json({"status": "error", "error": f"not found: {error}", "code": "not_found"}, status=404)
+            self._json(
+                {
+                    "status": "error",
+                    "error": f"not found: {error}",
+                    "code": "not_found",
+                    "safety": SAFETY_DECLARATION,
+                },
+                status=404,
+            )
             return
 
-        self._json({"status": "error", "error": f"unknown endpoint {path}"}, status=404)
+        self._json(
+            {
+                "status": "error",
+                "error": f"unknown endpoint {path}",
+                "safety": SAFETY_DECLARATION,
+            },
+            status=404,
+        )
 
     def _stream_turn(self, session_id: str, payload: dict[str, Any]) -> None:
         events = self.service.stream_turn(session_id, payload)
