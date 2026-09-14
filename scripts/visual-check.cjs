@@ -73,6 +73,11 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
         scrollW: document.documentElement.scrollWidth,
         clientW: document.documentElement.clientWidth,
         panels: document.querySelectorAll('.panel, .grid, table').length,
+        /* The view rendered its own content, not only the shell. A page whose
+         * view failed leaves just the sidebar and topbar behind. */
+        hasPanel: document.querySelectorAll('.page .panel, .page table, .page .grid').length > 0,
+        /* An error surface means the view did not load, whatever its markup size. */
+        hasErrorBanner: document.querySelectorAll('.page .banner-error').length > 0,
       }));
 
       /* Horizontal overflow is the classic layout breakage on a dashboard. */
@@ -85,7 +90,19 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
         overflow, width: state.scrollW, text: state.text,
         console_errors: [...new Set(errs)].slice(0, 3),
       });
-      rec.ok = clicked && state.dom > 1500 && !overflow && rec.console_errors.length === 0;
+      /* The previous rule was a byte count standing in for "did the page
+       * render". That is the wrong measure in both directions: a small honest
+       * view, such as an empty playbook list, fails it, while a page carrying a
+       * large error banner passes. What matters is that the view rendered its own
+       * panel and no error surface -- so those are the two conditions, with the
+       * byte count still recorded for context. */
+      rec.ok = Boolean(
+        clicked
+        && state.hasPanel
+        && !state.hasErrorBanner
+        && !overflow
+        && rec.console_errors.length === 0
+      );
     } catch (e) {
       rec.error = String(e.message).slice(0, 140);
     } finally { if (ctx) { try { await ctx.close(); } catch (e) {} } }

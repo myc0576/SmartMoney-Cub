@@ -41,6 +41,10 @@ curl -fsS -X POST "http://127.0.0.1:$PORT/api/trader/accounts" -H 'Content-Type:
   -d '{"name":"Main","broker":"Local","account_type":"live","initial_balance":100000,"currency":"USD"}' >/dev/null
 curl -fsS -X POST "http://127.0.0.1:$PORT/api/trader/trades/import" -H 'Content-Type: application/json' \
   -d '{"rows":[{"trade_id":"v1","symbol":"600111","side":"BUY","price":10.0,"quantity":1000,"trade_date":"2026-09-01"},{"trade_id":"v2","symbol":"600111","side":"SELL","price":11.0,"quantity":1000,"trade_date":"2026-09-03"},{"trade_id":"v3","symbol":"600519","side":"BUY","price":100.0,"quantity":100,"trade_date":"2026-09-02"},{"trade_id":"v4","symbol":"600519","side":"SELL","price":98.0,"quantity":100,"trade_date":"2026-09-04"}]}' >/dev/null
+# A playbook, so the playbook view renders its populated state rather than only
+# its empty state. Without one that view is a single short notice, which the
+# harness's size heuristic reads as a broken page.
+curl -fsS -X POST "http://127.0.0.1:$PORT/api/trader/playbooks" -H 'Content-Type: application/json' \
+  -d '{"name":"toy-breakout","description":"A toy plan used by the visual pass.","setup":"Breakout above the prior day high on rising volume.","entry_rules":"Wait for the close above the level.\nEnter on the next open.","exit_rules":"Exit below the breakout level.","risk_rules":"Risk no more than one percent per trade.","tags":["toy"]}' >/dev/null
 
 node "$ROOT/scripts/visual-check.cjs" "http://127.0.0.1:$PORT" "$ROOT/artifacts/visual"
-
