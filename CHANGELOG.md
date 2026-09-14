@@ -59,6 +59,58 @@ identity in Postgres.
 - The documented contract now covers the trader product alongside the existing
   control plane.
 
+### Fixed
+
+Fixes found while preparing the product to ship, each verified by executing the
+path rather than reading it. An independent adversarial pass over the shipping
+claims produced most of them.
+
+- **The workbench API was reachable by every visitor the proxy served.** The
+  tenant-scoped `/api/trader/*` surface resolved an identity per request and was
+  isolated, but `/api/overview`, `/api/settings`, and `/api/assistant/*` read
+  the container's own state directory and carry no tenant identity, so a second
+  platform identity could list the first user's private assistant sessions.
+  `deploy/nginx.conf` closed this only in a commented-out block, so the shipped
+  default was fail-open on a shared host. Those blocks are now active, and
+  `scripts/preflight.py` asserts the boundary instead of trusting it.
+  The access token does not close this on its own: nginx injects it for every
+  visitor, because a browser cannot attach a custom header to a page load.
+- **The proxy validator reported success without parsing.** `scripts/nginx-check.py`
+  passed crossplane the config text where it expects a filename, and crossplane
+  reports that failure in its returned status rather than by raising, so the
+  guard never fired and the script printed "PASS: parses cleanly" with the config
+  unread. It now parses a real file and checks the returned status.
+- **Two deployment-pipeline defects blocked any release.** `release.yml` uploaded
+  the npm tarball from a malformed path expression, which would have failed the
+  `npm-package` job; `ci.yml` carried a stray `+` inside the grep asserting the
+  safety declaration survives the interface build.
+- **Every JSON error response now carries the safety declaration.** Five error
+  paths omitted it, so a refusal was the one reply that did not state the
+  product's safety contract.
+- **An unreachable hosted database reported a raw traceback.** The first real
+  connection happens when the store migrates its schema, which sat outside the
+  startup guard, so a database that was down reached the operator as a Python
+  stack instead of the one clean line every other refusal prints.
+- **The model catalog named models the endpoint does not serve.** The built-in
+  gateway catalog hardcoded three DeepSeek ids that `/v1/models` does not
+  return, so the selector offered models that could never answer. The catalog is
+  now correct and reconciled against the endpoint: a withdrawn id is marked
+  stale rather than hidden, discovered chat models are appended, and the effort
+  selector shows a human label and a description instead of a bare wire enum.
+- **Saving a model dropped its context window and description**, which made the
+  settings page write-only for those fields.
+- **The visual harness hardcoded an absolute path** to one developer's checkout,
+  so it could only run on that machine. A test now guards the shipping files
+  against committed local paths.
+- **The loop tests filled the checkout until they failed.** They ran the CLI
+  with the repository as the working directory and the loop writes its run
+  directories relative to that, so enough local runs exhausted the
+  `unique_run_dir` cap and six tests began failing for an unrelated reason.
+  `smcub loop` now takes `--root` and the tests isolate their runs.
+- **A flaky redaction assertion** searched a whole ledger file for a short
+  secret, so it failed whenever those letters fell inside the entry's random
+  `ledger_id` -- about one run in fifty, and it looked like a privacy failure.
+
 ### Notes
 
 - Hosted mode requires a `postgresql://` `--database-url` and refuses to fall
