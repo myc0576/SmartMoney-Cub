@@ -820,6 +820,19 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return True
 
+    def _is_static_request(self, path: str) -> bool:
+        """True when a GET asks for the interface rather than for data.
+
+        The rule is "not an API path" rather than "a file that exists", and the
+        difference matters: an unknown path falls back to the single-page shell,
+        so a client-side route like /trader/trade-log is an interface request even
+        though no file matches it. Treating anything under /api as data keeps the
+        token gating everything whose contents depend on the tenant, and serving
+        everything else is safe because the shell is the same bytes for everyone
+        and reveals nothing: every number it shows arrives through a gated call.
+        """
+        return not path.startswith("/api/")
+
     # ---- GET -----------------------------------------------------------
 
     def _trader(self, method: str) -> bool:
@@ -862,8 +875,20 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self) -> None:  # noqa: N802
-        if not self._authorized():
-            self._json({"status": "error", "error": "invalid access token"}, status=401)
+        # The interface itself is served before the token check, and only the
+        # interface. A browser cannot attach a custom header to the navigation
+        # that loads the page or to the requests the page makes for its own
+        # JavaScript and CSS, so gating those returns 401 for every page load in
+        # a token-protected deployment -- the product becomes unreachable exactly
+        # where the docs tell an operator to protect it. The token still gates
+        # every API call, which is the data that needs protecting; the page is a
+        # shell whose content all arrives through those gated calls.
+        parsed_path = urllib.parse.urlparse(self.path).path
+        if not self._is_static_request(parsed_path) and not self._authorized():
+            self._json(
+                {"status": "error", "error": "invalid access token", "safety": SAFETY_DECLARATION},
+                status=401,
+            )
             return
         if self._trader("GET"):
             return
@@ -940,7 +965,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         if not self._authorized():
-            self._json({"status": "error", "error": "invalid access token"}, status=401)
+            # A refusal is a response too, and the contract puts the declaration on
+            # every response. This one lacked it.
+            self._json(
+                {"status": "error", "error": "invalid access token", "safety": SAFETY_DECLARATION},
+                status=401,
+            )
             return
         if self._trader("POST"):
             return

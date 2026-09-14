@@ -283,6 +283,30 @@ worse than none, because it hides the failure it exists to catch.
 - **The token is required, not optional.** A non-loopback bind refuses to start
   without it, and the interface and the trader surface share one gate. Clients
   send `X-SMCUB-Token`.
+
+  **nginx supplies it for browsers.** A browser cannot attach a custom header to
+  the navigation that loads a page, or to the requests the page then makes for its
+  own JavaScript and CSS — so a token-protected app is unreachable from a browser
+  unless the proxy adds the header. `deploy/nginx.conf` does that: it includes a
+  one-line snippet holding the token and sets `X-SMCUB-Token` on every proxied
+  request. Create it once, with the same value as the service's
+  `TRADER_ACCESS_TOKEN`:
+
+  ```bash
+  sudo install -d -m 0755 /etc/nginx/snippets
+  printf 'set $smcub_token "%s";\n' "$(openssl rand -hex 32)" \
+    | sudo tee /etc/nginx/snippets/smcub-token.conf >/dev/null
+  sudo chmod 600 /etc/nginx/snippets/smcub-token.conf
+  ```
+
+  A missing snippet makes nginx refuse to start, which is the failure you want: a
+  proxy that came up without the token would 401 every request. The include keeps
+  the secret out of this repository and out of the config file's history.
+
+  The page and its assets are served without the token, and every API call still
+  requires it. That split is deliberate: the shell is identical bytes for everyone
+  and shows nothing on its own, because every number it displays arrives through a
+  gated call.
 - **The local workbench API is not the product.** `/api/overview`,
 `/api/settings`, and `/api/assistant/*` read the container's own state
 directory and carry no tenant identity. Publish only `/trader/api/trader/*`;

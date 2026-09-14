@@ -865,3 +865,85 @@ def test_the_doc_and_the_code_never_hardcode_the_safety_declaration(tmp_path) ->
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         assert declaration not in source, relative
         assert "SAFETY_DECLARATION" in source or relative.endswith("__init__.py")
+
+
+
+def test_the_interface_loads_without_a_token_while_the_data_does_not(tmp_path) -> None:
+    """A token-protected deployment must still be reachable from a browser.
+
+    Why this test exists: a browser cannot attach a custom header to the navigation
+    that loads a page, or to the requests the page then makes for its own JavaScript
+    and CSS. Gating those returned 401 for every page load, so a deployment that set
+    an access token -- which the systemd unit and the Dockerfile both require --
+    served a product nobody could open. The token still has to gate the data, so both
+    halves are asserted here: the shell and its assets load without it, every API call
+    needs it, and the proxy is what supplies it for a browser.
+    """
+    import json as _json
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from smartmoney_cub_harness.workbench.server import WorkbenchHandler, WorkbenchService
+
+    store = open_store(tmp_path / "token-store", mode="local")
+    trader = TraderService(store, auth_mode="local", fetch_bars_fn=_stub_fetcher)
+
+    # A real asset directory, so the shell and an asset are both servable.
+    assets = tmp_path / "web"
+    (assets / "assets").mkdir(parents=True)
+    (assets / "index.html").write_text("<!doctype html><title>shell</title>", encoding="utf-8")
+    (assets / "assets" / "app.js").write_text("console.log('app')", encoding="utf-8")
+
+    workbench = WorkbenchService(tmp_path / "token-root")
+    handler = type(
+        "TokenGateTestHandler",
+        (WorkbenchHandler,),
+        {
+            "service": workbench,
+            "asset_dir": assets,
+            "access_token": "deploy-token",
+            "trader_service": trader,
+        },
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % server.server_port
+
+    def get(path: str, token: str | None = None):
+        headers = {"X-SMCUB-Token": token} if token else {}
+        request = urllib.request.Request(base + path, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, error.read()
+
+    try:
+        # The interface loads without the token, because a browser has no way to
+        # send one on a navigation or on the page's own asset requests.
+        status, body = get("/")
+        assert status == 200, status
+        assert b"shell" in body
+        status, body = get("/assets/app.js")
+        assert status == 200, status
+        assert b"app" in body
+        # A client-side route with no file behind it still gets the shell.
+        status, _ = get("/tracker/trade-log")
+        assert status == 200, status
+
+        # The data does not load without the token.
+        status, body = get("/api/trader/health")
+        assert status == 401, status
+        assert _json.loads(body)["safety"] == SAFETY_DECLARATION
+
+        # And with the token, both work.
+        status, _ = get("/api/trader/health", token="deploy-token")
+        assert status == 200, status
+        status, _ = get("/", token="deploy-token")
+        assert status == 200, status
+    finally:
+        server.shutdown()
+        server.server_close()
+        store.close()
+        workbench.close()
+
