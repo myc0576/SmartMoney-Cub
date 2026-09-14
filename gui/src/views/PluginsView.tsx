@@ -4,8 +4,18 @@ import { Empty, Panel } from '../components/common';
 
 export function PluginsView() {
   const [data, setData] = useState<Record<string, any> | null>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => { void api.plugins().then(setData); }, []);
+  useEffect(() => {
+    // A failed read is reported as a failed read. This endpoint belongs to the
+    // local review workbench, so on a host that closes that surface the honest
+    // answer is "not available here", not an empty list -- an empty list reads as
+    // "no plugins are installed", which is a different claim.
+    void api
+      .plugins()
+      .then(setData)
+      .catch((failure) => setError(failure instanceof Error ? failure.message : String(failure)));
+  }, []);
 
   const plugins: Record<string, any>[] = (data?.plugins as Record<string, any>[]) || [];
 
@@ -16,7 +26,9 @@ export function PluginsView() {
         任何 <code>available_at</code> 晚于决策时间的证据都会判定为未来数据并拒绝。
       </div>
       <Panel title={'已发现插件（' + plugins.length + '）'}>
-        {plugins.length === 0 ? <Empty text="还没有发现插件" /> : (
+        {error ? <Empty text={'插件列表读取失败：' + error} /> : null}
+        {!error && plugins.length === 0 ? <Empty text="还没有发现插件" /> : null}
+        {!error && plugins.length > 0 ? (
           <div className="scroll-x">
             <table>
               <thead><tr><th>插件</th><th>版本</th><th>状态</th><th>能力</th><th>隔离</th></tr></thead>
@@ -33,10 +45,9 @@ export function PluginsView() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </Panel>
       {data?.error ? <Panel title="插件子系统信息"><div className="muted">{String(data.error)}</div></Panel> : null}
     </div>
   );
 }
-

@@ -5,8 +5,17 @@ import { Empty, Panel } from '../components/common';
 
 export function RulesView() {
   const [rules, setRules] = useState<RuleRecord[]>([]);
+  const [error, setError] = useState('');
 
-  useEffect(() => { void api.rules().then((result) => setRules(result.rules)); }, []);
+  useEffect(() => {
+    // A failed read is reported as a failed read. The rule registry belongs to the
+    // local review workbench, so on a host that closes that surface the answer is
+    // "not available here" rather than "no rules exist" -- different claims.
+    void api
+      .rules()
+      .then((result) => setRules(result.rules))
+      .catch((failure) => setError(failure instanceof Error ? failure.message : String(failure)));
+  }, []);
 
   const champions = rules.filter((rule) => rule.status === 'champion');
   const challengers = rules.filter((rule) => rule.status === 'challenger');
@@ -17,10 +26,13 @@ export function RulesView() {
         晋级必须经过人工确认：challenger 规则需要满足样本与风险门禁，并写入一条明确的确认说明，才会变成 champion。
       </div>
       <Panel title={'Champion 规则（' + champions.length + '）'}>
-        {champions.length === 0 ? <Empty text="还没有已晋级的规则" /> : <RuleTable rules={champions} />}
+        {error ? <Empty text={'规则库读取失败：' + error} /> : null}
+        {!error && champions.length === 0 ? <Empty text="还没有已晋级的规则" /> : null}
+        {!error && champions.length > 0 ? <RuleTable rules={champions} /> : null}
       </Panel>
       <Panel title={'Challenger 候选（' + challengers.length + '）'}>
-        {challengers.length === 0 ? <Empty text="还没有候选规则" /> : <RuleTable rules={challengers} />}
+        {!error && challengers.length === 0 ? <Empty text="还没有候选规则" /> : null}
+        {!error && challengers.length > 0 ? <RuleTable rules={challengers} /> : null}
       </Panel>
     </div>
   );
@@ -47,4 +59,3 @@ function RuleTable({ rules }: { rules: RuleRecord[] }) {
     </div>
   );
 }
-
