@@ -549,3 +549,37 @@ def test_the_compose_database_url_expands_the_way_the_app_parses_it() -> None:
     # And a missing password refuses rather than expanding to an empty credential.
     with pytest.raises(AssertionError):
         expand(expression, {"TRADER_ACCESS_TOKEN": "t"})
+
+
+def test_the_release_smoke_check_exists_and_runs_before_publishing() -> None:
+    """The one check that deploys the commit rather than the working tree.
+
+    Every other gate reads the working tree. A release host clones the commit, so
+    anything present locally but absent from the commit passes every other check
+    and fails after publishing. That gap is why scripts/release-smoke.py exists,
+    and this pins both its presence and its place in the release pipeline: a
+    check that nothing invokes is the same as no check.
+    """
+    script = REPO_ROOT / "scripts" / "release-smoke.py"
+    assert script.is_file(), "the release smoke check is missing"
+    body = script.read_text(encoding="utf-8")
+    # It must clone the commit and install it, not inspect the working tree.
+    assert '"clone"' in body and "--local" in body
+    # It must install from the clone rather than from the working directory.
+    assert 'str(clone) + "[hosted]"' in body, "the smoke check does not install from the clone"
+    # And it must verify the interface is actually in the commit, which is the
+    # specific defect it was written to catch.
+    assert "no built interface in the commit" in body
+    # It must assert the properties a deployment depends on.
+    for needle in ("tenant isolation", "anonymous refusal", "safety declaration"):
+        assert needle in body, needle
+
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "scripts/release-smoke.py" in workflow, (
+        "the release workflow does not run the smoke check, so a tag could publish "
+        "a commit that does not deploy"
+    )
+    # It must run before the artifact is built and uploaded.
+    smoke_at = workflow.index("scripts/release-smoke.py")
+    build_at = workflow.index("python -m build")
+    assert smoke_at < build_at, "the smoke check must run before the wheel is built"

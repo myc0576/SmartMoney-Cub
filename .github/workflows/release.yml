@@ -34,6 +34,20 @@ jobs:
       - name: Run the test suite
         run: pytest -q
 
+      - name: Deploy the committed tree and smoke it
+        run: |
+          # Every other check runs against the working tree, which is not what a
+          # deployment uses. Before a tag publishes, clone the commit that is
+          # about to be released, install it the way deploy/README.md documents,
+          # and serve it: hosted mode against a throwaway Postgres, two tenants,
+          # tenant isolation, an anonymous refusal, and the safety declaration on
+          # every response. A file that is in the working tree but not in the
+          # commit passes every other gate and fails here.
+          #
+          # pgserver supplies its own PostgreSQL, so this needs no service.
+          python -m pip install pgserver
+          python scripts/release-smoke.py
+
       - name: The safety contract must hold before anything is published
         run: |
           smcub doctor | tee "$RUNNER_TEMP/doctor.json"
