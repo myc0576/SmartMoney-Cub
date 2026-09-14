@@ -17,6 +17,8 @@ responses, and the systemd unit is non-root and restarts on failure.
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -197,3 +199,84 @@ def test_changelog_records_the_trader_product_at_the_top() -> None:
     assert "Trader Product v1" in entries[0], entries[:3]
     assert "deferred past v1" in changelog
     assert "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" in changelog
+
+
+# ---- the deployment's own refusal path -----------------------------------
+#
+# These run the command the service units and the image run, and assert how it
+# behaves when the database is unavailable. That path is where the operator
+# stands at 3am, and a raw traceback there tells them less than one line does.
+
+
+def _serve_argv(*extra: str) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "smartmoney_cub_harness.cli",
+        "trader",
+        "serve",
+        "--no-browser",
+        *extra,
+    ]
+
+
+def test_an_unreachable_hosted_database_is_refused_in_one_clean_line() -> None:
+    """A database outage is reported, not dumped as a stack trace.
+
+    Regression: open_store validates only the URL's shape, and the first real
+    connection happens when the service migrates the schema. That call sat
+    outside the store guard, so an unreachable database produced an unhandled
+    StoreError with a full traceback while every documented refusal printed one
+    line and exited 2.
+    """
+    proc = subprocess.run(
+        _serve_argv(
+            "--mode",
+            "hosted",
+            "--port",
+            "0",
+            "--database-url",
+            # A name that cannot resolve: no DNS, no port, no credentials.
+            "postgresql://nonexistent-host.invalid:5432/smcub",
+            "--token",
+            "toy-token",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=90,
+        cwd=REPO_ROOT,
+    )
+    combined = proc.stdout + proc.stderr
+    assert "Traceback" not in combined, combined
+    assert proc.returncode == 2, (proc.returncode, combined)
+    assert "could not open the tenant store" in combined, combined
+
+
+def test_hosted_mode_without_a_database_url_is_refused_before_connecting() -> None:
+    """The documented refusal, kept as the baseline the outage path matches."""
+    proc = subprocess.run(
+        _serve_argv("--mode", "hosted", "--port", "0", "--token", "toy-token"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=REPO_ROOT,
+    )
+    combined = proc.stdout + proc.stderr
+    assert proc.returncode == 2, (proc.returncode, combined)
+    assert "Traceback" not in combined, combined
+    assert "--database-url" in combined, combined
+    assert "no local fallback" in combined, combined
+
+
+def test_binding_beyond_loopback_without_a_token_is_refused() -> None:
+    """The image binds 0.0.0.0, so this refusal is what keeps a journal closed."""
+    proc = subprocess.run(
+        _serve_argv("--host", "0.0.0.0", "--port", "0"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=REPO_ROOT,
+    )
+    combined = proc.stdout + proc.stderr
+    assert proc.returncode == 2, (proc.returncode, combined)
+    assert "without --token" in combined, combined

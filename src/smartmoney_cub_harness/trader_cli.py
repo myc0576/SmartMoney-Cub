@@ -101,7 +101,21 @@ def run_trader_serve(
         sys.stderr.write("could not open the tenant store: " + str(error) + "\n")
         return 2
 
-    service = TraderService(store, auth_mode=selected)
+    # Building the service is what actually reaches the database: open_store only
+    # validates the URL's shape, and the first connection happens inside here when
+    # the store migrates its schema. An unreachable or wrong-credentials database
+    # therefore failed *outside* the guard above and reached the operator as a raw
+    # traceback, while every documented refusal prints one clean line. An operator
+    # reading a startup log should not have to decode a stack to learn that the
+    # database is down, so the same treatment is applied here.
+    try:
+        service = TraderService(store, auth_mode=selected)
+    except StoreError as error:
+        sys.stderr.write("could not open the tenant store: " + str(error) + "\n")
+        close = getattr(store, "close", None)
+        if callable(close):
+            close()
+        return 2
 
     def announce(url: str) -> None:
         sys.stderr.write("smartmoney-cub trader: " + url + "\n")
@@ -133,4 +147,3 @@ def run_trader_serve(
         if callable(close):
             close()
     return 0
-
