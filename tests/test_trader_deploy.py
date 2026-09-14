@@ -583,3 +583,41 @@ def test_the_release_smoke_check_exists_and_runs_before_publishing() -> None:
     smoke_at = workflow.index("scripts/release-smoke.py")
     build_at = workflow.index("python -m build")
     assert smoke_at < build_at, "the smoke check must run before the wheel is built"
+
+
+def test_the_deploy_readme_documents_a_backup_and_restore_procedure() -> None:
+    """The journal is the one thing a user cannot recreate.
+
+    deploy/docker-compose.yml tells the operator to back up the tenant volume.
+    Until this procedure existed, nothing said how, so the instruction was a
+    belief rather than a capability. The commands here were run verbatim against
+    a real PostgreSQL before being written down, including the repeatable-restore
+    flag, which is the part most likely to be wrong.
+    """
+    readme = _read(DEPLOY / "README.md")
+
+    for phrase in (
+        "Back up the journal",
+        "pg_dump -Fc",
+        "pg_restore",
+        "--clean --if-exists",
+        "scripts/backup-restore-check.py",
+    ):
+        assert phrase in readme, phrase
+
+    # It must say why the journal is different, not only how to copy it.
+    assert "cannot recreate" in readme, "the procedure does not say why it matters"
+    # And it must warn about the failure mode a naive setup would hit.
+    assert "is not a backup" in readme, "no warning that a same-disk dump is not a backup"
+
+    # The check the procedure points at must exist and be runnable.
+    script = REPO_ROOT / "scripts" / "backup-restore-check.py"
+    assert script.is_file(), "the documented backup check is missing"
+    body = script.read_text(encoding="utf-8")
+    # It must restore into a fresh database and serve the product from it; a check
+    # that only inspects the dump would not prove the journal is recoverable.
+    assert "pg_dump" in body and "pg_restore" in body
+    assert "serve the restored database" in body
+    # And it must not repeat the bug that made it silently pass against a
+    # leftover server on the port it wanted.
+    assert "_port_in_use" in body, "the check can be fooled by a stale listener"

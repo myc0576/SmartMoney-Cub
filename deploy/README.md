@@ -222,6 +222,55 @@ users actually sign in to.
 
 ## Operating notes
 
+### Back up the journal, and know the restore works
+
+The tenant journal is the one thing here a user cannot recreate. Everything
+else in this document can be redeployed from the repository; their executions
+cannot. So the backup is not optional, and neither is having restored one.
+
+Take a dump of the database the app is pointed at:
+
+    pg_dump -Fc -f journal-$(date +%Y%m%d).dump "$DATABASE_URL"
+
+`-Fc` is the custom format: it is compressed, and `pg_restore` can select from
+it. Run this on a schedule, keep the files off the host that runs the database,
+and keep at least one copy somewhere that host cannot delete -- a dump on the
+same disk as the database is not a backup.
+
+Recover into a fresh database:
+
+    createdb smcub_recovered
+    pg_restore -d "postgresql://.../smcub_recovered" journal-20260914.dump
+
+Then point the service at it and restart. With compose, restore into the `db`
+service instead:
+
+    docker compose -f deploy/docker-compose.yml exec -T db \
+        pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists \
+        < journal-20260914.dump
+
+`--clean --if-exists` makes the restore safe to repeat; without it a second
+restore fails on the objects the first one created.
+
+Check that a backup is real by restoring it, not by its size:
+
+    pip install "smartmoney-cub-harness[hosted]" pgserver
+    python scripts/backup-restore-check.py
+
+That script performs the whole cycle -- start the product, write a tenant's
+fills, dump, stop the server as a disaster would, restore into a fresh database,
+then serve the product **from the restored database** and verify the tenant's
+data is present and that tenant isolation survived. The last step is the one
+that matters: a dump that restores into a database the product cannot serve
+from is not a backup.
+
+Two things to know before relying on it. The `smcub_state` volume holds the
+assistant sessions and local settings, not the journal, so it is a second and
+smaller thing to copy if you care about those. And a restored database carries
+whatever schema the dump had, so restore *before* upgrading the application
+rather than after: the app migrates its own schema forward on start, and a
+backup taken from an older release is migrated when the newer app opens it.
+
 ### Prove the deployment before you trust it
 
 `scripts/hosted-e2e.py` runs the exact configuration this document describes —
