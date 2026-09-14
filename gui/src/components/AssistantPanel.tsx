@@ -90,14 +90,18 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       setEvents(detail.events);
       const session = detail.session;
       if (session) {
+        // A session recorded before the model was part of the seat carries an
+        // empty model. Adopting that empty value would blank the picker, so each
+        // field only overwrites the current choice when the session actually
+        // recorded one - a legacy log must not hide a working default.
         setSelection({
-          provider_id: session.provider_id,
-          model: session.model,
-          reasoning: session.reasoning || 'off',
+          provider_id: session.provider_id || meta?.default_provider || 'alphatech',
+          model: session.model || meta?.default_model || '',
+          reasoning: session.reasoning || meta?.default_reasoning || 'off',
         });
       }
     });
-  }, [activeId]);
+  }, [activeId, meta]);
 
   useEffect(() => {
     const node = bodyRef.current;
@@ -319,4 +323,3 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     </aside>
   );
 }
-

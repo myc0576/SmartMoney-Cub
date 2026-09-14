@@ -20,6 +20,7 @@ from smartmoney_cub_harness.agent.providers import (
     PROVIDER_PROTOCOLS,
     ProviderError,
     catalog_view,
+    check_provider_models,
     credentials_path,
     install_provider,
     list_models as provider_models,
@@ -633,6 +634,47 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def check_models(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Reconcile a provider's declared models against what the endpoint serves.
+
+        This is the answer to a model list that is not the latest. The catalog is
+        a snapshot of an endpoint that keeps moving, so it rots. Rather than
+        trusting it, this asks the endpoint and merges the answer into the
+        declared list: a model that disappeared is marked stale but kept, and
+        anything new is appended. The selector therefore stops offering ids that
+        can never answer without silently deleting a choice the user made.
+
+        A failed lookup is reported as a failed lookup. It never marks every
+        model stale, because an outage teaches us nothing about the catalog.
+        """
+        provider_id = str(payload.get("provider_id") or "")
+        if not provider_id:
+            raise ApiError("a provider_id is required to check models")
+        credentials = load_credentials(self.root)
+        settings = load_settings(self.root)
+        try:
+            result = check_provider_models(
+                provider_id, credentials=credentials, settings=settings
+            )
+        except ProviderError as error:
+            raise ApiError(str(error), status=400, code="provider_error") from error
+        # The reconciled list is written back, otherwise the correction is only a
+        # message and the stale entry survives the next reload. A failed lookup
+        # is never written: an outage must not rewrite the user's catalog.
+        persisted = False
+        if result.get("verified"):
+            try:
+                update_provider(self.root, provider_id, models=result["models"])
+                persisted = True
+            except ProviderError:
+                persisted = False
+        return {
+            **result,
+            "provider_id": provider_id,
+            "persisted": persisted,
+            "safety": SAFETY_DECLARATION,
+        }
+
     def audits(self, query: dict[str, list[str]]) -> dict[str, Any]:
         limit = int(_one(query, "limit") or 50)
         return {
@@ -1029,6 +1071,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
                 if action == "models":
                     self._json(self.service.discover_models({**self._read_json(), "provider_id": provider_id}))
+                    return
+                if action == "check-models":
+                    self._json(self.service.check_models({**self._read_json(), "provider_id": provider_id}))
                     return
                 if action == "":
                     payload = self._read_json()

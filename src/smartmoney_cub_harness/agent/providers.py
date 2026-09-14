@@ -5,6 +5,7 @@ import re
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -26,6 +27,11 @@ REQUEST_TIMEOUT_SECONDS = 120
 MAX_TOKENS = 2048
 DISCOVERY_TIMEOUT_SECONDS = 30
 
+
+def iso_now() -> str:
+    """UTC timestamp for a model check. UTC because it is compared, not read."""
+    return datetime.now(timezone.utc).isoformat()
+
 PROVIDER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
 
 
@@ -43,10 +49,40 @@ PROVIDER_PROTOCOLS: dict[str, str] = {
 
 # Reasoning levels, ordered from least to most effort. A model advertises the
 # subset it accepts; the selector only offers that subset.
-REASONING_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high", "max")
+#
+# Learning from DSH: the level is a wire value, not a user-facing name. Shipping
+# the raw enum ("xhigh") makes the selector unreadable, and shipping a bare name
+# with no explanation leaves the user guessing what the extra effort costs, so
+# every level carries both a label and a one-line description.
+REASONING_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high", "xhigh", "max")
+
+EFFORT_DETAILS: dict[str, dict[str, str]] = {
+    "off": {"label": "不思考", "description": "直接作答，最快也最省。"},
+    "minimal": {"label": "极简", "description": "极少量的内部推理。"},
+    "low": {"label": "低", "description": "轻量推理，适合结构化的台账查询。"},
+    "medium": {"label": "中", "description": "均衡，日常复盘够用。"},
+    "high": {"label": "高", "description": "深入推理，适合多步归因。"},
+    "xhigh": {"label": "很高", "description": "更长的推理链，明显更慢。"},
+    "max": {"label": "最大", "description": "不计成本的推理，最慢也最容易触发限流。"},
+}
 
 DEEPSEEK_EFFORTS = ["off", "low", "high", "max"]
 OPENAI_EFFORTS = ["off", "low", "medium", "high"]
+
+
+def effort_details(levels: list[str]) -> list[dict[str, Any]]:
+    """Describe each advertised level so the selector never shows a bare enum."""
+    rows: list[dict[str, Any]] = []
+    for level in levels:
+        known = EFFORT_DETAILS.get(level)
+        rows.append(
+            {
+                "level": level,
+                "label": (known or {}).get("label") or level,
+                "description": (known or {}).get("description") or "",
+            }
+        )
+    return rows
 
 
 def _model(
@@ -54,13 +90,31 @@ def _model(
     label: str = "",
     efforts: list[str] | None = None,
     default_effort: str = "off",
+    *,
+    context_window: int | None = None,
+    max_tokens: int | None = None,
+    description: str = "",
+    verified: bool = False,
 ) -> dict[str, Any]:
-    return {
+    levels = list(efforts or [])
+    row: dict[str, Any] = {
         "id": model_id,
         "label": label or model_id,
-        "reasoning_efforts": list(efforts or []),
+        "reasoning_efforts": levels,
         "default_effort": default_effort,
+        "effort_details": effort_details(levels),
     }
+    if context_window:
+        row["context_window"] = int(context_window)
+    if max_tokens:
+        row["max_tokens"] = int(max_tokens)
+    if description:
+        row["description"] = description
+    # The verified flag records that this id was confirmed against the live
+    # endpoint. An unverified entry is still offered, but the settings page says
+    # so rather than presenting a guess as a fact.
+    row["verified"] = bool(verified)
+    return row
 
 
 # Providers offered by the catalog. Installing one copies its defaults into the
@@ -76,10 +130,42 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "installable": True,
         "removable": False,
         "description": "预置的公司中转站，OpenAI 兼容协议。只接收脱敏后的结构化复盘字段。",
+        # These three ids were confirmed against the live /v1/models listing.
+        # The previous list named deepseek-v3, deepseek-r1, and deepseek-v4-pro,
+        # none of which the endpoint serves: the selector offered three models
+        # that could never answer, which is exactly the "not the latest" symptom
+        # this list is here to prevent.
         "models": [
-            _model("deepseek-v3", "DeepSeek V3", DEEPSEEK_EFFORTS, "off"),
-            _model("deepseek-r1", "DeepSeek R1", DEEPSEEK_EFFORTS, "high"),
-            _model("deepseek-v4-pro", "DeepSeek V4 Pro", DEEPSEEK_EFFORTS, "high"),
+            _model(
+                "deepseek-reasoner",
+                "DeepSeek Reasoner",
+                DEEPSEEK_EFFORTS,
+                "high",
+                context_window=131072,
+                max_tokens=8192,
+                description="DeepSeek 推理模型，中转站当前可用的 DeepSeek 主选。",
+                verified=True,
+            ),
+            _model(
+                "gpt-5.6-sol",
+                "GPT-5.6 Sol",
+                OPENAI_EFFORTS,
+                "medium",
+                context_window=272000,
+                max_tokens=32768,
+                description="中转站上的通用主力模型，适合多步复盘与长台账。",
+                verified=True,
+            ),
+            _model(
+                "claude-opus-5",
+                "Claude Opus 5",
+                ["off", "low", "medium", "high", "max"],
+                "medium",
+                context_window=200000,
+                max_tokens=32000,
+                description="长上下文推理模型，适合跨月归因。",
+                verified=True,
+            ),
         ],
     },
     "deepseek": {
@@ -347,6 +433,26 @@ def public_provider_view(
     """Describe a provider without ever returning the key itself."""
     resolved = resolve_provider(provider_id, credentials=credentials, settings=settings)
     entry = provider_entry(provider_id, settings)
+
+    # The three-state key rule, borrowed from DSH. A green dot claims a key IS
+    # configured and a red dot claims a named reference IS missing; anything we
+    # cannot decide gets no dot at all. Collapsing "no key" into a red dot would
+    # accuse a provider that is merely unconfigured, and collapsing "unknown"
+    # into green would promise a working route we have not confirmed.
+    if not resolved["requires_key"] or resolved["protocol"] == "offline":
+        key_status = "unknown"
+    elif resolved["has_key"]:
+        key_status = "configured"
+    else:
+        key_status = "missing"
+
+    # A provider is routable when the assistant could actually send a turn
+    # through it: an endpoint (unless offline) plus a usable key.
+    routable = (
+        resolved["protocol"] == "offline"
+        or bool(resolved["base_url"] and (resolved["has_key"] or not resolved["requires_key"]))
+    )
+
     return {
         "provider_id": resolved["provider_id"],
         "label": resolved["label"],
@@ -368,6 +474,11 @@ def public_provider_view(
         "installable": provider_id in PROVIDER_CATALOG and provider_id not in DEFAULT_INSTALLED,
         "has_key": resolved["has_key"],
         "key_source": resolved["key_source"],
+        "key_status": key_status,
+        "routable": routable,
+        # A route we did not ship in the catalog was declared by hand, which is
+        # what the 自定义 tag reports.
+        "is_custom": provider_id not in PROVIDER_CATALOG,
         "description": resolved["description"],
         "safety": SAFETY_DECLARATION,
     }
@@ -519,7 +630,31 @@ def _normalize_models(models: list[Any]) -> list[dict[str, Any]]:
                 "label": str(raw.get("label") or model_id),
                 "reasoning_efforts": [str(item) for item in efforts],
                 "default_effort": default_effort,
+                "effort_details": effort_details([str(item) for item in efforts]),
             }
+            # The richer optional fields are carried through rather than
+            # discarded. Dropping them made the settings page a write-only
+            # surface: the form sent a context window and the store rebuilt the
+            # row without it, so the number silently vanished on every save.
+            for key in ("context_window", "max_tokens"):
+                value = raw.get(key)
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                if value > 0:
+                    model[key] = int(value)
+            for key in ("description", "input_modalities"):
+                value = raw.get(key)
+                if isinstance(value, str) and value.strip():
+                    model[key] = value.strip()
+                elif isinstance(value, list) and value:
+                    model[key] = [str(item) for item in value]
+            # Staleness is decided by reconciliation, not by the client. A form
+            # submission must not be able to claim a model is current, so these
+            # two flags survive a round trip but are only ever set from a check.
+            if raw.get("stale"):
+                model["stale"] = True
+            if raw.get("verified"):
+                model["verified"] = True
         else:
             continue
         if not model["id"] or model["id"] in seen:
@@ -742,6 +877,157 @@ def list_models(provider: dict[str, Any]) -> dict[str, Any]:
         "models": sorted(dict.fromkeys(identifiers)),
         "safety": SAFETY_DECLARATION,
     }
+
+
+# Markers that identify a listing the assistant cannot hold a conversation with.
+#
+# A gateway's /v1/models endpoint is the whole catalog, not the chat subset: the
+# company relay answers with 108 ids, of which image, video, music, speech, and
+# upscaling models are the majority. Appending those to the selector would bury
+# the three usable chat models under sixty unusable ones, which is a worse
+# failure than a short list. This filter is deliberately the conservative half
+# of the problem: it only drops ids that name an obviously non-conversational
+# modality, and anything ambiguous is kept so a real chat model is never hidden.
+NON_CHAT_MODEL_MARKERS: tuple[str, ...] = (
+    "tts", "whisper", "suno", "music", "audio", "speech", "voice",
+    "image", "sd2", "sd-", "sdvip", "sdquan", "quanneng", "by-image",
+    "cf-image", "gz-sd", "gz-sd2", "rd2", "sp2", "bh2", "tj-sp", "tj-wan",
+    "video", "veo", "sora", "wan3", "hailuo", "minimax-h", "seedance",
+    "grok-imagine", "upscale", "去字幕", "embedding", "rerank", "moderation",
+)
+
+
+def is_conversational_model(model_id: str) -> bool:
+    """Report whether a discovered id looks like a chat model.
+
+    Used only to decide what a reconciliation may APPEND. A model the user
+    declared by hand is never filtered out, because they named it on purpose.
+    """
+    lowered = str(model_id or "").lower()
+    return not any(marker in lowered for marker in NON_CHAT_MODEL_MARKERS)
+
+
+def reconcile_models(
+    provider: dict[str, Any],
+    *,
+    live_ids: list[str] | None = None,
+    error: str = "",
+) -> dict[str, Any]:
+    """Reconcile a provider's declared model list against what the endpoint serves.
+
+    Why this exists: the catalog is a snapshot of an endpoint that keeps moving,
+    so a hardcoded list silently rots and the selector ends up offering models
+    that can never answer. Reconciling instead of overwriting is the important
+    part - a model that is no longer published is MARKED stale and stays
+    selectable, because it may still be a valid alias or a temporary outage, and
+    deleting the user's working choice is worse than flagging it.
+
+    Discovered models the catalog never heard of are appended, so a new release
+    shows up without a code change. Brand-new rows are marked unverified until a
+    later check confirms them, and their effort list is left empty rather than
+    guessed: an invented effort level would fail at the endpoint.
+
+    This function performs no I/O. The caller supplies live_ids from
+    list_models(), or an error string when discovery failed, and it stays pure
+    so the merge rule is testable without a network.
+    """
+    declared = [dict(model) for model in (provider.get("models") or [])]
+    result: dict[str, Any] = {
+        "provider_id": provider.get("provider_id", ""),
+        "models": declared,
+        "checked_at": iso_now(),
+        "verified": False,
+        "stale_count": 0,
+        "added_count": 0,
+        "error": error,
+    }
+
+    # A failed lookup must not be presented as "these models are gone": we
+    # learned nothing, so every row keeps the state it already had.
+    if not live_ids:
+        result["models"] = [
+            {**model, "stale": bool(model.get("stale"))} for model in declared
+        ]
+        return result
+
+    known = set(live_ids)
+    merged: list[dict[str, Any]] = []
+    for model in declared:
+        model_id = str(model.get("id") or "")
+        if model_id in known:
+            merged.append({**model, "stale": False, "verified": True})
+        else:
+            # Kept, but flagged. The picker draws this as 已下架 while leaving it
+            # selectable.
+            merged.append({**model, "stale": True, "verified": False})
+
+    declared_ids = {str(model.get("id") or "") for model in declared}
+    added = 0
+    skipped = 0
+    for model_id in live_ids:
+        if model_id in declared_ids:
+            continue
+        # A declared model is never filtered: the user named it. A discovered one
+        # is appended only when it looks conversational, so the selector does not
+        # fill up with image and speech endpoints from the same gateway.
+        if not is_conversational_model(model_id):
+            skipped += 1
+            continue
+        merged.append(
+            {
+                **_model(
+                    model_id,
+                    model_id,
+                    [],
+                    "off",
+                    description="从端点自动发现，尚未在本机校验其对工具调用的支持。",
+                    verified=False,
+                ),
+                # A freshly discovered id is by definition still published, so
+                # it is not stale; it is merely unverified.
+                "stale": False,
+            }
+        )
+        added += 1
+
+    result["models"] = merged
+    result["verified"] = True
+    result["stale_count"] = sum(1 for model in merged if model.get("stale"))
+    result["added_count"] = added
+    result["skipped_count"] = skipped
+    return result
+
+
+def check_provider_models(
+    provider_id: str,
+    *,
+    credentials: dict[str, Any] | None = None,
+    settings: dict[str, Any] | None = None,
+    live_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Reconcile one provider, looking its models up unless ids were supplied."""
+    resolved = resolve_provider(provider_id, credentials=credentials, settings=settings)
+    if resolved["protocol"] == "offline":
+        return {
+            "status": "ok",
+            "provider_id": provider_id,
+            "models": [dict(model) for model in resolved["models"]],
+            "checked_at": iso_now(),
+            "verified": True,
+            "stale_count": 0,
+            "added_count": 0,
+            "error": "",
+            "safety": SAFETY_DECLARATION,
+        }
+    discovered: list[str] = list(live_ids or [])
+    error = ""
+    if not discovered:
+        try:
+            discovered = list(list_models(resolved)["models"])
+        except ProviderError as failure:
+            error = str(failure)
+    reconciled = reconcile_models(resolved, live_ids=discovered, error=error)
+    return {**reconciled, "status": "ok", "safety": SAFETY_DECLARATION}
 
 
 def parse_stream_line(line: str) -> dict[str, Any] | None:

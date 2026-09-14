@@ -90,7 +90,9 @@ export const trader = {
   // An unnamed dimension asks the same route for every group at once, which is
   // the shape the grouping view renders. The named form above stays for the
   // callers that want one dimension.
-  breakdownAll: (params: { from?: string; to?: string } = {}) =>
+  // The refresh flag asks the server to reconcile symbol names against the live
+  // quote feed before grouping, which is how a rename or an ST change lands.
+  breakdownAll: (params: { from?: string; to?: string; refresh?: string } = {}) =>
     request<TraderBreakdownMap>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
   calendar: (params: { year: number; month: number }) =>
     request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(params)).toString()),
@@ -138,6 +140,13 @@ export const api = {
     }),
   discoverModels: (payload: Record<string, unknown>) =>
     request<{ models: string[] }>('/api/settings/discover', { method: 'POST', body: JSON.stringify(payload) }),
+  // Reconcile the declared model list against the live endpoint. Answers "is
+  // this model list still true?" without ever deleting a configured model.
+  checkModels: (providerId: string, payload: Record<string, unknown> = {}) =>
+    request<Record<string, any>>(
+      '/api/settings/providers/' + encodeURIComponent(providerId) + '/check-models',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
   testProvider: (payload: Record<string, unknown>) =>
     request<Record<string, any>>('/api/settings/test', { method: 'POST', body: JSON.stringify(payload) }),
   audit: (limit = 50) => request<{ audits: AuditRecord[] }>('/api/audit?limit=' + limit),

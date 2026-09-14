@@ -19,6 +19,7 @@ from smartmoney_cub_harness.agent.providers import (
     load_settings,
     normalize_provider_id,
     public_provider_view,
+    provider_entry,
     remove_provider,
     resolve_provider,
     save_credentials,
@@ -236,7 +237,7 @@ def test_discovery_deduplicates_and_sorts_the_endpoint_listing(tmp_path) -> None
             install_provider(tmp_path, "gw", base_url=base_url, api_key="k")
             result = service.discover_models({"provider_id": "gw"})
             assert result["models"] == ["a-model", "b-model"]
-            assert "\"api_key\"" not in json.dumps(result)
+            assert '"api_key"' not in json.dumps(result)
             assert result["safety"] == "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
         finally:
             service.close()
@@ -272,6 +273,270 @@ def test_discovery_needs_a_key_before_it_calls_out(tmp_path) -> None:
     finally:
         service.close()
 
+
+# ---- reconciling a declared list against the live endpoint --------------
+#
+# These cover the "the model list is not the latest" defect directly: the
+# catalog named ids the endpoint does not serve, so the selector offered models
+# that could never answer. The merge rule is pure, so it is tested without a
+# network, and the one wire test reuses the local discovery stub.
+
+
+def test_reconcile_marks_a_vanished_model_stale_without_deleting_it() -> None:
+    from smartmoney_cub_harness.agent.providers import reconcile_models
+
+    provider = {
+        "provider_id": "gw",
+        "models": [
+            {"id": "still-there", "label": "Still", "reasoning_efforts": ["off"], "default_effort": "off"},
+            {"id": "gone", "label": "Gone", "reasoning_efforts": ["off"], "default_effort": "off"},
+        ],
+    }
+    result = reconcile_models(provider, live_ids=["still-there"])
+    by_id = {model["id"]: model for model in result["models"]}
+    # The removed model is kept and flagged, never silently dropped: it may be a
+    # temporary outage, and discarding the user's working choice is worse.
+    assert set(by_id) == {"still-there", "gone"}
+    assert by_id["gone"]["stale"] is True
+    assert by_id["still-there"]["stale"] is False
+    assert by_id["still-there"]["verified"] is True
+    assert result["stale_count"] == 1
+
+
+def test_reconcile_appends_models_the_catalog_never_heard_of() -> None:
+    from smartmoney_cub_harness.agent.providers import reconcile_models
+
+    provider = {
+        "provider_id": "gw",
+        "models": [
+            {"id": "known", "label": "Known", "reasoning_efforts": ["off"], "default_effort": "off"}
+        ],
+    }
+    result = reconcile_models(provider, live_ids=["known", "brand-new"])
+    ids = [model["id"] for model in result["models"]]
+    assert ids == ["known", "brand-new"]
+    fresh = next(model for model in result["models"] if model["id"] == "brand-new")
+    # A discovered id is published by definition, so it is not stale, but we
+    # have not verified its tool-calling support, so it is not verified either.
+    assert fresh["stale"] is False
+    assert fresh["verified"] is False
+    # An invented effort level would fail at the endpoint, so none is guessed.
+    assert fresh["reasoning_efforts"] == []
+    assert result["added_count"] == 1
+
+
+def test_a_failed_lookup_never_marks_every_model_stale() -> None:
+    from smartmoney_cub_harness.agent.providers import reconcile_models
+
+    provider = {
+        "provider_id": "gw",
+        "models": [
+            {"id": "a", "label": "A", "reasoning_efforts": ["off"], "default_effort": "off"}
+        ],
+    }
+    # An outage or a rejected key teaches us nothing about the catalog, so the
+    # merge must not accuse every model of being withdrawn.
+    result = reconcile_models(provider, live_ids=[], error="HTTP 503")
+    assert result["stale_count"] == 0
+    assert result["models"][0]["stale"] is False
+    assert result["verified"] is False
+    assert "503" in result["error"]
+
+
+def test_an_offline_provider_is_checked_without_a_network_call(tmp_path) -> None:
+    from smartmoney_cub_harness.agent.providers import check_provider_models
+
+    result = check_provider_models(OFFLINE_PROVIDER_ID, settings=default_settings())
+    assert result["verified"] is True
+    assert [model["id"] for model in result["models"]] == ["local-template"]
+    assert result["error"] == ""
+
+
+def test_the_service_reconciles_a_provider_against_the_live_listing(tmp_path) -> None:
+    server, base_url = _serve(_DiscoveryProvider)
+    try:
+        service = WorkbenchService(tmp_path)
+        try:
+            install_provider(
+                tmp_path,
+                "gw",
+                base_url=base_url,
+                api_key="k",
+                models=[{"id": "stale-model", "label": "Stale"}],
+            )
+            result = service.check_models({"provider_id": "gw"})
+            assert result["verified"] is True
+            ids = {model["id"] for model in result["models"]}
+            # The endpoint serves a-model and b-model; the declared stale-model
+            # is kept but flagged, and the two live ids are added.
+            assert ids == {"stale-model", "a-model", "b-model"}
+            by_id = {model["id"]: model for model in result["models"]}
+            assert by_id["stale-model"]["stale"] is True
+            assert by_id["a-model"]["stale"] is False
+            assert result["stale_count"] == 1
+            assert result["added_count"] == 2
+            assert result["safety"] == "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+            assert '"' + 'api_key' + '"' not in json.dumps(result)
+        finally:
+            service.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_checking_models_without_an_id_is_a_client_error(tmp_path) -> None:
+    service = WorkbenchService(tmp_path)
+    try:
+        with pytest.raises(Exception) as error:
+            service.check_models({})
+        assert "provider_id" in str(error.value)
+    finally:
+        service.close()
+
+
+def test_the_key_status_is_three_state_so_unknown_never_reads_as_broken() -> None:
+    # A green dot claims a key IS configured, a red dot claims a reference IS
+    # missing, and anything undecidable gets no dot. Collapsing unknown into red
+    # would accuse a provider we simply have not checked.
+    offline = public_provider_view(OFFLINE_PROVIDER_ID, settings=default_settings())
+    assert offline["key_status"] == "unknown"
+    assert offline["routable"] is True
+
+    gateway = public_provider_view(ALPHATECH_PROVIDER_ID, settings=default_settings())
+    assert gateway["key_status"] == "missing"
+    assert gateway["routable"] is False
+    assert gateway["is_custom"] is False
+
+
+def test_a_custom_provider_is_tagged_and_the_catalog_is_not(tmp_path) -> None:
+    install_provider(tmp_path, "my-gateway", base_url="https://gw.example/v1", api_key="k")
+    settings = load_settings(tmp_path)
+    assert public_provider_view("my-gateway", settings=settings)["is_custom"] is True
+    assert public_provider_view(ALPHATECH_PROVIDER_ID, settings=settings)["is_custom"] is False
+
+
+def test_every_shipped_model_effort_carries_a_label_and_a_description() -> None:
+    # The selector shows a human label plus one line of explanation, so a bare
+    # wire enum like "xhigh" can never reach the user unexplained.
+    for entry in PROVIDER_CATALOG.values():
+        for model in entry.get("models") or []:
+            details = model.get("effort_details") or []
+            assert [row["level"] for row in details] == list(model["reasoning_efforts"]), model["id"]
+            for row in details:
+                assert row["label"], (model["id"], row)
+                assert row["description"], (model["id"], row)
+
+
+def test_saving_a_model_keeps_its_capacity_and_description(tmp_path) -> None:
+    # Regression: the settings page sent a context window and max output, and the
+    # normalizer rebuilt the row from id/label/efforts only, so the values
+    # vanished on every save and the page became a write-only surface.
+    install_provider(
+        tmp_path,
+        "gw",
+        base_url="https://gw.example/v1",
+        api_key="k",
+        models=[
+            {
+                "id": "m1",
+                "label": "M1",
+                "reasoning_efforts": ["off", "high"],
+                "default_effort": "high",
+                "context_window": 262144,
+                "max_tokens": 32768,
+                "description": "keep me",
+            }
+        ],
+    )
+    saved = provider_entry("gw", load_settings(tmp_path))["models"][0]
+    assert saved["context_window"] == 262144
+    assert saved["max_tokens"] == 32768
+    assert saved["description"] == "keep me"
+    # The effort descriptions are derived on save, so a stored row is always
+    # renderable without a second lookup.
+    assert [row["level"] for row in saved["effort_details"]] == ["off", "high"]
+
+
+def test_a_client_cannot_declare_its_own_model_verified(tmp_path) -> None:
+    # Staleness is decided by reconciling against the endpoint, never by a form
+    # field, so a submission cannot claim a withdrawn model is still current.
+    install_provider(
+        tmp_path,
+        "gw",
+        base_url="https://gw.example/v1",
+        api_key="k",
+        models=[{"id": "m1", "label": "M1", "reasoning_efforts": ["off"], "default_effort": "off"}],
+    )
+    saved = provider_entry("gw", load_settings(tmp_path))["models"][0]
+    assert "verified" not in saved
+    assert "stale" not in saved
+
+
+def test_a_negative_or_boolean_capacity_is_ignored_rather_than_stored(tmp_path) -> None:
+    install_provider(
+        tmp_path,
+        "gw",
+        base_url="https://gw.example/v1",
+        api_key="k",
+        models=[
+            {
+                "id": "m1",
+                "label": "M1",
+                "reasoning_efforts": ["off"],
+                "default_effort": "off",
+                "context_window": -5,
+                "max_tokens": True,
+            }
+        ],
+    )
+    saved = provider_entry("gw", load_settings(tmp_path))["models"][0]
+    assert "context_window" not in saved
+    assert "max_tokens" not in saved
+
+
+def test_reconcile_skips_non_conversational_listings() -> None:
+    # A gateway's /v1/models is the whole catalog. The company relay answers with
+    # 108 ids and most of them are image, video, music, and speech endpoints, so
+    # appending everything would bury the three usable chat models.
+    from smartmoney_cub_harness.agent.providers import is_conversational_model, reconcile_models
+
+    assert is_conversational_model("gpt-6-astra") is True
+    assert is_conversational_model("deepseek-reasoner") is True
+    assert is_conversational_model("SD2.5-720p") is False
+    assert is_conversational_model("tts-1-hd") is False
+    assert is_conversational_model("suno_music") is False
+    assert is_conversational_model("wan3.0-1080p") is False
+    assert is_conversational_model("whisper-1") is False
+
+    provider = {
+        "provider_id": "gw",
+        "models": [
+            {"id": "kept", "label": "Kept", "reasoning_efforts": ["off"], "default_effort": "off"}
+        ],
+    }
+    result = reconcile_models(provider, live_ids=["kept", "gpt-6-astra", "tts-1-hd", "SD2.5-720p"])
+    assert [model["id"] for model in result["models"]] == ["kept", "gpt-6-astra"]
+    assert result["added_count"] == 1
+    assert result["skipped_count"] == 2
+
+
+def test_a_hand_declared_non_chat_model_is_never_filtered_out() -> None:
+    # The filter decides what a reconciliation may APPEND. A model the user named
+    # by hand is kept even when it looks unusual, because they chose it.
+    from smartmoney_cub_harness.agent.providers import reconcile_models
+
+    provider = {
+        "provider_id": "gw",
+        "models": [
+            {"id": "my-private-tts-bridge", "label": "Mine", "reasoning_efforts": ["off"], "default_effort": "off"}
+        ],
+    }
+    result = reconcile_models(provider, live_ids=["gpt-6-astra"])
+    ids = [model["id"] for model in result["models"]]
+    assert "my-private-tts-bridge" in ids
+    # It is flagged, not deleted, because the endpoint no longer publishes it.
+    by_id = {model["id"]: model for model in result["models"]}
+    assert by_id["my-private-tts-bridge"]["stale"] is True
 
 def test_the_default_selection_is_stored_and_survives_a_restart(tmp_path) -> None:
     service = WorkbenchService(tmp_path)

@@ -107,6 +107,10 @@ export interface CandidateRow {
   side: string | null;
   price: number | null;
   quantity: number | null;
+  /** Aggregate fee the extractor reconciled from the broker's fee columns. */
+  fee?: number | null;
+  /** Free-text rationale the broker export carried, when it had one. */
+  thesis?: string | null;
   field_confidence: Record<string, number>;
   raw_text: string;
   warnings: string[];
@@ -143,12 +147,46 @@ export interface RuleRecord {
   updated_at: string;
 }
 
+/**
+ * One reasoning level a model advertises.
+ *
+ * The level is the wire value; the label is what the picker shows. Learning
+ * this from DSH: a level without a human name reads as a raw enum, and a level
+ * without a description leaves the user guessing what "xhigh" buys them.
+ */
+export interface ReasoningEffort {
+  level: string;
+  label: string;
+  description?: string;
+  is_default?: boolean;
+}
+
 export interface ModelEntry {
   id: string;
   label: string;
   reasoning_efforts: string[];
   default_effort: string;
+  /** Richer effort rows. Falls back to reasoning_efforts when absent. */
+  effort_details?: ReasoningEffort[];
+  context_window?: number;
+  max_tokens?: number;
+  description?: string;
+  input_modalities?: string[];
+  /** True when the provider no longer publishes this id. Shown, never hidden. */
+  stale?: boolean;
+  /** True when the id was confirmed against the live endpoint. */
+  verified?: boolean;
 }
+
+/**
+ * How the API-key state should be drawn.
+ *
+ * DSH draws a solid green dot only when it can confirm a key is configured, a
+ * red dot only when it can confirm a named reference is missing, and no dot
+ * when it cannot tell. Reusing that rule keeps us from implying a broken
+ * provider when we simply do not know.
+ */
+export type KeyStatus = 'configured' | 'missing' | 'unknown';
 
 export interface ProviderView {
   provider_id: string;
@@ -166,6 +204,14 @@ export interface ProviderView {
   key_source: string;
   description: string;
   incomplete?: boolean;
+  key_status?: KeyStatus;
+  /** True when this provider's profile was hand-declared rather than catalog. */
+  is_custom?: boolean;
+  /** True when the route is usable right now (key present and endpoint set). */
+  routable?: boolean;
+  models_checked_at?: string;
+  /** Set when the last model lookup failed; the row still renders. */
+  models_error?: string;
 }
 
 export interface CatalogEntry {

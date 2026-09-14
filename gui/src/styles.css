@@ -265,6 +265,77 @@ textarea { resize: vertical; min-height: 62px; }
 .checklist-row:last-child { border-bottom: none; }
 .checklist-row label { flex: 1; font-size: 12px; }
 
+/* ---- shared model-plane vocabulary ---------------------------------- */
+/*
+ * Frozen class vocabulary shared by the picker and the settings page. Both
+ * surfaces describe the same three facts (key state, verification, staleness),
+ * so they draw them with the same classes instead of each inventing a badge.
+ */
+
+/* A key-status dot. Green only when a key is confirmed, red only when a named
+   reference is confirmed missing, and nothing when we genuinely cannot tell. */
+.key-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; flex: none; }
+.key-dot.ok { background: var(--color-status-success); }
+.key-dot.error { background: var(--color-status-error); }
+.key-dot.unknown { background: transparent; border: 1px solid var(--border); }
+
+/* Tags that qualify a provider or model without shouting. */
+.tag {
+  border: 1px solid var(--border); border-radius: 5px; padding: 0 5px;
+  font-size: 10px; color: var(--muted); flex: none; line-height: 16px;
+}
+.tag.accent { border-color: var(--accent); color: var(--accent); }
+.tag.warn { border-color: var(--color-border-danger); color: var(--color-content-warning); }
+
+/* Effort rows carry a label and a one-line explanation, so the user is never
+   picking a bare enum like "xhigh" with no idea what it costs. */
+.effort-row { align-items: flex-start; flex-direction: column; gap: 1px; }
+.effort-row .effort-name { font-size: 12.5px; font-weight: 500; }
+.effort-row .effort-desc { font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+
+/* A model row in the picker: name on the left, capability hints on the right. */
+.model-row-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.model-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-row-sub { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-row-tags { display: flex; align-items: center; gap: 4px; flex: none; }
+
+/* Stale and unverified models stay selectable; they are marked, not hidden. */
+.model-row.stale .model-row-name { opacity: 0.65; }
+
+/* Provider rows on the settings page: one line each, only one expands. */
+.provider-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--inset); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px;
+}
+.provider-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.provider-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.provider-row-actions .danger { color: var(--color-content-danger); }
+
+/* The dashed pair of add buttons under the provider list. */
+.add-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.add-card {
+  flex: 1 1 220px; border: 1px dashed var(--border); border-radius: 10px;
+  padding: 10px 12px; background: transparent; color: var(--muted); font-size: 12px;
+}
+.add-card:hover { border-color: var(--accent); color: var(--text); }
+
+/* Expandable section inside a provider card, for the advanced fields. */
+.collapse-head {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: transparent; border: none; padding: 6px 0; color: var(--muted); font-size: 11.5px;
+}
+.collapse-head:hover { color: var(--text); }
+
+/* A model row being edited inside a provider card. */
+.model-line {
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border); padding: 5px 0;
+}
+.model-line:last-child { border-bottom: none; }
+.model-line .grow { flex: 1; min-width: 0; }
+
 /* ---- charts --------------------------------------------------------- */
 
 /* SVG paint is set by class, not by a presentation attribute. `stroke=
