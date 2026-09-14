@@ -22,6 +22,33 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade build
 
+      # Publish nothing that has not passed its own tests. This job used to build
+      # and install a wheel and then release it, without ever running the suite:
+      # CI runs on the same tag push but on its own schedule, so a tag could
+      # publish while the tests were red or still running. The frontend is covered
+      # here too, because the interface is a committed build that ships inside the
+      # wheel and a tag is exactly when a stale one would reach users.
+      - name: Install the test toolchain
+        run: python -m pip install -e ".[dev,hosted]"
+
+      - name: Run the test suite
+        run: pytest -q
+
+      - name: The safety contract must hold before anything is published
+        run: |
+          smcub doctor | tee "$RUNNER_TEMP/doctor.json"
+          grep -q "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" "$RUNNER_TEMP/doctor.json" || {
+            echo "doctor does not carry the safety declaration; refusing to publish" >&2
+            exit 1
+          }
+          python -c "
+          import json
+          d = json.load(open('$RUNNER_TEMP/doctor.json'))
+          assert d['execution_integrations'] == 'disabled', d
+          assert d['broker_api_required'] is False, d
+          print('safety contract holds:', d['safety'])
+          "
+
       - name: Verify tag matches package version
         env:
           PYTHONPATH: src
