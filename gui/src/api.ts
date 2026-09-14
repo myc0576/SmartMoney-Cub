@@ -9,9 +9,23 @@ import type {
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
 // no third-party endpoint anywhere in this file.
+//
+// Why the API base is derived rather than written as a bare '/api': a hosted
+// deployment publishes the product under a path prefix (nginx maps
+// /trader/ to the app). A request for the absolute '/api/trader/health' leaves
+// that prefix, matches the proxy's default location, and 404s — the interface
+// would load its shell and then fail every call. Resolving against the current
+// document instead keeps the calls inside whatever prefix the app was served
+// under, and still resolves to '/api/...' when the app is served at the root
+// (the local single-user case), so both deployments work from one build.
+
+function apiUrl(path: string): string {
+  const base = document.baseURI || window.location.href;
+  return new URL(path.replace(/^\//, ''), base).toString();
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   });
@@ -171,7 +185,7 @@ export interface StreamHandlers {
 // The assistant turn is a server-sent event stream. The same events are stored
 // locally, so a dropped stream can be recovered by reloading the session.
 export async function streamTurn(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
-  const response = await fetch('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages', {
+  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
