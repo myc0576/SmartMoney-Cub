@@ -51,7 +51,10 @@ def test_share_pack_labels_demo_data() -> None:
 def test_share_pack_audit_detects_identifiers_paths_and_secrets() -> None:
     dirty = (
         "contact a@b.com or 13800138000 token=abc123 "
-        "path /Users/myc/private C:\\Users\\me\\notes account_id: 998877"
+        # A synthetic home path. It deliberately does not name a real account:
+        # this file is published, and a fixture is not a reason to record
+        # somebody's username in it.
+        "path /Users/example/private C:\\Users\\me\\notes account_id: 998877"
     )
     audit = audit_share_pack(dirty)
     assert audit["status"] == "needs_review"
