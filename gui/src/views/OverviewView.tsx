@@ -35,55 +35,6 @@ export function OverviewView({ summary, recent, openPositions, issues, ledgerSta
   // counts errors rather than every warning the matcher recorded.
   const blocking = issues.filter((issue) => issue.severity === 'error');
   const shown = recent.slice(0, RECENT_LIMIT);
-  const hasData = summary.trade_count > 0 || openPositions.length > 0 || recent.length > 0;
-
-  if (!hasData) {
-    return (
-      <div className="grid" style={{ gap: 14 }}>
-        {ledgerStatus === 'needs_review' ? (
-          <div className="notice">
-            台账中有 {blocking.length} 条需要先确认的问题，未确认前这些成交不会进入统计。
-            <button className="ghost" style={{ marginLeft: 10, fontSize: 11 }} onClick={onGoToImport}>
-              去处理
-            </button>
-          </div>
-        ) : null}
-
-        <Panel title="开始使用">
-          <div style={{ padding: '28px 16px', maxWidth: 660 }}>
-            <h2 style={{ fontSize: 20, margin: '0 0 10px', fontWeight: 600 }}>欢迎使用 SmartMoney-Cub 交易复盘工作台</h2>
-            <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, margin: '0 0 24px' }}>
-              当前账本暂无交易记录。你可以直接导入交割单或进行单笔手工录入，系统将自动进行先进先出（FIFO）撮合配对，实时生成多维绩效归因、收益曲线与复盘日历。
-            </p>
-
-            <div className="row" style={{ gap: 12, marginBottom: 28 }}>
-              <button className="primary" onClick={onGoToImport}>
-                导入交割数据 (CSV / PDF / 截图)
-              </button>
-              <button className="ghost" onClick={onGoToImport}>
-                手工补录成交
-              </button>
-            </div>
-
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              <div style={{ padding: '14px 16px', borderRadius: 8, background: 'var(--panel-2)', border: '1px solid var(--border)' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>1. 导入数据</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>支持主流券商交割单、CSV 格式拖拽批量解析，或单笔快速录入。</div>
-              </div>
-              <div style={{ padding: '14px 16px', borderRadius: 8, background: 'var(--panel-2)', border: '1px solid var(--border)' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>2. 自动归因</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>自动计算真实净盈亏、最大回撤、盈亏比与月度日历热力图。</div>
-              </div>
-              <div style={{ padding: '14px 16px', borderRadius: 8, background: 'var(--panel-2)', border: '1px solid var(--border)' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>3. 策略回测</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>内置 Playbook 纪律评分、K 线逐笔回放与纯 JSON 策略回测引擎。</div>
-              </div>
-            </div>
-          </div>
-        </Panel>
-      </div>
-    );
-  }
 
   return (
     <div className="grid" style={{ gap: 14 }}>

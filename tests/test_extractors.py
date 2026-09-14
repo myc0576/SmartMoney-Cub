@@ -141,3 +141,105 @@ def test_separate_fee_columns_are_summed_into_placeholders() -> None:
     row = result["rows"][0]
     assert json.dumps(row, ensure_ascii=False)
     assert row["fee"] == 5.0
+
+
+def test_compact_8_digit_date_normalization() -> None:
+    assert extractors.normalize_date("20260911") == "2026-09-11"
+    assert extractors.normalize_date("20260814") == "2026-08-14"
+    assert extractors.normalize_time("150102") == "15:01:02"
+
+
+def test_xls_text_broker_export_with_gb18030_and_tsv() -> None:
+    content = (
+        "成交日期\t成交时间\t证券代码\t证券名称\t操作\t成交数量\t成交均价\t手续费\t印花税\n"
+        "20260814\t14:45:31\t002832\t比音勒芬\t证券卖出\t-300.000\t26.083\t5.000\t3.910\n"
+    ).encode("gb18030")
+    result = extractors.extract(content, file_name="table.xls")
+    assert result["status"] == "ok"
+    assert result["engine"] == "xls_text"
+    assert len(result["rows"]) == 1
+    row = result["rows"][0]
+    assert row["trade_date"] == "2026-08-14"
+    assert row["trade_time"] == "14:45:31"
+    assert row["symbol"] == "002832"
+    assert row["name"] == "比音勒芬"
+    assert row["side"] == "SELL"
+    assert row["quantity"] == 300
+    assert row["price"] == 26.083
+    assert row["fee"] == 8.91
+
+
+def test_json_trade_import() -> None:
+    data = [
+        {
+            "trade_date": "2026-09-01",
+            "trade_time": "09:30:00",
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "side": "BUY",
+            "price": 1600.0,
+            "quantity": 100,
+            "fee": 5.0,
+        }
+    ]
+    content = json.dumps(data).encode("utf-8")
+    result = extractors.extract(content, file_name="trades.json")
+    assert result["status"] == "ok"
+    assert result["engine"] == "json"
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["symbol"] == "600519"
+    assert result["rows"][0]["side"] == "BUY"
+
+
+def test_html_table_xls_import() -> None:
+    content = (
+        "<html><body><table>"
+        "<tr><th>成交日期</th><th>证券代码</th><th>证券名称</th><th>操作</th><th>成交均价</th><th>成交数量</th></tr>"
+        "<tr><td>2026-09-05</td><td>000001</td><td>平安银行</td><td>买入</td><td>12.50</td><td>1000</td></tr>"
+        "</table></body></html>"
+    ).encode("utf-8")
+    result = extractors.extract(content, file_name="export.xls")
+    assert result["status"] == "ok"
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["symbol"] == "000001"
+    assert result["rows"][0]["name"] == "平安银行"
+
+
+def test_xlsx_openxml_import() -> None:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types></Types>")
+        z.writestr(
+            "xl/sharedStrings.xml",
+            "<sst><si><t>成交日期</t></si><si><t>证券代码</t></si><si><t>操作</t></si><si><t>买入</t></si></sst>",
+        )
+        sheet = (
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            "<sheetData>"
+            '<row r="1">'
+            '<c r="A1" t="s"><v>0</v></c>'
+            '<c r="B1" t="s"><v>1</v></c>'
+            '<c r="C1" t="s"><v>2</v></c>'
+            '<c r="D1"><v>成交均价</v></c>'
+            '<c r="E1"><v>成交数量</v></c>'
+            "</row>"
+            '<row r="2">'
+            '<c r="A2"><v>2026-09-09</v></c>'
+            '<c r="B2"><v>601318</v></c>'
+            '<c r="C2" t="s"><v>3</v></c>'
+            '<c r="D2"><v>45.80</v></c>'
+            '<c r="E2"><v>500</v></c>'
+            "</row>"
+            "</sheetData>"
+            "</worksheet>"
+        )
+        z.writestr("xl/worksheets/sheet1.xml", sheet)
+
+    result = extractors.extract(buf.getvalue(), file_name="fills.xlsx")
+    assert result["status"] == "ok"
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["symbol"] == "601318"
+    assert result["rows"][0]["quantity"] == 500

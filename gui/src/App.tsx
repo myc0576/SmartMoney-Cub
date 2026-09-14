@@ -60,7 +60,7 @@ const NAV: { section: string; items: { key: TabKey; label: string; hint: string 
     items: [
       { key: 'trades', label: '成交台账', hint: '已确认的平仓交易' },
       { key: 'rules', label: '规则库', hint: 'challenger / champion' },
-      { key: 'import', label: '数据导入', hint: '截图 / PDF / CSV' },
+      { key: 'import', label: '数据导入', hint: 'Excel / CSV / PDF / 截图' },
       { key: 'plugins', label: '插件', hint: '只读数据来源' },
       { key: 'settings', label: '设置', hint: '模型、隐私与诊断' },
     ],

@@ -3,7 +3,11 @@ from __future__ import annotations
 import csv
 import importlib.util
 import io
+import json
 import re
+import zipfile
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +21,8 @@ from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 # explaining what is missing, and the raw file stays untouched on disk.
 
 CSV_SUFFIXES = {".csv", ".tsv", ".txt"}
+EXCEL_SUFFIXES = {".xls", ".xlsx"}
+JSON_SUFFIXES = {".json"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".heic"}
 PDF_SUFFIXES = {".pdf"}
 
@@ -27,11 +33,17 @@ SELL_WORDS = ("卖出", "卖", "担保品卖出", "融券卖出", "证券卖出"
 NON_TRADE_WORDS = ("申购", "配号", "红利", "股息", "转账", "银证", "利息", "中签", "新股")
 
 DATE_RE = re.compile(r"(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})")
+DATE_COMPACT_RE = re.compile(r"(?<!\d)(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)")
+DATE_SLASH_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(20\d{2})(?!\d)")
 TIME_RE = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)")
+TIME_COMPACT_RE = re.compile(r"(?<!\d)([01]\d|2[0-3])([0-5]\d)([0-5]\d)(?!\d)")
 SYMBOL_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 NUMBER_RE = re.compile(r"(?<![\d.])(\d{1,9}(?:\.\d{1,4})?)(?![\d])")
 
-HEADER_HINTS = ("证券代码", "成交日期", "买卖标志", "操作", "symbol", "成交均价")
+HEADER_HINTS = (
+    "证券代码", "股票代码", "代码", "成交日期", "发生日期", "交易日期",
+    "买卖标志", "操作", "业务名称", "symbol", "code", "成交均价", "成交数量", "trade_date"
+)
 
 
 def ocr_backend_status() -> dict[str, Any]:
@@ -49,6 +61,12 @@ def detect_source_kind(file_name: str, media_type: str = "", content: bytes = b"
     suffix = Path(file_name or "").suffix.lower()
     if suffix in CSV_SUFFIXES:
         return "csv"
+    if suffix == ".xlsx":
+        return "xlsx"
+    if suffix == ".xls":
+        return "xls"
+    if suffix in JSON_SUFFIXES:
+        return "json"
     if suffix in IMAGE_SUFFIXES:
         return "image"
     if suffix in PDF_SUFFIXES or media_type == "application/pdf" or content[:4] == b"%PDF":
@@ -56,6 +74,12 @@ def detect_source_kind(file_name: str, media_type: str = "", content: bytes = b"
     lowered = (media_type or "").lower()
     if lowered.startswith("image/"):
         return "image"
+    if "openxmlformats" in lowered:
+        return "xlsx"
+    if "ms-excel" in lowered:
+        return "xls"
+    if "json" in lowered or content[:1] in (b"{", b"["):
+        return "json"
     if lowered.startswith("text/") or lowered in {"application/csv", "text/csv"}:
         return "csv"
     return "unknown"
@@ -72,6 +96,12 @@ def extract(
     kind = source_kind or detect_source_kind(file_name, media_type, content)
     if kind == "csv":
         return extract_csv(content, file_name=file_name, portfolio_id=portfolio_id)
+    if kind == "xls":
+        return extract_xls(content, file_name=file_name, portfolio_id=portfolio_id)
+    if kind == "xlsx":
+        return extract_xlsx(content, file_name=file_name, portfolio_id=portfolio_id)
+    if kind == "json":
+        return extract_json(content, file_name=file_name, portfolio_id=portfolio_id)
     if kind == "pdf":
         return extract_pdf(content, file_name=file_name, portfolio_id=portfolio_id)
     if kind == "image":
@@ -91,12 +121,23 @@ def extract(
 
 
 def decode_text(content: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk", "big5", "latin-1"):
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk", "gb2312", "big5", "utf-16", "latin-1"):
         try:
             return content.decode(encoding)
-        except UnicodeDecodeError:
+        except (UnicodeDecodeError, LookupError):
             continue
     return content.decode("utf-8", errors="replace")
+
+
+def _detect_delimiter(line: str) -> str:
+    counts = {
+        "\t": line.count("\t"),
+        ",": line.count(","),
+        ";": line.count(";"),
+        "|": line.count("|"),
+    }
+    best = max(counts, key=lambda k: counts[k])
+    return best if counts[best] > 0 else ","
 
 
 def extract_csv(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
@@ -106,19 +147,19 @@ def extract_csv(content: bytes, *, file_name: str, portfolio_id: str) -> dict[st
         return _empty_result("csv", "csv", file_name, reason="empty_file")
 
     start_index = 0
-    for index, line in enumerate(lines[:15]):
+    for index, line in enumerate(lines[:25]):
         if any(hint in line for hint in HEADER_HINTS):
             start_index = index
             break
 
-    delimiter = "\t" if "\t" in lines[start_index] else ","
+    delimiter = _detect_delimiter(lines[start_index])
     reader = csv.DictReader(io.StringIO("\n".join(lines[start_index:])), delimiter=delimiter)
     rows: list[dict[str, Any]] = []
     for row_index, raw in enumerate(reader):
         if not raw:
             continue
-        clean = {str(key).strip().lstrip("\ufeff"): value for key, value in raw.items() if key}
-        if not any((value or "").strip() for value in clean.values()):
+        clean = {str(key).strip().lstrip("\ufeff"): (value or "").strip() for key, value in raw.items() if key}
+        if not any(clean.values()):
             continue
         candidate = _candidate_from_mapping(clean, portfolio_id=portfolio_id, row_index=row_index)
         if candidate:
@@ -127,6 +168,212 @@ def extract_csv(content: bytes, *, file_name: str, portfolio_id: str) -> dict[st
     return {
         "status": "ok" if rows else "empty",
         "engine": "csv",
+        "engine_version": "builtin",
+        "file_name": file_name,
+        "rows": rows,
+        "mean_confidence": _mean_confidence(rows),
+        "safety": SAFETY_DECLARATION,
+    }
+
+
+def _parse_table_rows(
+    table_rows: list[list[str]],
+    *,
+    file_name: str,
+    portfolio_id: str,
+    engine: str,
+) -> dict[str, Any]:
+    if not table_rows:
+        return _empty_result(engine, engine, file_name, reason="empty_table")
+
+    start_index = 0
+    for idx, r in enumerate(table_rows[:25]):
+        line_str = " ".join(r)
+        if any(hint in line_str for hint in HEADER_HINTS):
+            start_index = idx
+            break
+
+    headers = [str(h).strip().lstrip("\ufeff") for h in table_rows[start_index]]
+    rows: list[dict[str, Any]] = []
+    for row_index, raw_cells in enumerate(table_rows[start_index + 1:]):
+        clean: dict[str, Any] = {}
+        for col_idx, col_name in enumerate(headers):
+            if not col_name:
+                continue
+            val = raw_cells[col_idx] if col_idx < len(raw_cells) else ""
+            clean[col_name] = str(val).strip()
+        if not any(clean.values()):
+            continue
+        candidate = _candidate_from_mapping(clean, portfolio_id=portfolio_id, row_index=row_index)
+        if candidate:
+            rows.append(candidate)
+
+    return {
+        "status": "ok" if rows else "empty",
+        "engine": engine,
+        "engine_version": "builtin",
+        "file_name": file_name,
+        "rows": rows,
+        "mean_confidence": _mean_confidence(rows),
+        "safety": SAFETY_DECLARATION,
+    }
+
+
+class _HTMLTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._current_row: list[str] = []
+        self._current_cell: list[str] = []
+        self._in_cell = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ("td", "th"):
+            self._in_cell = True
+            self._current_cell = []
+        elif tag == "tr":
+            self._current_row = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("td", "th"):
+            self._in_cell = False
+            self._current_row.append("".join(self._current_cell).strip())
+        elif tag == "tr":
+            if any(self._current_row):
+                self.rows.append(self._current_row)
+
+    def handle_data(self, data: str) -> None:
+        if self._in_cell:
+            self._current_cell.append(data)
+
+
+def extract_html_table(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
+    text = decode_text(content)
+    parser = _HTMLTableParser()
+    parser.feed(text)
+    return _parse_table_rows(parser.rows, file_name=file_name, portfolio_id=portfolio_id, engine="html_table")
+
+
+def extract_xml_spreadsheet(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
+    text = decode_text(content)
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return _empty_result("xml_spreadsheet", "xml_spreadsheet", file_name, reason="invalid_xml")
+    table_rows: list[list[str]] = []
+    for row in root.findall(".//{*}Row"):
+        cells = row.findall("{*}Cell")
+        row_vals: list[str] = []
+        for cell in cells:
+            data = cell.find("{*}Data")
+            row_vals.append((data.text or "").strip() if data is not None else "")
+        if any(row_vals):
+            table_rows.append(row_vals)
+    return _parse_table_rows(table_rows, file_name=file_name, portfolio_id=portfolio_id, engine="xml_spreadsheet")
+
+
+def extract_xlsx(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(content), "r") as z:
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in z.namelist():
+                root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                for si in root.findall(".//{*}si"):
+                    parts = [t.text or "" for t in si.findall(".//{*}t")]
+                    shared_strings.append("".join(parts))
+
+            sheet_names = [n for n in z.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+            if not sheet_names:
+                return _empty_result("xlsx", "xlsx", file_name, reason="no_worksheets_found")
+            sheet_names.sort()
+            sheet_root = ET.fromstring(z.read(sheet_names[0]))
+
+            def col_index(cell_ref: str) -> int:
+                letters = "".join(c for c in cell_ref if c.isalpha())
+                idx = 0
+                for ch in letters.upper():
+                    idx = idx * 26 + (ord(ch) - ord("A") + 1)
+                return max(0, idx - 1)
+
+            table_rows: list[list[str]] = []
+            for row in sheet_root.findall(".//{*}row"):
+                cells = row.findall("{*}c")
+                if not cells:
+                    continue
+                row_vals: list[str] = []
+                for cell in cells:
+                    r_attr = cell.get("r", "")
+                    t_attr = cell.get("t", "")
+                    v_tag = cell.find("{*}v")
+                    is_tag = cell.find("{*}is")
+                    target_col = col_index(r_attr) if r_attr else len(row_vals)
+                    while len(row_vals) < target_col:
+                        row_vals.append("")
+                    val = ""
+                    if t_attr == "s" and v_tag is not None and v_tag.text:
+                        try:
+                            val = shared_strings[int(v_tag.text)]
+                        except (IndexError, ValueError):
+                            val = v_tag.text or ""
+                    elif t_attr == "inlineStr" and is_tag is not None:
+                        val = "".join(t.text or "" for t in is_tag.findall(".//{*}t"))
+                    elif v_tag is not None and v_tag.text:
+                        val = v_tag.text
+                    row_vals.append(val.strip())
+                if any(row_vals):
+                    table_rows.append(row_vals)
+            return _parse_table_rows(table_rows, file_name=file_name, portfolio_id=portfolio_id, engine="xlsx")
+    except Exception as err:
+        return _empty_result("xlsx", "xlsx", file_name, reason=f"xlsx_read_error_{err}")
+
+
+def extract_xls(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
+    if content.startswith(b"PK\x03\x04"):
+        return extract_xlsx(content, file_name=file_name, portfolio_id=portfolio_id)
+    raw_head = content[:500].lower()
+    if b"<?xml" in raw_head and (b"workbook" in raw_head or b"worksheet" in raw_head):
+        return extract_xml_spreadsheet(content, file_name=file_name, portfolio_id=portfolio_id)
+    if b"<html" in raw_head or b"<!doctype" in raw_head or b"<table" in raw_head:
+        return extract_html_table(content, file_name=file_name, portfolio_id=portfolio_id)
+    result = extract_csv(content, file_name=file_name, portfolio_id=portfolio_id)
+    return {
+        "status": result["status"],
+        "engine": "xls_text",
+        "engine_version": "builtin",
+        "file_name": file_name,
+        "rows": result["rows"],
+        "mean_confidence": result["mean_confidence"],
+        "safety": SAFETY_DECLARATION,
+    }
+
+
+def extract_json(content: bytes, *, file_name: str, portfolio_id: str) -> dict[str, Any]:
+    text = decode_text(content)
+    try:
+        data = json.loads(text)
+    except Exception:
+        return _empty_result("json", "json", file_name, reason="invalid_json")
+
+    items: list[dict[str, Any]] = []
+    if isinstance(data, list):
+        items = [x for x in data if isinstance(x, dict)]
+    elif isinstance(data, dict):
+        for candidate_key in ("trades", "fills", "records", "rows", "data", "items"):
+            if isinstance(data.get(candidate_key), list):
+                items = [x for x in data[candidate_key] if isinstance(x, dict)]
+                break
+        if not items:
+            items = [data]
+
+    rows: list[dict[str, Any]] = []
+    for row_index, raw in enumerate(items):
+        candidate = _candidate_from_mapping(raw, portfolio_id=portfolio_id, row_index=row_index)
+        if candidate:
+            rows.append(candidate)
+
+    return {
+        "status": "ok" if rows else "empty",
+        "engine": "json",
         "engine_version": "builtin",
         "file_name": file_name,
         "rows": rows,
@@ -157,7 +404,26 @@ def _candidate_from_mapping(raw: dict[str, Any], *, portfolio_id: str, row_index
     trade_time = normalize_time(str(pick("成交时间", "委托时间", "时间", "time") or ""))
     price = to_float(pick("成交均价", "成交价格", "成交价", "委托价格", "价格", "price"))
     quantity = to_int(pick("成交数量", "成交量", "数量", "volume", "quantity", "shares"))
-    fee = to_float(pick("手续费", "佣金", "费用", "fee", "commission"))
+
+    # Fee aggregation: check explicit total fee, otherwise sum fee components.
+    fee_keys = ("手续费", "佣金", "印花税", "过户费", "其他费用", "规费", "经手费", "证管费", "结算费")
+    explicit_total = pick("总费用", "费用合计", "合计费用", "total_fee")
+    if explicit_total is not None and to_float(explicit_total) is not None:
+        fee = abs(to_float(explicit_total) or 0.0)
+    else:
+        components = []
+        for key in fee_keys:
+            val = pick(key)
+            if val is not None:
+                flt = to_float(val)
+                if flt is not None:
+                    components.append(abs(flt))
+        if components:
+            fee = round(sum(components), 4)
+        else:
+            fee = to_float(pick("费用", "fee", "commission"))
+            if fee is not None:
+                fee = abs(fee)
 
     field_confidence = {
         "trade_date": 1.0 if trade_date else 0.0,
@@ -476,25 +742,46 @@ def classify_side(value: Any) -> str | None:
 
 
 def normalize_date(value: str) -> str | None:
-    match = DATE_RE.search(str(value or ""))
-    if not match:
-        return None
-    year, month, day = (int(part) for part in match.groups())
-    try:
-        return datetime(year, month, day).strftime("%Y-%m-%d")
-    except ValueError:
-        return None
+    text = str(value or "").strip()
+    match = DATE_RE.search(text)
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+        try:
+            return datetime(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    compact = DATE_COMPACT_RE.search(text)
+    if compact:
+        year, month, day = (int(part) for part in compact.groups())
+        try:
+            return datetime(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    slash = DATE_SLASH_RE.search(text)
+    if slash:
+        m, d, y = (int(part) for part in slash.groups())
+        try:
+            return datetime(y, m, d).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
 
 
 def normalize_time(value: str) -> str:
-    match = TIME_RE.search(str(value or ""))
-    if not match:
+    text = str(value or "").strip()
+    match = TIME_RE.search(text)
+    if match:
+        hour, minute = int(match.group(1)), int(match.group(2))
+        second = int(match.group(3)) if match.group(3) else 0
+        if 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59:
+            return f"{hour:02d}:{minute:02d}:{second:02d}"
         return ""
-    hour, minute = int(match.group(1)), int(match.group(2))
-    second = int(match.group(3)) if match.group(3) else 0
-    if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-        return ""
-    return f"{hour:02d}:{minute:02d}:{second:02d}"
+    compact = TIME_COMPACT_RE.search(text)
+    if compact:
+        hour, minute, second = (int(part) for part in compact.groups())
+        if 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59:
+            return f"{hour:02d}:{minute:02d}:{second:02d}"
+    return ""
 
 
 def to_float(value: Any) -> float | None:

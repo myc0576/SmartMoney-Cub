@@ -43,8 +43,8 @@ export function ImportView({ onImported }: { onImported: () => void }) {
         side: row.side || 'BUY',
         price: row.price === null ? '' : String(row.price),
         quantity: row.quantity === null ? '' : String(row.quantity),
-        fee: '',
-        thesis: '',
+        fee: row.fee === null || row.fee === undefined ? '' : String(row.fee),
+        thesis: row.thesis || '',
       })),
     );
   };
@@ -142,7 +142,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
           onClick={() => inputRef.current?.click()}
           style={{ cursor: 'pointer' }}
         >
-          {busy ? '正在本地解析…' : '把券商成交截图、交割单 PDF、CSV 拖到这里，或点击选择文件'}
+          {busy ? '正在本地解析…' : '把券商交割单（Excel / CSV / TXT / JSON）、PDF、成交截图拖到这里，或点击选择文件'}
           <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
             原文件只保存在本机，永不上传。识别在本机完成。
           </div>
@@ -150,7 +150,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
             ref={inputRef}
             type="file"
             style={{ display: 'none' }}
-            accept=".csv,.tsv,.txt,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff"
+            accept=".csv,.tsv,.txt,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.xls,.xlsx,.json"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void handleFile(file);

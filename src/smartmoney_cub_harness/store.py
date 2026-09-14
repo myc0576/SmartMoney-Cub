@@ -143,6 +143,7 @@ class Store:
                 side TEXT,
                 price REAL,
                 quantity INTEGER,
+                fee REAL,
                 field_confidence TEXT NOT NULL DEFAULT '{}',
                 raw_text TEXT NOT NULL DEFAULT '',
                 warnings TEXT NOT NULL DEFAULT '[]',
@@ -192,6 +193,10 @@ class Store:
             );
             """
         )
+        try:
+            self._db.execute("ALTER TABLE candidate_fill ADD COLUMN fee REAL")
+        except sqlite3.OperationalError:
+            pass
         self._db.commit()
         self._ensure_default_portfolio()
 
@@ -270,6 +275,13 @@ class Store:
             "SELECT * FROM source_document WHERE sha256 = ?", (digest,)
         ).fetchone()
         if existing is not None:
+            if existing["source_kind"] == "unknown" and source_kind != "unknown":
+                self._db.execute(
+                    "UPDATE source_document SET source_kind = ? WHERE document_id = ?",
+                    (source_kind, existing["document_id"]),
+                )
+                self._db.commit()
+                return {**dict(existing), "source_kind": source_kind, "duplicate": True}
             return {**dict(existing), "duplicate": True}
 
         safe_name = Path(file_name or "upload.bin").name
@@ -358,9 +370,9 @@ class Store:
         for index, row in enumerate(rows):
             self._db.execute(
                 "INSERT INTO candidate_fill (candidate_id, extraction_id, portfolio_id, row_index,"
-                " trade_date, trade_time, symbol, name, side, price, quantity, field_confidence,"
+                " trade_date, trade_time, symbol, name, side, price, quantity, fee, field_confidence,"
                 " raw_text, warnings)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     f"CAND-{extraction_id}-{index}",
                     extraction_id,
@@ -373,6 +385,7 @@ class Store:
                     row.get("side"),
                     row.get("price"),
                     row.get("quantity"),
+                    row.get("fee"),
                     json.dumps(row.get("field_confidence") or {}, ensure_ascii=False),
                     row.get("raw_text") or "",
                     json.dumps(row.get("warnings") or [], ensure_ascii=False),
