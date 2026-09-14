@@ -30,6 +30,15 @@ BUILTIN_VARIABLES = {
     "request", "document_root", "binary_remote_addr", "connection", "http_user_agent",
 }
 
+# Variables the config deliberately takes from an included file, because they hold
+# a secret that must not live in this repository. They are listed here rather than
+# inferred from the include, so adding a new one is a deliberate edit: an inferred
+# rule would silently accept a typo like "$smcub_tokn" merely because some include
+# existed. deploy/README.md documents how the operator creates each file.
+INCLUDE_SUPPLIED_VARIABLES = {
+    "smcub_token": "/etc/nginx/snippets/smcub-token.conf",
+}
+
 
 def main() -> int:
     if not CONFIG.is_file():
@@ -42,26 +51,37 @@ def main() -> int:
     wrapped = "events {}\nhttp {\n" + text + "\n}\n"
 
     print("[1] parse the config (syntax and directive placement)")
+    # The parser is optional; the checks below are not. Every check that can run
+    # without it does, so a machine without crossplane still catches a missing
+    # proxy directive or a stale variable name instead of reporting nothing.
+    parser_available = True
     try:
         from crossplane import parse
     except ImportError:
-        print("    skipped: crossplane is not installed. Install with: pip install crossplane")
-        return 0
-    try:
-        parse(wrapped)
-    except Exception as exc:  # the parser raises several types
-        print(f"    FAIL: {type(exc).__name__}: {str(exc)[:200]}")
-        return 1
-    print("    PASS: parses cleanly")
+        parser_available = False
+        print("    skipped: crossplane is not installed (pip install crossplane).")
+        print("    The remaining checks still run; only full syntax parsing is skipped.")
+    if parser_available:
+        try:
+            parse(wrapped)
+        except Exception as exc:  # the parser raises several types
+            print(f"    FAIL: {type(exc).__name__}: {str(exc)[:200]}")
+            return 1
+        print("    PASS: parses cleanly")
 
     print()
     print("[2] every variable is built in or defined by a map")
     # The map's target carries a '$'; uses elsewhere are read without it, so
     # compare on the bare name on both sides.
     defined = set(re.findall(r"\bmap\s+\S+\s+\$(\w+)", text))
+    assigned = set(re.findall(r"\bset\s+\$(\w+)", text))
     used = set(re.findall(r"\$(\w+)", text))
-    undefined = sorted(name for name in used if name not in BUILTIN_VARIABLES and name not in defined)
+    known = BUILTIN_VARIABLES | defined | assigned | set(INCLUDE_SUPPLIED_VARIABLES)
+    undefined = sorted(name for name in used if name not in known)
     print("    maps defined  :", sorted(defined) or "none")
+    print("    set in file   :", sorted(assigned) or "none")
+    if INCLUDE_SUPPLIED_VARIABLES:
+        print("    from includes :", dict(INCLUDE_SUPPLIED_VARIABLES))
     print("    undefined vars:", undefined or "none")
     if undefined:
         print("    FAIL: nginx refuses to start on an unknown variable")
@@ -78,6 +98,11 @@ def main() -> int:
         "SSE without buffering": "proxy_buffering off;" in text,
         "client_max_body_size set": "client_max_body_size" in text,
         "the websocket upgrade map": "map $http_upgrade $connection_upgrade" in text,
+        # A browser cannot send a custom header on a page load or on the page's own
+        # asset requests, so the proxy is the only thing that can supply the token a
+        # token-protected deployment requires. Without this the product 401s for
+        # every visitor.
+        "the token reaches the app": "proxy_set_header X-SMCUB-Token $smcub_token;" in text,
     }
     for label, present in required.items():
         print(f"    {'OK  ' if present else 'MISS'} {label}")
@@ -95,4 +120,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
