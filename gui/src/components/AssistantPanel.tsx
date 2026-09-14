@@ -27,6 +27,12 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  // Set when the assistant surface cannot be reached at all. On a shared host the
+  // review workbench API is closed at the trust boundary, so every call here
+  // 403s. Without this the panel looked entirely functional -- example prompts,
+  // an input, a Send button -- and failed only after the user had typed a
+  // question and pressed it, which is worse than saying so up front.
+  const [unavailable, setUnavailable] = useState('');
   // The selection applies to the next request, and it is what a new session
   // starts from, so it lives here rather than inside the picker.
   const [selection, setSelection] = useState({
@@ -38,9 +44,16 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const abortRef = useRef<AbortController | null>(null);
 
   const loadSessions = async () => {
-    const result = await api.sessions();
-    setSessions(result.sessions);
-    return result.sessions;
+    try {
+      const result = await api.sessions();
+      setSessions(result.sessions);
+      setUnavailable('');
+      return result.sessions;
+    } catch (failure) {
+      setSessions([]);
+      setUnavailable(failure instanceof Error ? failure.message : String(failure));
+      return [];
+    }
   };
 
   useEffect(() => {
@@ -232,7 +245,16 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       ) : null}
 
       <div className="assistant-body" ref={bodyRef}>
-        {events.length === 0 && !turn ? (
+        {unavailable ? (
+          <div className="notice" style={{ fontSize: 12, lineHeight: 1.7 }}>
+            复盘助手在这个部署里不可用：{unavailable}
+            <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+              助手与设置面板读取的是本机的单用户状态，托管部署会在信任边界处关闭它们。
+              交易台账、归因分析与回测都不受影响。
+            </div>
+          </div>
+        ) : null}
+        {!unavailable && events.length === 0 && !turn ? (
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
             问点什么，例如：<br />
             · 我这个月哪些交易违反了止损纪律？<br />
@@ -287,6 +309,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       <div className="assistant-foot">
         <textarea
           value={input}
+          disabled={Boolean(unavailable)}
           placeholder="描述你想复盘的问题（回车发送，Shift+回车换行）"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -306,7 +329,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
             {busy ? (
               <button className="ghost" onClick={stop}>停止</button>
             ) : (
-              <button className="primary" onClick={send} disabled={!input.trim()}>发送</button>
+              <button className="primary" onClick={send} disabled={!input.trim() || Boolean(unavailable)}>发送</button>
             )}
           </div>
         </div>
