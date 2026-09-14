@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS = REPO_ROOT / "docs" / "trader-product.md"
 README = REPO_ROOT / "README.md"
@@ -341,3 +343,209 @@ def test_the_proxy_validator_fails_a_broken_config() -> None:
     result = _run_nginx_check(broken)
     assert result.returncode != 0, (result.returncode, result.stdout[-600:])
     assert "parses cleanly" not in result.stdout, result.stdout[-600:]
+
+
+# ---- the deployment's own documented steps, executed ---------------------
+#
+# The deploy artifacts are already checked for the properties a reviewer would
+# verify by reading them. These go further and run what the documents tell an
+# operator to run, because this project's late defects have all lived in the
+# operator path: configuration that was reviewed but never executed.
+
+
+def test_the_documented_nginx_extraction_yields_a_valid_config() -> None:
+    """README step 4: keep the map and the servers, drop the outer wrappers.
+
+    A distribution nginx includes conf.d files from inside its own http block, so
+    the operator is told to strip this file's events and http wrappers. Nobody had
+    run that transformation; if it produced something nginx rejects, the operator
+    would find out on the host.
+    """
+    crossplane = pytest.importorskip("crossplane")
+    import shutil
+    import tempfile
+
+    text = _read(DEPLOY / "nginx.conf")
+    newline = chr(10)
+
+    # Capture the body of the top-level http block by brace depth.
+    marker = newline + "http {"
+    start = text.index(marker) + len(marker)
+    depth = 1
+    index = start
+    while depth > 0:
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        index += 1
+    body = text[start:index]
+    assert "location /trader/" in body
+
+    workspace = Path(tempfile.mkdtemp(prefix="distro-extract-"))
+    try:
+        # Rebuild the distribution shape: a main file including our extracted
+        # blocks from inside its own http block.
+        full = (
+            "worker_processes auto;" + newline
+            + "events { worker_connections 1024; }" + newline
+            + "http {" + newline + body.strip() + newline + "}" + newline
+        )
+        snippets = workspace / "snippets"
+        snippets.mkdir(parents=True, exist_ok=True)
+        (snippets / "smcub-token.conf").write_text(
+            'set $smcub_token "toy-token";' + newline, encoding="utf-8"
+        )
+        config = workspace / "nginx.conf"
+        config.write_text(
+            full.replace(
+                "/etc/nginx/snippets/smcub-token.conf",
+                str(snippets / "smcub-token.conf"),
+            ),
+            encoding="utf-8",
+        )
+        result = crossplane.parse(str(config), onerror=lambda *a, **k: None)
+        errors = result.get("errors") or []
+        assert result.get("status") == "ok", [
+            str(entry.get("error"))[:200] for entry in errors[:4]
+        ]
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_the_systemd_unit_refuses_to_start_without_both_secrets() -> None:
+    """The unit's ExecStartPre gates, run against real env-file contents.
+
+    Two greps require DATABASE_URL and TRADER_ACCESS_TOKEN to be present. That is
+    the mechanism that stops a hosted process coming up without its secrets, so it
+    is executed here rather than assumed.
+    """
+    import shlex
+    import tempfile
+
+    unit = _read(DEPLOY / "trader.service")
+    gates = [
+        line.split("=", 1)[1].strip()
+        for line in unit.splitlines()
+        if line.startswith("ExecStartPre=")
+    ]
+    assert len(gates) == 2, gates
+
+    workspace = Path(tempfile.mkdtemp(prefix="unit-gate-"))
+    try:
+        def gates_all_pass(contents: str) -> bool:
+            env_file = workspace / "trader.env"
+            env_file.write_text(contents, encoding="utf-8")
+            return all(
+                subprocess.run(
+                    shlex.split(gate.replace("/etc/smcub/trader.env", str(env_file))),
+                    capture_output=True,
+                    text=True,
+                ).returncode == 0
+                for gate in gates
+            )
+
+        newline = chr(10)
+        # Both secrets present: the service may start.
+        assert gates_all_pass(
+            "DATABASE_URL=postgresql://u:p@127.0.0.1:5432/smcub" + newline
+            + "TRADER_ACCESS_TOKEN=abc123" + newline
+        )
+        # Either one missing: the service must not start.
+        assert not gates_all_pass("TRADER_ACCESS_TOKEN=abc123" + newline)
+        assert not gates_all_pass("DATABASE_URL=x" + newline)
+        assert not gates_all_pass("# only comments" + newline)
+        # A commented-out secret must not satisfy the gate; that is the difference
+        # between a real secret and someone silencing a check.
+        assert not gates_all_pass(
+            "# DATABASE_URL=x" + newline + "TRADER_ACCESS_TOKEN=abc" + newline
+        )
+    finally:
+        import shutil
+
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_the_compose_database_url_expands_the_way_the_app_parses_it() -> None:
+    """Expand the compose expressions and hand the result to the parser.
+
+    The URL is assembled from four variables with nested defaults. Nested defaults
+    read correctly and can expand wrongly, and the existing tests only assert the
+    file's shape, so the expression is expanded here the way Compose would and the
+    result is checked with the function the store itself uses.
+    """
+    import yaml
+
+    from smartmoney_cub_harness.trader.storage.postgres_store import is_postgres_url
+
+    compose = yaml.safe_load(_read(DEPLOY / "docker-compose.yml"))
+    expression = compose["services"]["app"]["environment"]["DATABASE_URL"]
+
+    expression_re = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::([-?]))?([^{}]*)\}")
+
+    def expand(text: str, env: dict[str, str], depth: int = 0) -> str:
+        if depth > 20:
+            raise AssertionError("expression did not settle: " + text[:80])
+        changed = False
+
+        def replace(match: re.Match[str]) -> str:
+            nonlocal changed
+            name, operator, rest = match.group(1), match.group(2), match.group(3)
+            if env.get(name):
+                changed = True
+                return env[name]
+            if operator == "-":
+                changed = True
+                return expand(rest, env, depth + 1)
+            if operator == "?":
+                raise AssertionError("required variable " + name + " is unset: " + rest[:40])
+            changed = True
+            return ""
+
+        expanded = expression_re.sub(replace, text)
+        # Re-substitute until the string stops changing, which resolves nested
+        # defaults innermost-first.
+        if changed or expanded != text:
+            return expand(expanded, env, depth + 1)
+        return expanded
+
+    # The operator sets only the two required secrets: every other value defaults.
+    minimal = expand(expression, {"POSTGRES_PASSWORD": "s3cret", "TRADER_ACCESS_TOKEN": "t"})
+    assert is_postgres_url(minimal), minimal
+    assert "smcub" in minimal and "db:5432" in minimal, minimal
+    # No leftover expression fragments: a trailing brace here would be a URL the
+    # driver cannot parse, and it is the kind of nested-default slip that reads
+    # correctly.
+    assert " not in minimal and " not in minimal, minimal
+
+    # An override for every part resolves too.
+    overridden = expand(
+        expression,
+        {
+            "POSTGRES_PASSWORD": "pw",
+            "TRADER_ACCESS_TOKEN": "t",
+            "POSTGRES_USER": "trader",
+            "POSTGRES_DB": "journal",
+        },
+    )
+    assert is_postgres_url(overridden), overridden
+    assert "trader" in overridden and "journal" in overridden, overridden
+
+    # A directly supplied URL wins and is not polluted by the default.
+    supplied = expand(
+        expression,
+        {
+            "DATABASE_URL": "postgresql://u:p@dbhost:5432/x",
+            "POSTGRES_PASSWORD": "pw",
+            "TRADER_ACCESS_TOKEN": "t",
+        },
+    )
+    assert supplied == "postgresql://u:p@dbhost:5432/x", supplied
+    assert is_postgres_url(supplied)
+
+    # And a missing password refuses rather than expanding to an empty credential.
+    with pytest.raises(AssertionError):
+        expand(expression, {"TRADER_ACCESS_TOKEN": "t"})
