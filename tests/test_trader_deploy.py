@@ -280,3 +280,64 @@ def test_binding_beyond_loopback_without_a_token_is_refused() -> None:
     combined = proc.stdout + proc.stderr
     assert proc.returncode == 2, (proc.returncode, combined)
     assert "without --token" in combined, combined
+
+
+# ---- the proxy validator must be able to fail ----------------------------
+#
+# scripts/nginx-check.py is the only automated check on the shipped proxy config,
+# and it was passing without parsing anything: it handed crossplane the config
+# text instead of a filename, crossplane failed inside trying to open a name that
+# long, and because that failure is reported in the returned status rather than
+# by raising, the surrounding except-clause never fired. The script announced
+# "PASS: parses cleanly" while the config was never read.
+#
+# A validator that cannot fail is worse than none, because it is trusted. These
+# two tests pin both directions: it passes the shipped config, and it fails a
+# broken one.
+
+
+def _run_nginx_check(config_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the validator, optionally against a substituted config.
+
+    A substituted config is written over the shipped file for the duration of the
+    call and restored afterwards, so the repository is never left modified.
+    """
+    shipped = REPO_ROOT / "deploy" / "nginx.conf"
+    if config_text is None:
+        return subprocess.run(
+            [sys.executable, "scripts/nginx-check.py"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=REPO_ROOT,
+        )
+    original = shipped.read_text(encoding="utf-8")
+    try:
+        shipped.write_text(config_text, encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, "scripts/nginx-check.py"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=REPO_ROOT,
+        )
+    finally:
+        shipped.write_text(original, encoding="utf-8")
+
+
+def test_the_proxy_validator_passes_the_shipped_config() -> None:
+    result = _run_nginx_check()
+    assert result.returncode == 0, (result.returncode, result.stdout[-800:])
+    combined = result.stdout + result.stderr
+    # The parse must actually have run; a skip means this check proved nothing.
+    assert "PASS: parses cleanly" in combined, combined[-600:]
+
+
+def test_the_proxy_validator_fails_a_broken_config() -> None:
+    """The regression: this used to report PASS with the config unparsed."""
+    shipped = _read(DEPLOY / "nginx.conf")
+    broken = shipped.replace("worker_connections 1024;", "worker_connections 1024", 1)
+    assert broken != shipped
+    result = _run_nginx_check(broken)
+    assert result.returncode != 0, (result.returncode, result.stdout[-600:])
+    assert "parses cleanly" not in result.stdout, result.stdout[-600:]

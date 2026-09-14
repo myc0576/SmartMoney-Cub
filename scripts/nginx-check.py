@@ -46,10 +46,6 @@ def main() -> int:
         return 1
     text = CONFIG.read_text(encoding="utf-8")
 
-    # The shipped file is a server block meant to be included inside an http
-    # block, so wrap it the way an operator would before parsing.
-    wrapped = "events {}\nhttp {\n" + text + "\n}\n"
-
     print("[1] parse the config (syntax and directive placement)")
     # The parser is optional; the checks below are not. Every check that can run
     # without it does, so a machine without crossplane still catches a missing
@@ -62,10 +58,52 @@ def main() -> int:
         print("    skipped: crossplane is not installed (pip install crossplane).")
         print("    The remaining checks still run; only full syntax parsing is skipped.")
     if parser_available:
+        # crossplane parses a FILE, not a string. Passing the config text made
+        # it try to open a filename as long as the whole file, so it failed with
+        # "File name too long" -- and because it reports that failure in the
+        # returned status rather than by raising, the old except-clause never
+        # fired and this check printed PASS while nothing had been parsed. A
+        # validation that cannot fail is worse than none, because it is trusted.
+        #
+        # The shipped file is a complete configuration, so it is parsed as-is
+        # from a copy in a temporary directory. A snippet directory is created
+        # alongside it so the include resolves, which is also what nginx needs
+        # at startup: a missing snippet stops the proxy from coming up.
+        import shutil
+        import tempfile
+
+        workspace = Path(tempfile.mkdtemp(prefix="nginx-check-"))
         try:
-            parse(wrapped)
-        except Exception as exc:  # the parser raises several types
-            print(f"    FAIL: {type(exc).__name__}: {str(exc)[:200]}")
+            snippets = workspace / "snippets"
+            snippets.mkdir(parents=True, exist_ok=True)
+            (snippets / "smcub-token.conf").write_text(
+                'set $smcub_token "toy-token-for-parsing";' + chr(10), encoding="utf-8"
+            )
+            copy = workspace / "nginx.conf"
+            copy.write_text(
+                text.replace(
+                    "/etc/nginx/snippets/smcub-token.conf",
+                    str(snippets / "smcub-token.conf"),
+                ),
+                encoding="utf-8",
+            )
+            try:
+                result = parse(str(copy), onerror=lambda *args, **kwargs: None)
+            except Exception as exc:  # the parser raises several types
+                print(f"    FAIL: {type(exc).__name__}: {str(exc)[:200]}")
+                return 1
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
+        # crossplane reports a parse failure in the returned status, so the
+        # status is checked explicitly. This is the line whose absence made the
+        # old check unable to fail.
+        status = result.get("status") if isinstance(result, dict) else None
+        if status != "ok":
+            errors = (result or {}).get("errors") or []
+            first = str((errors[0] or {}).get("error")) if errors else "no detail"
+            print(f"    FAIL: crossplane reported status {status!r}")
+            print(f"          {first[:240]}")
             return 1
         print("    PASS: parses cleanly")
 
