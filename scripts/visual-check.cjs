@@ -54,7 +54,14 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
       page.on('pageerror', e => { const s = String(e); if (!NOISE.test(s)) errs.push('pageerror: ' + s.slice(0, 150)); });
 
       await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 45000 });
-      await page.waitForTimeout(2500);
+      /* Wait for the shell to mount, not for a fixed 2500ms. Clicking a nav
+       * item before the sidebar exists returns false and quietly records the
+       * landing view instead of the requested one -- which is how a view could
+       * be reported at a fraction of its size on a loaded machine. The timeout
+       * is left as a normal outcome so a page that genuinely never mounts is
+       * still reported as a failed view rather than an exception. */
+      await page.waitForSelector('.shell, .nav-item', { timeout: 45000 }).catch(() => {});
+      await page.waitForTimeout(300);
 
       /* Click through the real navigation rather than deep-linking, so the pass
        * exercises the same path a person does. */
@@ -65,8 +72,26 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
         hit.click();
         return true;
       }, label);
-      if (clicked) await page.waitForTimeout(2200);
-
+      if (clicked) {
+        /* Wait for the view to settle rather than for a fixed delay. A fixed
+         * 2200ms is enough on an idle machine and not enough on a loaded one,
+         * where the view is still showing its loading line when the snapshot is
+         * taken -- a slow render then reads exactly like a broken page. This
+         * waits until the page is no longer loading, and treats the timeout as a
+         * normal outcome so a genuinely stuck view is still reported. */
+        await page.waitForFunction(
+          () => {
+            const page = document.querySelector('.page');
+            if (!page) return false;
+            const text = page.innerText || '';
+            return !text.includes('加载中');
+          },
+          { timeout: 15000 },
+        ).catch(() => {});
+        /* And give the last paint a moment; the loading line can disappear
+         * one frame before the panels it was standing in for. */
+        await page.waitForTimeout(400);
+      }
       const state = await page.evaluate(() => ({
         dom: (document.getElementById('root') || { innerHTML: '' }).innerHTML.length,
         text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160),
@@ -339,6 +364,211 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
     console.log('SKIP  ' + label.padEnd(12) + ' skipped - ' + rec.reason);
   }
   results.push(...assistantResults);
+
+  /* Third pass: the product with the trust boundary closed.
+   *
+   * WHY this exists: in a shared/hosted deployment deploy/nginx.conf publishes
+   * only '/api/trader/*' and answers every other '/api/**' path with 403, because
+   * the rest of the API is the local single-user review workbench: it resolves no
+   * tenant identity and reads the container's own shared state directory. Those
+   * two passes above exercise the wide surface a laptop sees, so nothing here
+   * covered the state every hosted visitor actually gets.
+   *
+   * The regression worth guarding is the one this state shipped with: the shell
+   * booted and the trading views worked, but the assistant looked entirely
+   * usable -- example prompts, an enabled input, a live Send button -- and only
+   * failed after the user had typed a question and pressed it. The plugins and
+   * rules views had the mirror-image defect: a failed read rendered as an empty
+   * list, which reads as "nothing is installed" / "no rules exist", a different
+   * claim from "this deployment does not publish that surface".
+   *
+   * The boundary is simulated in its own context rather than by editing the
+   * running app: a route handler answers every '/api/**' request except
+   * '/api/trader/**' with the 403 nginx returns. A fresh context also keeps the
+   * intercepted page from disturbing the two passes above, which must keep
+   * judging the wide surface.
+   */
+  const BOUNDARY_STEPS = [
+    ['总览 · 边界关闭', 'boundary-boot'],
+    ['复盘助手 · 边界关闭', 'boundary-assistant'],
+    ['插件 · 边界关闭', 'boundary-plugins'],
+    ['规则库 · 边界关闭', 'boundary-rules'],
+  ];
+  const boundaryResults = [];
+  let boundarySkipReason = '';
+  let boundaryCtx = null;
+  try {
+    boundaryCtx = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+    const page = await boundaryCtx.newPage();
+    const errs = [];
+    page.on('console', m => { const t = m.text(); if (m.type() === 'error' && !NOISE.test(t)) errs.push(t.slice(0, 150)); });
+    page.on('pageerror', e => { const s = String(e); if (!NOISE.test(s)) errs.push('pageerror: ' + s.slice(0, 150)); });
+
+    /* Same measurements, same screenshot path and same ok rule as the earlier
+     * passes, plus whatever this step asserted. mark is the console-error count
+     * taken before the step: only errors the step itself produced may be charged
+     * to it. */
+    const record = async (label, key, ok, clicked, extra, mark) => {
+      const rec = { label, key, ok: false };
+      try {
+        const state = await page.evaluate(() => ({
+          dom: (document.getElementById('root') || { innerHTML: '' }).innerHTML.length,
+          text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160),
+          scrollW: document.documentElement.scrollWidth,
+          clientW: document.documentElement.clientWidth,
+          panels: document.querySelectorAll('.panel, .grid, table').length,
+        }));
+        /* Same horizontal-overflow rule as the nav pass. */
+        const overflow = state.scrollW > state.clientW + 2;
+        await page.screenshot({ path: path.join(OUT, key + '.png'), fullPage: false });
+        Object.assign(rec, {
+          clicked, dom: state.dom, panels: state.panels,
+          overflow, width: state.scrollW, text: state.text,
+          console_errors: [...new Set(errs.slice(mark))].slice(0, 3),
+        }, extra);
+        rec.ok = Boolean(clicked && ok) && state.dom > 1500 && !overflow && rec.console_errors.length === 0;
+      } catch (e) {
+        rec.error = String(e.message).slice(0, 140);
+      }
+      boundaryResults.push(rec);
+      console.log((rec.ok ? 'OK  ' : 'FAIL') + ' ' + label.padEnd(16) +
+        ' dom=' + String(rec.dom || 0).padEnd(7) + ' panels=' + String(rec.panels || 0).padEnd(3) +
+        ' overflow=' + String(!!rec.overflow).padEnd(6) + ' errs=' + (rec.console_errors || []).length +
+        (rec.error ? ' ERR=' + rec.error : ''));
+      (rec.console_errors || []).forEach(x => console.log('       ! ' + x));
+    };
+
+    /* Reproduce the boundary the shipped proxy draws. The longest-match rule is
+     * the one nginx applies: '/api/trader/**' is the tenant route and is served,
+     * every other '/api/**' path is the workbench route and is refused. A JSON
+     * body is returned rather than nginx's empty one so the app fails on its own
+     * error path ('request failed: 403') instead of on a parse error, which is
+     * the failure the deployment actually produces. */
+    const BOUNDARY_BODY = JSON.stringify({ error: 'trust boundary: the workbench API is not published' });
+    await page.route('**/api/**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.includes('/api/trader/')) { route.continue(); return; }
+      route.fulfill({ status: 403, contentType: 'application/json', body: BOUNDARY_BODY });
+    });
+
+    console.log('\ntrust boundary closed (only /api/trader/** is served):');
+
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    /* Wait on the headline number rather than a fixed sleep: the shell paints
+     * before the journal answers, and a rendered KPI is what separates "the
+     * trading surface works behind the boundary" from "the shell came up". */
+    await page.waitForFunction(
+      () => /净盈亏合计/.test((document.querySelector('.page') || { innerText: '' }).innerText || ''),
+      { timeout: 20000 },
+    ).catch(() => {});
+    await page.waitForTimeout(600);
+
+    /* 1. The page still boots with the boundary closed. The shell check alone
+     *    would pass on the shell's own failure screen -- '无法连接本地复盘服务'
+     *    also renders inside .shell -- so the assertion is the trading summary
+     *    the shell owns, which only renders once /api/trader/analytics/summary
+     *    answered through the boundary. */
+    let mark = errs.length;
+    const boot = await page.evaluate(() => {
+      const pageEl = document.querySelector('.page');
+      const pageText = pageEl ? (pageEl.innerText || '') : '';
+      return {
+        shell: document.querySelectorAll('.shell').length,
+        pnl: /净盈亏合计/.test(pageText),
+        disconnected: /无法连接本地复盘服务/.test(document.body.innerText || ''),
+        safety: /READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE/.test(document.body.innerText || ''),
+      };
+    });
+    await record('总览 · 边界关闭', 'boundary-boot',
+      boot.shell === 1 && boot.pnl && !boot.disconnected, true,
+      { shell: boot.shell, overview_pnl_label: boot.pnl, safety_banner: boot.safety, disconnected: boot.disconnected }, mark);
+
+    /* 2. The assistant must not look usable. The notice carries 不可用 and the
+     *    input is disabled, so the state is visible before anything is typed
+     *    into it -- which is the whole point, since the defect it replaces was
+     *    an honest failure reported only after the user pressed Send. The
+     *    example prompts are recorded too: they are the tell that the panel is
+     *    advertising a surface this deployment does not serve. */
+    mark = errs.length;
+    await page.waitForFunction(() => {
+      const input = document.querySelector('.assistant textarea');
+      return Boolean(input && input.disabled);
+    }, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const assistant = await page.evaluate(() => {
+      const panel = document.querySelector('.assistant');
+      const text = panel ? (panel.innerText || '') : '';
+      const input = panel ? panel.querySelector('textarea') : null;
+      const note = panel ? panel.querySelector('.notice') : null;
+      return {
+        present: Boolean(panel),
+        unavailable: /不可用/.test(text),
+        disabled: Boolean(input && input.disabled),
+        prompts: /问点什么/.test(text),
+        notice: note ? (note.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 80) : '',
+      };
+    });
+    await record('复盘助手 · 边界关闭', 'boundary-assistant',
+      assistant.present && assistant.unavailable && assistant.disabled, true,
+      {
+        unavailable: assistant.unavailable, textarea_disabled: assistant.disabled,
+        example_prompts_shown: assistant.prompts, notice: assistant.notice,
+      }, mark);
+
+    /* The two workbench views, driven through the real navigation the way the
+     * nav pass does. */
+    const clickNav = async (label) => {
+      const hit = await page.evaluate((label) => {
+        const items = [...document.querySelectorAll('button, a, .nav-item')];
+        const item = items.find(el => (el.innerText || '').trim() === label);
+        if (!item) return false;
+        item.click();
+        return true;
+      }, label);
+      if (hit) await page.waitForTimeout(1800);
+      return hit;
+    };
+    const readPage = () => page.evaluate(() => {
+      const pageEl = document.querySelector('.page');
+      const text = pageEl ? (pageEl.innerText || '').replace(/\s+/g, ' ') : '';
+      return { text, failed: /读取失败/.test(text) };
+    });
+
+    /* 3. A refused read is reported as a refused read. An empty list would read
+     *    as "no plugins are installed", which is a claim this deployment cannot
+     *    make: the 403 says only that the surface is closed here. */
+    mark = errs.length;
+    const pluginsClicked = await clickNav('插件');
+    const plugins = await readPage();
+    await record('插件 · 边界关闭', 'boundary-plugins',
+      pluginsClicked && plugins.failed && !/还没有发现插件/.test(plugins.text), pluginsClicked,
+      { read_failed: plugins.failed, empty_claim: /还没有发现插件/.test(plugins.text), page_text: plugins.text.slice(0, 120) }, mark);
+
+    /* 4. Same rule for the rule registry: 'no rules exist' is a different claim
+     *    from 'this host does not publish the registry'. */
+    mark = errs.length;
+    const rulesClicked = await clickNav('规则库');
+    const rules = await readPage();
+    await record('规则库 · 边界关闭', 'boundary-rules',
+      rulesClicked && rules.failed && !/还没有已晋级的规则/.test(rules.text), rulesClicked,
+      { read_failed: rules.failed, empty_claim: /还没有已晋级的规则/.test(rules.text), page_text: rules.text.slice(0, 120) }, mark);
+  } catch (e) {
+    /* The boundary is a simulated state, so a failure to install it must not
+     * read as a product defect. The one case that lands here is the route
+     * handler itself being unavailable, which is a harness limitation rather
+     * than a regression -- so the steps are skipped, not failed. */
+    boundarySkipReason = 'the trust boundary could not be simulated: '
+      + String(e.message).replace(/\s+/g, ' ').slice(0, 140);
+    console.log('\ntrust boundary closed: ' + boundarySkipReason);
+  } finally { if (boundaryCtx) { try { await boundaryCtx.close(); } catch (e) {} } }
+
+  for (const [label, key] of BOUNDARY_STEPS) {
+    if (boundaryResults.some(r => r.key === key)) continue;
+    const rec = { label, key, ok: false, skipped: true, reason: boundarySkipReason || 'the trust-boundary phase did not reach this step' };
+    boundaryResults.push(rec);
+    console.log('SKIP  ' + label.padEnd(16) + ' skipped - ' + rec.reason);
+  }
+  results.push(...boundaryResults);
 
   const summary = {
     checked: results.length,
