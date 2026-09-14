@@ -59,9 +59,15 @@ input, select, textarea { font: inherit; color: inherit; }
 .topbar {
   display: flex; align-items: center; gap: 10px; padding: 10px 16px;
   border-bottom: 1px solid var(--border); background: var(--panel);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
 }
-.topbar h1 { font-size: 14px; margin: 0; font-weight: 600; }
-.topbar .spacer { flex: 1; }
+.topbar::-webkit-scrollbar { display: none; }
+.topbar h1 { font-size: 14px; margin: 0; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+.topbar span { flex-shrink: 0; white-space: nowrap; }
+.topbar button { flex-shrink: 0; white-space: nowrap; }
+.topbar .spacer { flex: 1; min-width: 8px; }
 
 .content { flex: 1; overflow: auto; padding: 16px; }
 .content.with-assistant { display: flex; gap: 16px; padding: 0; overflow: hidden; }
