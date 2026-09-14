@@ -283,6 +283,21 @@ export interface TraderMeta extends SafetyEnvelope {
   dimensions: string[];
   playbook_fields: string[];
   backtest_dsl_version: number;
+  /** The resolved identity the route serves: the shell names the local ledger
+   *  and its mode from here. Optional because the route sends it and a caller
+   *  that reads only the version should not fall over when it is absent. */
+  tenant?: TraderTenant;
+  auth_mode?: string;
+  storage_engine?: string;
+  capabilities?: string[];
+}
+
+/** The identity one trader request was served under. */
+export interface TraderTenant {
+  user_id: string;
+  tenant_id: string;
+  display_name: string;
+  mode: string;
 }
 
 export interface MarketProvider {
@@ -364,6 +379,16 @@ export interface TraderTrades extends SafetyEnvelope {
   count: number;
   limit?: number;
   offset?: number;
+  /**
+   * The route returns the page's ledger beside the round trips: the fills
+   * behind the matched trades, the executions that are still open, and the
+   * review issues that touch them. Optional because a caller that only reads
+   * the closed trades does not need them.
+   */
+  fills?: TradeLogEntry[];
+  open_positions?: OpenPosition[];
+  issues?: Issue[];
+  ledger_status?: string;
 }
 
 /** The highest precision the detail route returns for one journal row. */
@@ -406,6 +431,37 @@ export interface TraderSummary extends SafetyEnvelope {
   open_position_count: number;
   sample_note: string;
   equity_curve: { exit_time: string; symbol: string; net_pnl: number; cumulative_pnl: number }[];
+  /**
+   * The ledger counts the summary route returns beside the metrics. The api
+   * adapter lifts them onto the metrics it hands back, so the shell can report
+   * how many executions the journal holds without a second request. Optional
+   * because the metrics are what every other caller reads.
+   */
+  counts?: TraderLedgerCounts;
+}
+
+/** How many rows the summary route found behind one request. */
+export interface TraderLedgerCounts {
+  fills: number;
+  round_trips: number;
+  open_positions: number;
+  errors: number;
+  warnings: number;
+}
+
+/**
+ * The body of GET /api/trader/analytics/summary as the server sends it.
+ *
+ * The metrics are nested under `summary`, beside the ledger counts and status.
+ * The api adapter unwraps the nested object for callers (see `trader.summary`
+ * in api.ts), which is why the interface is named for the envelope rather than
+ * for the metrics a view reads.
+ */
+export interface TraderSummaryEnvelope extends SafetyEnvelope {
+  status: string;
+  summary: TraderSummary;
+  counts: TraderLedgerCounts;
+  ledger_status: string;
 }
 
 export interface BreakdownRow {

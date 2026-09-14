@@ -3,7 +3,7 @@ import type {
   SessionEvent, SessionSummary, Summary, UploadResult,
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
   Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderCalendar,
-  TradeLogDetail, TraderHealth, TraderMeta, TraderSummary, TraderTrades,
+  TradeLogDetail, TraderHealth, TraderMeta, TraderSummaryEnvelope, TraderTrades,
 } from './types';
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
@@ -58,8 +58,13 @@ export const trader = {
     method: 'POST', body: JSON.stringify(payload),
   }),
 
+  // The summary route nests its metrics under `summary`, beside the ledger
+  // counts and status. Unwrapping here keeps a caller reading the metrics
+  // directly, and the counts ride along on the returned object so the shell can
+  // report how many executions the journal holds without a second request.
   summary: (params: { from?: string; to?: string; account_id?: string } = {}) =>
-    request<TraderSummary>('/api/trader/analytics/summary?' + new URLSearchParams(clean(params)).toString()),
+    request<TraderSummaryEnvelope>('/api/trader/analytics/summary?' + new URLSearchParams(clean(params)).toString())
+      .then((envelope) => ({ ...envelope.summary, counts: envelope.counts })),
   breakdown: (params: { dimension: string; from?: string; to?: string }) =>
     request<TraderBreakdown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
   calendar: (params: { year: number; month: number }) =>

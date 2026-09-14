@@ -1,19 +1,47 @@
-import type { Overview } from '../types';
+import type { Issue, OpenPosition, TradeLogEntry, TraderSummary } from '../types';
 import { Kpi, Panel, Sparkline, formatCost, formatMoney, formatPct, toneOf } from '../components/common';
 
-export function OverviewView({ data, scheme, onOpenTrade }: {
-  data: Overview;
+/**
+ * Overview: the headline numbers of the trader's own journal.
+ *
+ * Everything here comes from the tenant's ledger — /api/trader/analytics/summary
+ * for the metrics and /api/trader/trades for the rows behind them. The view used
+ * to read the review workbench's overview payload, which is a different store:
+ * an import wrote the journal and left this page reading zero. Reading the same
+ * endpoints the journal views read is what makes one import populate the whole
+ * product.
+ *
+ * The KPI labels are the ones this page already showed. Where the summary has no
+ * equivalent (holding time is measured in days, fees in currency), the value
+ * comes from the summary field that does exist rather than from a placeholder,
+ * so a confident zero is never shown over data the journal actually holds.
+ */
+
+/** How many recent closes the panel lists before it offers the full log. */
+const RECENT_LIMIT = 8;
+
+export function OverviewView({ summary, recent, openPositions, issues, ledgerStatus, scheme, onGoToImport, onOpenLog }: {
+  summary: TraderSummary;
+  recent: TradeLogEntry[];
+  openPositions: OpenPosition[];
+  issues: Issue[];
+  ledgerStatus: string;
   scheme: 'cn' | 'intl';
-  onOpenTrade: (id: string) => void;
+  onGoToImport: () => void;
+  onOpenLog: () => void;
 }) {
-  const summary = data.summary;
   const curve = summary.equity_curve.map((point) => point.cumulative_pnl);
+  // A blocking issue is what drives the ledger to needs_review, so the notice
+  // counts errors rather than every warning the matcher recorded.
+  const blocking = issues.filter((issue) => issue.severity === 'error');
+  const shown = recent.slice(0, RECENT_LIMIT);
+
   return (
     <div className="grid" style={{ gap: 14 }}>
-      {data.ledger_status === 'needs_review' ? (
+      {ledgerStatus === 'needs_review' ? (
         <div className="notice">
-          台账中有 {data.blocking_issues.length} 条需要先确认的问题，未确认前这些成交不会进入统计。
-          <button className="ghost" style={{ marginLeft: 10, fontSize: 11 }} onClick={() => onOpenTrade('__import__')}>
+          台账中有 {blocking.length} 条需要先确认的问题，未确认前这些成交不会进入统计。
+          <button className="ghost" style={{ marginLeft: 10, fontSize: 11 }} onClick={onGoToImport}>
             去处理
           </button>
         </div>
@@ -38,8 +66,17 @@ export function OverviewView({ data, scheme, onOpenTrade }: {
       </Panel>
 
       <div className="grid split">
-        <Panel title="最近平仓">
-          {data.recent_trades.length === 0 ? (
+        <Panel
+          title="最近平仓"
+          actions={
+            recent.length > shown.length ? (
+              <button className="ghost" style={{ fontSize: 11 }} onClick={onOpenLog}>
+                查看全部 {recent.length} 笔
+              </button>
+            ) : null
+          }
+        >
+          {recent.length === 0 ? (
             <div className="muted">还没有已确认的平仓交易。到「数据导入」上传交割单或手工补录。</div>
           ) : (
             <div className="scroll-x">
@@ -50,12 +87,16 @@ export function OverviewView({ data, scheme, onOpenTrade }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.recent_trades.map((trade) => (
-                    <tr key={trade.round_trip_id} onClick={() => onOpenTrade(trade.round_trip_id)}>
+                  {shown.map((trade, index) => (
+                    <tr
+                      key={trade.round_trip_id || trade.trade_id || trade.symbol + '-' + index}
+                      onClick={onOpenLog}
+                      title="在交易日志中查看"
+                    >
                       <td>{trade.name || trade.symbol}<span className="muted"> {trade.symbol}</span></td>
-                      <td className="muted">{trade.exit_time}</td>
-                      <td className={'num ' + toneOf(trade.return_pct, scheme)}>{formatPct(trade.return_pct)}</td>
-                      <td className={'num ' + toneOf(trade.net_pnl, scheme)}>{formatMoney(trade.net_pnl)}</td>
+                      <td className="muted">{trade.exit_time || '—'}</td>
+                      <td className={'num ' + toneOf(number(trade.return_pct), scheme)}>{formatPct(number(trade.return_pct))}</td>
+                      <td className={'num ' + toneOf(number(trade.net_pnl), scheme)}>{formatMoney(number(trade.net_pnl))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -65,17 +106,17 @@ export function OverviewView({ data, scheme, onOpenTrade }: {
         </Panel>
 
         <Panel title="未配对持仓">
-          {data.open_positions.length === 0 ? (
+          {openPositions.length === 0 ? (
             <div className="muted">没有未配对持仓。</div>
           ) : (
             <table>
               <thead><tr><th>标的</th><th className="num">数量</th><th className="num">均价</th><th>开仓时间</th></tr></thead>
               <tbody>
-                {data.open_positions.map((position) => (
+                {openPositions.map((position) => (
                   <tr key={position.position_id}>
                     <td>{position.name || position.symbol}</td>
-                    <td className="num">{position.quantity.toLocaleString('zh-CN')}</td>
-                    <td className="num">{position.avg_cost}</td>
+                    <td className="num">{number(position.quantity).toLocaleString('zh-CN')}</td>
+                    <td className="num">{number(position.avg_cost)}</td>
                     <td className="muted">{position.opened_at}</td>
                   </tr>
                 ))}
@@ -86,13 +127,13 @@ export function OverviewView({ data, scheme, onOpenTrade }: {
       </div>
 
       <Panel title="待复盘清单">
-        {data.issues.length === 0 ? (
+        {issues.length === 0 ? (
           <div className="muted">台账没有发现问题。</div>
         ) : (
           <table>
             <thead><tr><th>级别</th><th>代码</th><th>标的</th><th>说明</th></tr></thead>
             <tbody>
-              {data.issues.slice(0, 12).map((issue, index) => (
+              {issues.slice(0, 12).map((issue, index) => (
                 <tr key={issue.code + index}>
                   <td>{issue.severity === 'error' ? <span className="badge error">阻断</span> : <span className="badge warn">提示</span>}</td>
                   <td className="muted">{issue.code}</td>
@@ -106,5 +147,11 @@ export function OverviewView({ data, scheme, onOpenTrade }: {
       </Panel>
     </div>
   );
+}
+
+/** A numeric column tolerates a null or a string from the wire. */
+function number(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
