@@ -1,0 +1,242 @@
+# Deploying the hosted trader product
+
+The product is one process: the trader API and the review workbench share a
+single socket and a single port. Hosted mode authenticates every request
+against the alphatech platform and keeps each tenant's journal in Postgres.
+Nothing here places, cancels, or modifies anything at a broker; the execution
+ban is part of the shipped contract and the server prints
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE` on start.
+
+This directory holds three routes, from the quickest to the most durable:
+
+| Route | Use it when | Files |
+| --- | --- | --- |
+| [Compose](#route-1-docker-compose) | You want the app and its database together, on a laptop or a single host. | `deploy/docker-compose.yml`, `deploy/Dockerfile` |
+| [Image only](#route-2-the-image-against-a-managed-postgres) | The database is managed for you and you just need the app. | `deploy/Dockerfile` |
+| [systemd + nginx](#route-3-systemd-and-nginx-on-a-plain-host) | No container runtime on the host, and you want TLS terminated by nginx. | `deploy/trader.service`, `deploy/nginx.conf` |
+
+## What the server does, before anything else
+
+One command serves both products:
+
+    smcub trader serve [--host H] [--port P] [--mode {local,hosted}] \
+        [--database-url URL] [--state-dir DIR] [--token TOKEN] [--no-browser]
+
+Three refusals are deliberate, and a deployment that trips one of them is
+misconfigured rather than unlucky:
+
+- `--mode hosted` **requires** `--database-url` with a `postgresql://` URL. There
+  is no fallback to SQLite. A hosted tenant whose journal landed in a local
+  file would look like it worked, and that is the failure this refusal exists
+  to prevent.
+- A non-loopback bind (`--host 0.0.0.0`) **requires** `--token`. Without it the
+  server exits 2.
+- `--database-url` in local mode is refused. If you passed a Postgres URL you
+  meant hosted, and quietly writing a local file would put the data somewhere
+  other than where you expect it.
+
+`smcub workbench` is a different command and does **not** mount `/api/trader/*`.
+Only `smcub trader serve` serves both products.
+
+On start the server writes to stderr:
+
+    smartmoney-cub trader: http://127.0.0.1:8787/
+    mode: hosted
+    store: postgresql://(configured)
+    READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
+
+Only the URL scheme is printed for a hosted store, because a database URL can
+carry a password.
+
+### Identity
+
+Hosted mode resolves a platform identity on every request and never
+authenticates anonymously. Two environment variables choose how:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ALPHATECH_AUTH_MODE` | `session` | `session` forwards the caller's platform session cookie to the platform; `hmac` verifies a signed identity header. |
+| `ALPHATECH_BASE_URL` | `https://alphatech.net.cn` | The platform site root, not the `/v1` model-gateway base. |
+| `ALPHATECH_SSO_SECRET` | unset | Required in `hmac` mode. Absent means fail-closed: every request is refused with `401`. |
+
+In `session` mode the cookie is forwarded to
+`{ALPHATECH_BASE_URL}/api/user/self`; a `200` carrying an `id` is the identity,
+and a successful lookup is cached for 60 seconds. A platform id maps to a
+stable tenant `alphatech:<id>`. Any other value of `ALPHATECH_AUTH_MODE`
+fails closed.
+
+### Health
+
+`GET /api/trader/health` answers `{"status":"ok", ... "safety":"READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"}`
+and needs a verifiable identity, exactly like every other route. The
+container and compose healthchecks therefore probe `/` (the interface shell)
+and send the access token when one is configured. The workbench's own
+`/api/doctor` is **not** part of the trader surface: it is unauthenticated
+local tooling, and it should not be published.
+
+## Route 1: Docker Compose
+
+This brings up Postgres 16 and the app together, with a healthcheck on each and
+two named volumes. The database is not published to the host; only the app's
+port is bound, and only to loopback by default.
+
+    cd /path/to/smartmoney-cub-harness
+
+    export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+    export TRADER_ACCESS_TOKEN="$(openssl rand -hex 32)"
+    # Only needed for ALPHATECH_AUTH_MODE=hmac:
+    # export ALPHATECH_SSO_SECRET="$(openssl rand -hex 32)"
+
+    docker compose -f deploy/docker-compose.yml up --build -d
+
+    # The app waits for Postgres to report healthy, so this is a real check
+    # rather than a race against initialization.
+    curl -sf -H "X-SMCUB-Token: $TRADER_ACCESS_TOKEN" \
+        "http://127.0.0.1:8787/api/trader/health" | head -c 400
+
+    docker compose -f deploy/docker-compose.yml ps
+
+Both services should read `healthy`. To stop it without losing data:
+
+    docker compose -f deploy/docker-compose.yml down
+
+`down` keeps the `db_data` and `smcub_state` volumes, so the journal survives.
+`docker compose ... down -v` deletes them, and with them the journal; do not
+run that against a store you care about.
+
+Variant: use the existing command-line server instead of the container. It is
+the same product, and it is useful when the database is local and the app does
+not need containerizing:
+
+    python -m pip install -e ".[hosted]"
+    python -m smartmoney_cub_harness.cli trader serve \
+        --mode hosted --host 0.0.0.0 --port 8787 \
+        --database-url "postgresql://smcub:$POSTGRES_PASSWORD@127.0.0.1:5432/smcub" \
+        --token "$TRADER_ACCESS_TOKEN" --no-browser
+
+## Route 2: the image against a managed Postgres
+
+Buildable from the repository root; the Dockerfile installs `.[hosted]`, which
+is what pulls `psycopg[binary]>=3.2`. Without it the server starts and then
+fails to open the tenant store with a `StoreError` naming the install command,
+so the driver is in the image rather than in your troubleshooting queue.
+
+    cd /path/to/smartmoney-cub-harness
+    docker build -f deploy/Dockerfile -t smartmoney-cub-trader:1.0.0 .
+
+    export DATABASE_URL="postgresql://USER:PASSWORD@db.example.com:5432/smcub?sslmode=require"
+    export TRADER_ACCESS_TOKEN="$(openssl rand -hex 32)"
+    export ALPHATECH_AUTH_MODE=session
+    # export ALPHATECH_SSO_SECRET="..."   # required when the mode is hmac
+
+    docker run --rm -d --name smcub-trader \
+        -e DATABASE_URL -e TRADER_ACCESS_TOKEN \
+        -e ALPHATECH_AUTH_MODE -e ALPHATECH_BASE_URL \
+        -v smcub_state:/var/lib/smcub \
+        -p 127.0.0.1:8787:8787 \
+        smartmoney-cub-trader:1.0.0
+
+The image runs as the unprivileged user `smcub` (uid 10001). It bakes in no
+secret; the database URL and the token are required environment variables, and
+the server refuses to start without either. Point the database's schema at a
+database this product owns: it manages its own tables and is not a general
+multi-tenant database host.
+
+Before this faces the internet, put `deploy/nginx.conf` in front of it for TLS
+and the `/trader` prefix, and keep `-p 127.0.0.1:8787:8787` rather than
+publishing the port directly.
+
+## Route 3: systemd and nginx on a plain host
+
+### 1. Install the package and the service account
+
+    sudo useradd --system --create-home --home-dir /var/lib/smcub \
+        --shell /usr/sbin/nologin smcub
+    sudo python3 -m venv /opt/smcub/venv
+    sudo /opt/smcub/venv/bin/pip install ".[hosted]"
+
+The service account is used only by this unit. It owns no login shell and the
+server never runs as root.
+
+### 2. Put the secrets where only root and the service can read them
+
+    sudo install -d -m 0750 -o root -g smcub /etc/smcub
+    sudo sh -c 'umask 0027; cat > /etc/smcub/trader.env' <<'ENV'
+    DATABASE_URL=postgresql://smcub:CHANGEME@127.0.0.1:5432/smcub
+    TRADER_ACCESS_TOKEN=CHANGEME
+    ALPHATECH_AUTH_MODE=session
+    ALPHATECH_BASE_URL=https://alphatech.net.cn
+    ALPHATECH_SSO_SECRET=
+    ENV
+    sudo chown root:smcub /etc/smcub/trader.env
+    sudo chmod 0640 /etc/smcub/trader.env
+
+Replace both `CHANGEME` values, URL-encode the database password, and fill in
+`ALPHATECH_SSO_SECRET` only if you switched the mode to `hmac`. In `session`
+mode an empty secret is harmless, and in `hmac` mode it is fail-closed rather
+than fail-open.
+
+### 3. Start the service
+
+    sudo install -m 0644 deploy/trader.service /etc/systemd/system/smcub-trader.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now smcub-trader
+    systemctl status smcub-trader --no-pager
+    sudo journalctl -u smcub-trader -n 40 --no-pager
+
+The unit runs `--mode hosted --host 127.0.0.1 --port 8787` with
+`--database-url` and `--token` read from `/etc/smcub/trader.env`,
+`Restart=on-failure`, and a modest sandbox (`ProtectSystem=strict`,
+`ProtectHome=yes`, `NoNewPrivileges=yes`). It binds loopback on purpose:
+nginx is what faces the network.
+
+### 4. Terminate TLS and publish the prefix with nginx
+
+    sudo cp deploy/nginx.conf /etc/nginx/conf.d/smcub-trader.conf
+    # Keep only the 'map' and the two 'server' blocks; drop this file's
+    # 'events' and 'http' wrappers on a distribution nginx.
+    sudo nginx -t && sudo systemctl reload nginx
+
+Replace the four TLS placeholders and the `server_name` first — they are listed
+at the top of `deploy/nginx.conf`. The product is published as a peer entry on
+the alphatech platform, at `https://alphatech.net.cn/trader`, and the
+`location /trader/` block strips the prefix before the app sees the request.
+The trailing slash on both the location and `proxy_pass` is what makes that
+rewrite work, and `proxy_buffering off` is what keeps the review assistant's
+streamed turns live instead of frozen until the turn ends.
+
+Then verify from outside:
+
+    curl -sf -H "X-SMCUB-Token: $TRADER_ACCESS_TOKEN" \
+        https://trader.example.com/trader/api/trader/health | head -c 400
+
+### 5. Publish it as a platform entry
+
+The product joins the alphatech platform as a peer of Alpha Canvas and the
+Commerce Workbench, at `alphatech.net.cn/trader`. Requests arrive carrying the
+caller's platform session cookie, and the product resolves that cookie to a
+tenant; it implements no registration and stores no password of its own. Point
+the platform's entry at the `/trader` path you have just stood up, and keep
+`ALPHATECH_AUTH_MODE` and `ALPHATECH_BASE_URL` consistent with the platform the
+users actually sign in to.
+
+## Operating notes
+
+- **Back up the journal.** In hosted mode it is the `db_data` volume (compose)
+  or your Postgres instance. It is the user's own data and it is never in the
+  repository.
+- **The token is required, not optional.** A non-loopback bind refuses to start
+  without it, and the interface and the trader surface share one gate. Clients
+  send `X-SMCUB-Token`.
+- **The local workbench API is not the product.** `/api/overview`,
+`/api/settings`, and `/api/assistant/*` read the container's own state
+directory and carry no tenant identity. Publish only `/trader/api/trader/*`;
+`deploy/nginx.conf` shows how to close the rest when one host serves several
+people.
+- **Never commit a real deployment's `.env`.** The compose file takes every
+  secret from the environment for exactly this reason.
+- **Hosted extra is opt-in.** The core install has no runtime dependency and
+  stays that way; `psycopg` arrives only with `[hosted]`.
+
+The product's scope, its non-goals, and the features deferred past v1 are
+documented in `docs/trader-product.md`.

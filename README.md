@@ -381,6 +381,37 @@ local service:
 cd gui && npm install && npm run dev
 ```
 
+## Trader Product (hosted)
+
+The same package also ships the hosted trader product: a multi-tenant trading
+journal and review surface that joins the alphatech platform at
+[alphatech.net.cn/trader](https://alphatech.net.cn/trader), beside Alpha Canvas
+and the Commerce Workbench. It imports your own executions, computes performance
+analytics, scores your playbooks, backtests a JSON strategy DSL, and replays
+historical bars.
+
+One command serves both products from one process and one port:
+
+```bash
+pip install "smartmoney-cub-harness[hosted]"   # hosted extra: psycopg for Postgres
+smcub trader serve --mode local                # single offline user, SQLite
+smcub trader serve --mode hosted \
+  --database-url "postgresql://user:pass@host:5432/smcub" \
+  --host 0.0.0.0 --token "$TRADER_ACCESS_TOKEN" --no-browser
+```
+
+`smcub trader serve` mounts the trader API at `/api/trader/*` and the review
+workbench on the same socket; `smcub workbench` does not mount the trader API.
+Hosted mode requires a `postgresql://` URL and never falls back to a local file,
+and binding beyond loopback requires `--token`.
+
+The product does not place orders, cancel orders, modify a broker account, or
+automate execution, and it is not financial advice. What v1 covers, the
+non-goals, and the features deferred past v1 are documented in
+[the trader product README](docs/trader-product.md); the HTTP surface is in
+[docs/trader-api.md](docs/trader-api.md) and the three deployment routes are in
+[deploy/README.md](deploy/README.md).
+
 ## Development Checks
 
 ```bash

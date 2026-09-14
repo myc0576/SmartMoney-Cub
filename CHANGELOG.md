@@ -1,5 +1,82 @@
 # Changelog
 
+## Unreleased — Trader Product v1
+
+The product release: the harness becomes a hosted, multi-tenant trading journal
+and review product, delivered as a peer entry on the alphatech platform at
+`alphatech.net.cn/trader`, beside Alpha Canvas and the Commerce Workbench. One
+process serves the trader API and the review workbench on one port; local mode
+is a single offline user on SQLite, hosted mode is one tenant per platform
+identity in Postgres.
+
+### Added
+
+- `smcub trader serve --mode {local,hosted}` with `--host`, `--port`,
+  `--database-url`, `--state-dir`, `--token`, and `--no-browser`. It mounts
+  the trader API at `/api/trader/*` and the review workbench on the same socket.
+- Tenant-scoped storage behind one `TenantStore` interface with two engines:
+  SQLite for a local single user and Postgres for hosted tenants. Every
+  tenant-scoped row carries a user identifier and every tenant-scoped query
+  filters on it.
+- alphatech platform identity for hosted requests: the caller's session cookie
+  forwarded to `{ALPHATECH_BASE_URL}/api/user/self` (`session` mode, the
+  default), or an HMAC-signed identity header (`hmac` mode, selected by
+  `ALPHATECH_AUTH_MODE` and keyed by `ALPHATECH_SSO_SECRET`). Both modes fail
+  closed; a platform user id maps to a stable tenant `alphatech:<id>`.
+- Four built-in keyless market data sources behind a provider interface, each
+  returning normalized bars with provenance (provider, fetch time, quality
+  flag). Importing the package performs no network access, and a fetched series
+  is subject to the same anti-future-leakage validation as any other input.
+- Deterministic backtest engine driven by a JSON strategy DSL, with saved runs.
+- Trader HTTP surface under `/api/trader/*`: health, meta, market providers and
+  bars, trade import and lookup, accounts, performance summary and breakdown,
+  calendar, playbooks, backtests, and historical-bar replay. Every response
+  carries the safety declaration. See `docs/trader-api.md`.
+- Frontend rebuilt into the package for the full product surface: trade log,
+  analytics, calendar, playbooks, backtest, replay, reports, prop-firm view, and
+  settings, served by the same process and carrying no CDN or remote asset.
+- `[hosted]` install extra (`psycopg[binary]>=3.2`) for the Postgres store. The
+  driver is imported lazily; without it, opening a hosted store raises a
+  `StoreError` naming the exact install command. Core `dependencies` stays
+  empty.
+- Deployment artifacts: `deploy/Dockerfile` (Python 3.12 slim, non-root,
+  `.[hosted]`, no baked secrets), `deploy/docker-compose.yml` (app plus
+  Postgres 16, healthcheck on both, named volumes, secrets from the
+  environment), `deploy/nginx.conf` (TLS placeholders, `/trader` prefix,
+  streaming-friendly proxy), `deploy/trader.service` (systemd, non-root,
+  `Restart=on-failure`), and `deploy/README.md`.
+- `docs/trader-product.md`, the product README: what v1 does, the explicit
+  non-goals, and the features deferred past v1.
+
+### Changed
+
+- `docs/harness-contract.md` and the safety framing now read as read-only with
+  respect to markets and execution and writable with respect to the user's own
+  local and tenant-scoped journal.
+- `doctor()` reports `market_data_mode` (`offline`) and `tenant_mode`
+  (`local_single_user`); `network_required` keeps its key and means the core
+  is usable with no network.
+- The documented contract now covers the trader product alongside the existing
+  control plane.
+
+### Notes
+
+- Hosted mode requires a `postgresql://` `--database-url` and refuses to fall
+  back to a local file; `--database-url` in local mode is refused; a
+  non-loopback bind requires `--token`; `smcub workbench` does not mount
+  `/api/trader/*`. These refusals are deliberate.
+- Broker direct-connect and read-only key sync, multi-user billing and quotas,
+  Spaces and mentor-student mode, community features and leaderboards, realtime
+  notification push, and a mobile client are deferred past v1 and recorded in
+  `docs/trader-product.md` so they are not forgotten.
+- A user's real trades, accounts, notes, and backtest runs live in the tenant
+  store and are never committed to the repository. Repository fixtures, examples,
+  and tests use toy offline data only.
+
+Safety remains `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`. The execution ban is
+absolute: the product does not place or cancel orders, modify a broker account,
+or automate execution, and it is not financial advice.
+
 ## 1.0.0
 
 The convergence release: a local-first review workbench with a review assistant, an
