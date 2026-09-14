@@ -254,6 +254,37 @@ so it never turns into a false failure on a machine that cannot host a database.
 
 ### Check the proxy config and the container healthcheck
 
+### Pre-flight the deployment before users see it
+
+```bash
+python scripts/preflight.py                  # local mode
+python scripts/preflight.py --mode hosted --database-url "$DATABASE_URL"
+```
+
+This is the check worth running before you point anyone at the product, and again
+after any configuration change. It executes the deployment's own shape rather than
+describing it: starts the product the way the service units start it (loopback bind,
+required access token), puts the shipped proxy rules in front of it, and asserts
+what a launch depends on —
+
+- every spelling of an API path needs the token (`/api`, `/api/`, `/api/trader/health`,
+  `/api/overview`, `/api/settings`, `/api/audit`)
+- the interface and client-side routes load without one, because a browser cannot
+  send that header on a page load
+- the proxy's token injection reaches the app, so a browser can actually use the
+  product
+- a misconfigured `ALPHATECH_AUTH_MODE` is refused rather than falling open
+- the safety contract holds: declaration present, execution disabled, no broker API
+
+It exits non-zero with the failing checks named. **Every late defect in this build
+lived in this path** — the nginx prefix, the token gate, the bare `/api` spelling,
+the multi-user advisory, the release workflow — because configuration and
+documentation were reviewed but never executed. This script executes them.
+
+The proxy it puts in front is a stand-in that applies the config's own routing
+rules, not nginx itself. On a host with nginx installed, run the real thing; this
+exists so the path can be exercised on a machine that has none.
+
 Two more pieces of this deployment are executable and worth running before you
 trust them:
 
