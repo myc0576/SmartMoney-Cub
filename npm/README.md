@@ -1,6 +1,9 @@
 # smartmoney-cub
 
-Local-first, read-only trading review workbench.
+A local-first trading journal and review workbench. Import your own fills, see
+performance analytics, define and score playbooks, backtest a JSON strategy, and
+keep the review assistant alongside. Read-only with respect to markets and
+execution.
 
     npx smartmoney-cub
 
@@ -18,6 +21,7 @@ external model.
 ## Commands
 
     npx smartmoney-cub                      open the local workbench
+    npx smartmoney-cub trader serve         open the trading journal
     npx smartmoney-cub doctor               check the local environment
     npx smartmoney-cub install              install or update the Python harness
     npx smartmoney-cub install --with-ocr   add the local OCR engine for screenshots

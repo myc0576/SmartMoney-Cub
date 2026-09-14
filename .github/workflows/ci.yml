@@ -12,6 +12,28 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
+    # The hosted store has its own tests, and they activate when this variable is
+    # set. Without a database they skip, which means the Postgres engine — the one
+    # a hosted deployment actually runs on — was never exercised in CI. A real
+    # service makes those tests run rather than report green while skipping.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smcub
+          POSTGRES_PASSWORD: smcub
+          POSTGRES_DB: smcub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smcub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SMARTMONEY_TEST_DATABASE_URL: postgresql://smcub:smcub@127.0.0.1:5432/smcub_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +42,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,hosted]"
 
       - name: Test
         run: pytest -q
+
+      - name: Hosted store tests must not skip
+        run: |
+          # A skip here means the hosted engine went untested, which is how it
+          # shipped unexercised before. Fail loudly instead of passing quietly.
+          python -m pytest tests/test_trader_storage.py -q -rs | tee "$RUNNER_TEMP/storage.txt"
+          if grep -q "skipped" "$RUNNER_TEMP/storage.txt"; then
+            echo "the hosted store tests skipped; the postgres service is not reachable" >&2
+            exit 1
+          fi
 
       - name: Doctor
         run: smcub doctor
@@ -104,3 +136,77 @@ jobs:
           smcub share-pack --output "$RUNNER_TEMP/share-pack" --write > "$RUNNER_TEMP/share.json"
           python -c "import json; d=json.load(open('$RUNNER_TEMP/share.json')); assert d['upload'] is False, d; assert d['audit']['status']=='ok', d; assert d['data_origin']=='demo_fixture', d"
           smcub workspace summary --db "$RUNNER_TEMP/workspace.db"
+
+  # The interface is a build artifact that ships inside the wheel, and before this
+  # job existed nothing in CI compiled it: a TypeScript error or a broken build
+  # would reach a release green. It is a separate job because it needs Node, not
+  # Python, and because a frontend break should be reported as its own failure.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - name: Install the interface toolchain
+        working-directory: gui
+        run: npm ci
+
+      - name: Typecheck the interface
+        working-directory: gui
+        run: npm run typecheck
+
+      - name: Build the interface into the package
+        working-directory: gui
+        run: npm run build
+
+      - name: The build must produce the interface the wheel ships
+        run: |
+          test -f src/smartmoney_cub_harness/workbench/web/index.html || {
+            echo "the interface build produced no index.html in the package" >&2
+            exit 1
+          }
+          test -n "$(ls -A src/smartmoney_cub_harness/workbench/web/assets)" || {
+            echo "the interface build produced no assets in the package" >&2
+            exit 1
+          }
+
+      - name: The safety declaration must survive the build
+        run: |
+          # The declaration is user-visible in the footer. An interface that lost
+          # it would misrepresent what the product does.
+          grep -rq "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" +            src/smartmoney_cub_harness/workbench/web/assets/ || {
+            echo "the built interface does not carry the safety declaration" >&2
+            exit 1
+          }
+
+      - name: The interface must ship no new runtime dependency
+        run: |
+          python -c "
+          import json
+          deps = sorted(json.load(open('gui/package.json'))['dependencies'])
+          assert deps == ['react', 'react-dom'], deps
+          print('interface dependencies:', deps)
+          "
+
+      - name: Check the shipped proxy and container configuration
+        run: |
+          # These two checks run without Docker or nginx: the nginx parser reads
+          # the config, and the Dockerfile checks assert the parts a reviewer
+          # would check by reading. They catch the class of deployment fault that
+          # no unit test reaches.
+          python -m pip install crossplane
+          python scripts/nginx-check.py
+          python -c "
+          import re, pathlib
+          dockerfile = pathlib.Path('deploy/Dockerfile').read_text()
+          compose = pathlib.Path('deploy/docker-compose.yml').read_text()
+          assert 'HEALTHCHECK' in dockerfile, 'the image declares no healthcheck'
+          assert 'USER ' in dockerfile, 'the image runs as root'
+          assert 'db' in compose and 'app' in compose, 'compose is missing a service'
+          print('deploy configuration: healthcheck, non-root user, both services present')
+          "
