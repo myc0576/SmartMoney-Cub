@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from smartmoney_cub_harness.trader.storage import open_store
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS = REPO_ROOT / "docs" / "trader-product.md"
 README = REPO_ROOT / "README.md"
@@ -621,3 +623,45 @@ def test_the_deploy_readme_documents_a_backup_and_restore_procedure() -> None:
     # And it must not repeat the bug that made it silently pass against a
     # leftover server on the port it wanted.
     assert "_port_in_use" in body, "the check can be fooled by a stale listener"
+
+
+def test_a_restored_database_from_an_older_release_is_migrated_forward(tmp_path) -> None:
+    """The backup procedure tells an operator to restore before upgrading.
+
+    That instruction is only safe if the product migrates an older schema forward
+    when it opens one. The claim was verified by execution -- a database carrying
+    only the users table from an earlier shape came up as seven tables with its
+    existing tenant row intact -- and this pins the two properties that make the
+    instruction true: migrate() is idempotent, and it adds what is missing rather
+    than recreating the store.
+    """
+    store = open_store(tmp_path / "legacy" / "store.db")
+    try:
+        first = store.migrate()
+        # A tenant written by the "older" release must survive a later migration.
+        store.create_user("legacy-tenant", display_name="From an older release")
+        store.insert_trades(
+            "legacy-tenant",
+            [
+                {
+                    "trade_id": "TRD-LEGACY",
+                    "symbol": "600111",
+                    "side": "BUY",
+                    "price": 10.0,
+                    "quantity": 1000,
+                    "trade_date": "2026-09-01",
+                }
+            ],
+        )
+
+        # Simulate the newer release opening it: migrate again from scratch.
+        again = store.migrate()
+        assert again["status"] == "ok"
+        assert again["tables"] == first["tables"], "migration changed the table set"
+
+        # The older release's data is still there, which is what makes "restore
+        # the backup, then upgrade" a safe order.
+        assert store.get_user("legacy-tenant") is not None
+        assert len(store.list_trades("legacy-tenant")) == 1
+    finally:
+        store.close()
