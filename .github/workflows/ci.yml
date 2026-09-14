@@ -179,7 +179,7 @@ jobs:
         run: |
           # The declaration is user-visible in the footer. An interface that lost
           # it would misrepresent what the product does.
-          grep -rq "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" +            src/smartmoney_cub_harness/workbench/web/assets/ || {
+          grep -rq "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" src/smartmoney_cub_harness/workbench/web/assets/ || {
             echo "the built interface does not carry the safety declaration" >&2
             exit 1
           }
