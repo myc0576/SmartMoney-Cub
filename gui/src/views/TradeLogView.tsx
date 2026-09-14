@@ -122,6 +122,7 @@ export function TradeLogView({ scheme }: { scheme: 'cn' | 'intl' }) {
           </div>
         }
       >
+        {visible.length > 0 ? (
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
           <span className="muted" style={{ fontSize: 11 }}>
             当前结果合计 <span className={toneOf(netTotal, scheme)}>{formatMoney(netTotal)}</span>
@@ -131,6 +132,7 @@ export function TradeLogView({ scheme }: { scheme: 'cn' | 'intl' }) {
             {truncated ? '已载入最近 ' + PAGE_SIZE + ' 笔，合计仅覆盖本页 · ' : ''}点击表头排序 · 再点一次反序
           </span>
         </div>
+        ) : null}
 
         {error ? <Banner>交易日志读取失败：{error}</Banner> : null}
         {loading ? <div className="muted">加载中…</div> : null}

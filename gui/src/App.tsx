@@ -269,6 +269,7 @@ export function App() {
 }
 
 function summaryChip(summary: TraderSummary, scheme: 'cn' | 'intl') {
+  if (summary.trade_count === 0) return null;
   return (
     <span className="muted" style={{ fontSize: 11 }}>
       {/* `total_net_pnl` is a sum of floats, so it arrives as something like
