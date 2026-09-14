@@ -57,6 +57,28 @@ jobs:
             exit 1
           fi
 
+      - name: Execute the deployment path a launch depends on
+        run: |
+          # hosted-e2e and preflight both existed and both ran nowhere in CI, and
+          # this build's own history is that its late defects lived in the operator
+          # path: configuration that was reviewed but never executed. Running them
+          # only when someone remembers is the same as not running them.
+          #
+          # pgserver lets hosted-e2e start its own throwaway PostgreSQL, so this
+          # needs no Docker and no service of its own. That is deliberate: it means
+          # the check that covers tenant isolation over HTTP cannot be skipped by a
+          # missing service, which is exactly how the hosted engine shipped
+          # unexercised before.
+          python -m pip install pgserver
+
+          # The hosted configuration, actually run: two tenants, tenant isolation
+          # over HTTP, 401 refusals, and both identity modes.
+          SMARTMONEY_HOSTED_E2E=1 python scripts/hosted-e2e.py
+
+          # The local deployment shape: the product started the way the service
+          # units start it, with the shipped proxy rules in front of it.
+          python scripts/preflight.py
+
       - name: Doctor
         run: smcub doctor
 
