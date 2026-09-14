@@ -76,8 +76,16 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
         /* The view rendered its own content, not only the shell. A page whose
          * view failed leaves just the sidebar and topbar behind. */
         hasPanel: document.querySelectorAll('.page .panel, .page table, .page .grid').length > 0,
-        /* An error surface means the view did not load, whatever its markup size. */
-        hasErrorBanner: document.querySelectorAll('.page .banner-error').length > 0,
+        /* An error surface means the view did not load, whatever its markup size.
+         * Two shapes count. A banner is what a crash or a thrown fetch renders.
+         * A view that reports a failed read inline -- "读取失败" -- is the same
+         * failure wearing an empty state, and a harness that only looked for the
+         * banner would call that page clean. */
+        hasErrorBanner:
+          document.querySelectorAll('.page .banner-error').length > 0
+          || /读取失败|加载失败|失败：/.test(
+               (document.querySelector('.page') || { innerText: '' }).innerText || ''
+             ),
       }));
 
       /* Horizontal overflow is the classic layout breakage on a dashboard. */
