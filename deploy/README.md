@@ -222,6 +222,28 @@ users actually sign in to.
 
 ## Operating notes
 
+### Prove the deployment before you trust it
+
+`scripts/hosted-e2e.py` runs the exact configuration this document describes —
+Postgres plus platform identity plus two tenants — against a real database, and
+asserts the properties a hosted deployment must have: each tenant sees only their
+own journal, an unauthenticated request is refused with 401, a request with a
+tampered signature is refused, every refusal still carries the safety declaration,
+and the rows land under separate tenant ids in Postgres.
+
+```bash
+pip install "smartmoney-cub-harness[hosted]" pgserver
+SMARTMONEY_HOSTED_E2E=1 python scripts/hosted-e2e.py
+```
+
+`pgserver` gives the check a throwaway PostgreSQL it starts and discards, so this
+runs on a workstation with no database installed. Point it at your own server
+instead by removing `pgserver` and starting the product yourself; the assertions
+are the part worth repeating against your real deployment.
+
+Without `SMARTMONEY_HOSTED_E2E=1` the script prints why it skipped and exits 0,
+so it never turns into a false failure on a machine that cannot host a database.
+
 - **Back up the journal.** In hosted mode it is the `db_data` volume (compose)
   or your Postgres instance. It is the user's own data and it is never in the
   repository.
