@@ -83,7 +83,13 @@ def main() -> int:
         return 0
 
     data_dir = tempfile.mkdtemp(prefix="smcub-e2e-")
-    server = pgserver.get_server(data_dir, cleanup_mode=None)
+    # cleanup_mode="delete" stops the server and removes its data directory when
+    # the last handle closes. The previous value, None, means "never stop or
+    # delete", so every run left a PostgreSQL process behind. Since this script
+    # now runs in CI on every push and locally on every release, that leak
+    # accumulated until the next initdb failed and the check broke the machine it
+    # was verifying.
+    server = pgserver.get_server(data_dir, cleanup_mode="delete")
     raw = server.get_uri()
     with psycopg.connect(raw) as connection:
         connection.autocommit = True

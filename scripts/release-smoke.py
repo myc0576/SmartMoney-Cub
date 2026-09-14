@@ -165,8 +165,13 @@ def _hosted_smoke(clone: Path, venv: Path) -> list[str]:
     stub = ThreadingHTTPServer(("127.0.0.1", STUB_PORT), Stub)
     threading.Thread(target=stub.serve_forever, daemon=True).start()
 
+    # cleanup_mode="delete" stops the server and removes its data directory when
+    # the last handle closes. It matters: the previous form used None, which
+    # means "never stop or delete", so every run left a PostgreSQL process
+    # behind. Enough runs accumulated 189 of them and their next initdb began
+    # failing, so the check broke the machine it was verifying.
     data_dir = tempfile.mkdtemp(prefix="smcub-release-pg-")
-    server = pgserver.get_server(data_dir, cleanup_mode=None)
+    server = pgserver.get_server(data_dir, cleanup_mode="delete")
     raw = server.get_uri()
     with psycopg.connect(raw) as connection:
         connection.autocommit = True
