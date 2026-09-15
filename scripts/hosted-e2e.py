@@ -65,6 +65,15 @@ def call(user: str, method: str, path: str, payload: dict | None = None):
             return response.status, json.load(response)
     except urllib.error.HTTPError as error:
         return error.code, json.loads(error.read().decode() or "{}")
+    except Exception as error:
+        # A refused connection is the normal state while the server is still
+        # binding its port, and it is exactly what the readiness loop below is
+        # waiting out. Letting it escape turned "not up yet" into a traceback,
+        # so the check failed on a slow runner rather than retrying, and the
+        # reader was shown a socket error instead of "the server did not become
+        # ready". The session-mode probe already tolerated this; this makes the
+        # hosted probe agree with it.
+        return 0, {"error": str(error)}
 
 
 def main() -> int:
