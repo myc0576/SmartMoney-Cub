@@ -45,7 +45,7 @@
 
 它不是个股建议软件，不是自动交易系统，不是券商连接器，也不是财务建议系统。它是你的私人交易日志与复盘伙伴：对市场和执行只读，对你自己的日志可写。
 
-更准确地说，`smartmoney-cub-harness` 是一个**本地优先、对市场与执行只读、不绑定任何 Agent 的交易日志与复盘 harness**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它**不内置 LLM**、**不连接券商**、**不自动交易**，也不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
+更准确地说，`smartmoney-cub-harness` 是一个**本地优先、对市场与执行只读、不绑定任何 Agent 的交易日志与复盘 harness**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它的核心**不内置 LLM**、**不连接券商**、**不自动交易**，控制平面完全离线运行；复盘助手是一个独立的、需要显式配置的入口，它只调用你自己配置的 Provider，并且只发送脱敏后的结构化字段。它不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
 
 ```bash
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent-zh" --agent-version "1.0" --agent-interface "cli"
@@ -107,22 +107,34 @@ smcub workspace promote-rule RULE-1 --note "样本 24 笔，误报率 0.12，确
 
 ---
 
-## 🚀 启动交互式 Web 工作台 (Dashboard MVP)
+## 🏢 Trader 产品（托管模式）
 
+同一个包还带有托管版 Trader 产品：一套多租户的交易日志与复盘界面，作为 alphatech 平台
+（[alphatech.net.cn/trader](https://alphatech.net.cn/trader)）的一个平级入口，与 Alpha Canvas、
+Commerce Workbench 并列。它导入你自己的成交、计算绩效分析、为 Playbook 打分、
+回测一套 JSON 策略 DSL，并回放历史 K 线。
 
-无需复杂的前端构建与外部重度依赖，一行命令启动本地现代化复盘与策略陪练工作台：
+一条命令用同一个进程、同一个端口同时提供两个产品：
 
 ```bash
-smcub dashboard
-# 或直接通过 Python 模块启动：
-python -m smartmoney_cub_harness.dashboard.server
+pip install "smartmoney-cub-harness[hosted]"   # hosted 额外依赖：psycopg，用于 Postgres
+smcub trader serve --mode local                # 单个离线用户，SQLite
+smcub trader serve --mode hosted \
+  --database-url "postgresql://user:pass@host:5432/smcub" \
+  --host 0.0.0.0 --token "$TRADER_ACCESS_TOKEN" --no-browser
 ```
 
-服务启动后自动打开浏览器 `http://127.0.0.1:8765`：
-- **🌀 易经五阶段情绪罗盘 (Regime Cockpit)**：初生、生长、亢龙、衰退、潜藏的可视化周期时钟与操盘箴言。
-- **📋 同花顺/券商交割单智能体检**：支持拖拽上传 CSV 或一键加载内置典型实战案例，自动计算知行合一纪律评分。
-- **🥊 AI 杠精 · 席位严师冷酷质问**：当头棒喝盘后灵魂三问、违规归因与教训提炼。
-- **🧬 规则进化矩阵 (Challenger → Champion)**：一键采纳候选防御规则，遵循严格的人工确认晋级门禁。
+`smcub trader serve` 把 trader API 挂在 `/api/trader/*`，
+并与复盘工作台共用同一个 socket。`smcub workbench` 是本地单用户正门，
+为单个离线用户挂载同一套 `/api/trader/*` 接口；
+`smcub trader serve --mode hosted` 才是那个按请求解析平台身份的入口。
+托管模式必须提供 `postgresql://` 地址，绝不回退到本地文件；
+绑定到非回环地址必须提供 `--token`。
+
+本产品不下单、不撤单、不修改券商账户、不自动化执行，也不是投资建议。
+v1 覆盖了什么、明确的非目标、以及推迟到 v1 之后的功能，都写在
+[Trader 产品说明](docs/trader-product.md)；HTTP 接口见 [docs/trader-api.md](docs/trader-api.md)，
+三条部署路径见 [deploy/README.md](deploy/README.md)。
 
 ---
 

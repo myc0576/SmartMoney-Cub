@@ -16,7 +16,12 @@
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
-It has **no embedded LLM**, **no broker connection**, and **no automatic trading**. It does not place, cancel, or execute trades; select stocks; mutate accounts; run a background autonomous trading Agent; or automatically mutate core rules.
+It has **no embedded LLM** in its core, **no broker connection**, and
+**no automatic trading**: the control plane runs entirely offline. The review assistant
+is a separate, opt-in surface that calls the provider you configure and sends only
+redacted structured fields. The project does not place, cancel, or execute trades;
+select stocks; mutate accounts; run a background autonomous trading Agent; or
+automatically mutate core rules.
 
 [简体中文](README.zh-CN.md)
 
@@ -160,11 +165,14 @@ In the AI era, good review does not have to depend on randomly meeting a mentor.
 `smartmoney-cub-harness` can work with different levels of input:
 
 - Read-only broker/account export.
-- Read-only QMT or adapter integration if configured locally.
 - Trading journal CSV.
-- Watchlist files.
 - TongHuaShun or broker screenshots of positions, orders, and daily review.
 - Manually written trading notes.
+
+The journal import accepts CSV, TSV, PDF, and screenshots. A watchlist or a
+broker automation described in earlier drafts is not an input this project reads:
+there is no broker account integration and no QMT adapter in the code, and naming
+one would promise a connection the product deliberately does not make.
 
 All inputs are for review and journal generation only. The public core does not connect to live execution by default. It does not place orders, cancel orders, or modify accounts.
 
