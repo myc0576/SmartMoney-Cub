@@ -42,6 +42,9 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+hosted = ["psycopg[binary]>=3.2"]
+ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pypdfium2>=4.30", "pypdf>=4.0"]
+pdf = ["pypdf>=4.0"]
 
 [project.scripts]
 smcub = "smartmoney_cub_harness.cli:main"
@@ -50,7 +53,17 @@ smcub = "smartmoney_cub_harness.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-smartmoney_cub_harness = ["data/*.json"]
+smartmoney_cub_harness = [
+  "data/*.json",
+  "dashboard/templates/*.html",
+  "trader/storage/*.sql",
+  "workbench/web/*.html",
+  # The favicon is copied to the web root by the interface build, so it needs its
+  # own pattern: 'web/assets/*' does not match it, and an installed copy would
+  # serve a missing icon.
+  "workbench/web/*.png",
+  "workbench/web/assets/*",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "smartmoney_cub_harness.__version__" }

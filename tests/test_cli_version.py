@@ -25,7 +25,7 @@ def test_cli_version_matches_package_version():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == f"smcub {__version__}"
-    assert __version__ == "0.1.2"
+    assert __version__ == "1.0.0"
 
 
 def test_build_metadata_uses_package_version_attribute():

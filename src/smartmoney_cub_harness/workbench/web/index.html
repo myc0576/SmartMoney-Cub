@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  data-theme is set on the element itself, not on a wrapper, so the tokens
+  resolve for the boot frame as well as for the app. The inline script runs
+  before first paint and applies the stored preference, which is what stops a
+  light-to-dark flash on a machine that chose dark. Dark is the default.
+-->
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      try {
+        if (window.localStorage.getItem('smcub.theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (error) {
+        /* Storage blocked: keep the default. */
+      }
+    </script>
+    <title>SmartMoney-Cub 复盘工作台</title>
+    <!--
+      The tab icon. The path is document-relative on purpose: the hosted build is
+      published under a path prefix (nginx maps /trader/ to the app), so a
+      root-absolute '/favicon.png' would leave the prefix and 404, while './' still
+      points at the interface wherever it was served from -- the same reason the
+      bundle's own script and stylesheet tags below are relative. vite.config.ts
+      uses base './', and a file in gui/public/ is copied into the build output
+      with its name unchanged, so this URL survives the build.
+    -->
+    <link rel="icon" type="image/png" href="./smartmoney-cub-mark-32.png" />
+    <style>:root{--boot-bg:#101318;--boot-panel:#171b22;--boot-border:#262c37;--boot-text:#e6eaf2;--boot-muted:#8b93a4}[data-theme=light]{--boot-bg:#fff;--boot-panel:#f6f7f9;--boot-border:#e0e3ea;--boot-text:#0f0f0f;--boot-muted:#767c8a}.boot{background:var(--boot-bg);min-height:100vh;color:var(--boot-text);justify-content:center;align-items:center;margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;line-height:1.75;display:flex}.boot main{max-width:620px;padding:32px}.boot h1{margin:0 0 6px;font-size:17px}.boot p{color:var(--boot-muted);margin:0 0 14px;font-size:13px}.boot code{background:var(--boot-panel);border:1px solid var(--boot-border);border-radius:6px;padding:2px 6px;font-size:12px}.boot pre{background:var(--boot-panel);border:1px solid var(--boot-border);border-radius:8px;padding:12px 14px;font-size:12.5px;overflow:auto}.boot .safe{color:var(--boot-muted);margin-top:18px;font-size:11px}</style>
+    <script type="module" crossorigin src="./assets/index-DwUB1Ut1.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DJPcVnhR.css">
+  </head>
+  <body>
+    <div id="root">
+      <!-- Shown only when the interface could not start. -->
+      <div class="boot">
+        <main>
+          <h1>这是开发入口，不是工作台</h1>
+          <p>
+            这个文件只供构建工具使用。直接用浏览器打开它会得到空白页，因为它引用的是
+            尚未编译的 <code>/src/main.tsx</code>，本地服务也没有在运行。
+          </p>
+          <p>请先启动本地工作台，再打开它打印的地址：</p>
+          <pre>python -m smartmoney_cub_harness.cli workbench
+# 或
+npx smartmoney-cub</pre>
+          <p>之后访问 <code>http://127.0.0.1:8787</code>。界面默认只监听本机回环地址。</p>
+          <p>
+            开发时需要热更新，请在 <code>gui/</code> 目录执行
+            <code>npm install &amp;&amp; npm run dev</code>，它会把 <code>/api</code>
+            代理到本地服务。
+          </p>
+          <div class="safe">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

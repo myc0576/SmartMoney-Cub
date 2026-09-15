@@ -393,7 +393,9 @@ def test_build_disambiguates_sample_ids_until_unique(tmp_path: Path) -> None:
         _make_run(tmp_path, "source-b", _alert(), {"d1_return_pct": 4.0}),
         _make_run(tmp_path, "source-c", _alert(), {"d1_return_pct": 4.0}),
     ]
-    for sample, run_id in zip(samples, ["x-3", "x", "x"], strict=True):
+    run_ids = ["x-3", "x", "x"]
+    assert len(samples) == len(run_ids)
+    for sample, run_id in zip(samples, run_ids):
         manifest_path = sample / "run_manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["run_id"] = run_id

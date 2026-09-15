@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="88" height="88" />
+
 ![smartmoney-cub-harness cover](assets/smartmoney-cub-harness-cover.png)
 
 ## 游资复盘引擎 · 让每一次决策都变成系统的进化
@@ -41,20 +43,137 @@
 
 `smartmoney-cub-harness` 是一个本地优先的 AI 复盘引擎。它帮你记录每一次决策的完整逻辑，追踪 D1/D3 的结果，把教训变成规则，把规则沉淀成系统。
 
-它不是个股建议软件，不是自动交易系统，不是券商连接器，也不是财务建议系统。它是你的私人只读交易系统训练器。
+它不是个股建议软件，不是自动交易系统，不是券商连接器，也不是财务建议系统。它是你的私人交易日志与复盘伙伴：对市场和执行只读，对你自己的日志可写。
 
-更准确地说，`smartmoney-cub-harness` 是一个**本地优先、只读、不绑定任何 Agent 的交易复盘与证据治理控制平面**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它**不内置 LLM**、**不连接券商**、**不自动交易**，也不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
+更准确地说，`smartmoney-cub-harness` 是一个**本地优先、对市场与执行只读、不绑定任何 Agent 的交易日志与复盘 harness**：外部 Agent 或 CLI 调用方 → Run Envelope → 冻结的 Benchmark/Evidence Pack → 确定性回放 → 人工显式晋级门禁。它的核心**不内置 LLM**、**不连接券商**、**不自动交易**，控制平面完全离线运行；复盘助手是一个独立的、需要显式配置的入口，它只调用你自己配置的 Provider，并且只发送脱敏后的结构化字段。它不替用户选股、不运行后台自主交易 Agent、不自动修改核心规则。
 
 ```bash
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent-zh" --agent-version "1.0" --agent-interface "cli"
 smcub validate-envelope tmp/sandbox/20260601/20260601_153100-after-close/run_envelope.json
-smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`enforcement: declarative`、`verified: false`），不是子进程沙箱。CLI 的 `--sandbox` 只选择一次性的 `tmp/sandbox` 输出目录，并不隔离进程；不可信命令必须放在操作系统或容器沙箱中运行。`evidence_pack.sha256` 用于本地篡改检测，不是经过身份认证的数字签名；任何不一致只会进入 `pending_review` 或 `blocked`，绝不会自动晋级。
 
+## 🧭 复盘工作台（1.0 · 本地优先）
+
+工作台是三栏布局：左侧导航，中间业务页，右侧常驻复盘助手。导入券商交割文件或截图，
+校对本地识别结果，然后让助手基于脱敏字段做复盘。
+
+```bash
+npx smartmoney-cub                      # 用户端不需要手工配置 Python
+npx smartmoney-cub install --with-ocr   # 识别截图与扫描 PDF 所需的本地 OCR
+smcub workbench                         # 也可以直接用 Python 包启动
+smcub skill install --target codex      # 安装 Agent Skill
+```
+
+页面：总览（权益曲线、月历热力图、待复盘清单）、交易日志（表格 + 详情抽屉 + 成交版本历史）、
+复盘日历、绩效分析（按标的／市场状态／星期／持有周期／标签归因，并显示样本量）、规则库、
+数据导入、插件、设置（Provider、隐私与诊断）。
+
+### 对话驱动的规则进化
+
+复盘助手可以从已确认的证据里提出候选（challenger）规则，并且这条候选会和规则库页面读的是
+同一个库：门禁缺口会被记录，同时在 workspace 数据库旁追加一条 `evolution_ledger.jsonl`
+记录和一段可读的 `memory.md` 片段。
+
+晋升是单独的一步，也是唯一能产生 champion 的写入：
+
+```bash
+smcub workspace rules
+smcub workspace promote-rule RULE-1 --note "样本 24 笔，误报率 0.12，确认纳入"
+```
+
+那条确认说明就是门禁本身：说明为空或缺失时一律拒绝，且不写入任何东西——命令行与界面的
+晋升接口行为一致。两道门禁刻意分开：样本与风险阈值只决定是否给出晋升建议，人写下的确认
+说明才是规则变成 champion 的依据。助手、插件、导入的报告都不能替代它。
+
+### 🔒 默认脱敏
+
+助手默认走脱敏路径，界面不提供关闭开关：
+
+- 券商截图、PDF、CSV 原文**只在本机解析**，**从不上传**到 AlphaTech 或任何其他模型 API。
+- 账号、姓名与直接身份标识会被移除，或替换为设备内稳定的假名。
+- 证券代码、组合名、精确数量、精确金额与精确时间会被替换为假名、区间或 15 分钟时段。
+- 收益率、持有周期、执行偏差与统计特征会被保留，否则复盘没有意义。
+- 每次外发都会在本机写入审计记录，说明发送了哪些字段、替换了多少处。
+- 未配置 Provider 密钥时，助手只使用本地数据，不发出任何请求。
+- Provider 来自目录：可添加内置 Provider、添加自定义网关（需指定协议）、从端点拉取模型目录，
+  并在输入框旁的选择器里切换模型与推理强度。详见 [docs/review-agent.md](docs/review-agent.md)。
+
+详见 [docs/review-agent.md](docs/review-agent.md) 与 [docs/convergence.md](docs/convergence.md)。
+
+---
+
+## 🏢 Trader 产品（托管模式）
+
+同一个包还带有托管版 Trader 产品：一套多租户的交易日志与复盘界面，作为 alphatech 平台
+（[alphatech.net.cn/trader](https://alphatech.net.cn/trader)）的一个平级入口，与 Alpha Canvas、
+Commerce Workbench 并列。它导入你自己的成交、计算绩效分析、为 Playbook 打分、
+回测一套 JSON 策略 DSL，并回放历史 K 线。
+
+一条命令用同一个进程、同一个端口同时提供两个产品：
+
+```bash
+pip install "smartmoney-cub-harness[hosted]"   # hosted 额外依赖：psycopg，用于 Postgres
+smcub trader serve --mode local                # 单个离线用户，SQLite
+smcub trader serve --mode hosted \
+  --database-url "postgresql://user:pass@host:5432/smcub" \
+  --host 0.0.0.0 --token "$TRADER_ACCESS_TOKEN" --no-browser
+```
+
+`smcub trader serve` 把 trader API 挂在 `/api/trader/*`，
+并与复盘工作台共用同一个 socket。`smcub workbench` 是本地单用户正门，
+为单个离线用户挂载同一套 `/api/trader/*` 接口；
+`smcub trader serve --mode hosted` 才是那个按请求解析平台身份的入口。
+托管模式必须提供 `postgresql://` 地址，绝不回退到本地文件；
+绑定到非回环地址必须提供 `--token`。
+
+本产品不下单、不撤单、不修改券商账户、不自动化执行，也不是投资建议。
+v1 覆盖了什么、明确的非目标、以及推迟到 v1 之后的功能，都写在
+[Trader 产品说明](docs/trader-product.md)；HTTP 接口见 [docs/trader-api.md](docs/trader-api.md)，
+三条部署路径见 [deploy/README.md](deploy/README.md)。
+
+---
+
+## 🧩 Everything is a Plugin（插件协议）
+
+仓库自带插件协议、示例插件与精选目录。外部交易项目不进入核心发布包，用户安装插件后，
+Harness 会自动发现、校验、注入并挂载能力，无需修改核心代码。详见 [docs/plugins.md](docs/plugins.md) 与 [docs/plugin-development.md](docs/plugin-development.md)。
+
+```bash
+smcub plugin inspect examples/toy_plugin/plugin.json
+smcub plugin doctor  --plugin-dir examples/toy_plugin
+smcub plugin run     toy.review-tagger \
+  --request request.json \
+  --decision-time 2026-09-10T15:00:00+08:00 \
+  --available-at  2026-09-10T14:00:00+08:00
+smcub plugin catalog
+smcub profile show a-share-review
+```
+
+自动的部分：发现、校验、依赖注入、激活、证据封装。
+不自动的部分：安装、联网、外部模型、凭证——一律需要用户主动触发。
+
+每个插件输出都会封装为 Evidence Envelope，记录插件版本、源码引用、输入/输出哈希、时间语义与数据质量。
+若 available_at 晚于 decision_time，直接判定为未来数据泄漏并拒绝执行。
+
+## 📓 复盘工作区与分享包
+
+```bash
+smcub workspace import-csv exports/fills.csv
+smcub workspace list-cases --action AVOID
+smcub workspace summary
+smcub share-pack --csv exports/fills.csv --output tmp/share-pack --write
+```
+
+工作区用 SQLite 保存复盘用例、D1/D3 结果、插件证据与规则状态。
+分享包是离线静态 HTML，证券代码、名称、金额与盘中时间会按策略降精度，并经过隐私审计；
+系统不会自动上传。详见 [docs/share-pack.md](docs/share-pack.md) 与 [docs/review-workspace.md](docs/review-workspace.md)。
+
+---
 ## 30 秒上手
 
 任何 agent 里丢一句话，让它按本仓库的安全合同跑 toy 离线闭环。公开仓库只使用 toy offline data。
@@ -66,7 +185,7 @@ Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`en
 | Cursor | `请按 docs/agent-loop.md 使用本项目，跑 toy loop 并总结复盘产物；所有规则更新只能保持 challenger 状态。` |
 | Gemini CLI | `请阅读 docs/harness-contract.md，执行 toy offline loop，确认输出包含 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE。` |
 | OpenCode / OpenClaw | `帮我用这个仓库做一次只读复盘演示：运行 smcub doctor，再运行 smcub loop --preset toy --agent-trigger "自进化"。` |
-| CLI 直用 | `git clone https://github.com/myc0576/smartmoney-cub-harness.git && cd smartmoney-cub-harness && pip install -e ".[dev]" && smcub loop --preset toy --agent-trigger "自进化"` |
+| CLI 直用 | `git clone https://github.com/myc0576/SmartMoney-Cub.git && cd SmartMoney-Cub && pip install -e ".[dev]" && smcub loop --preset toy --agent-trigger "自进化"` |
 
 ### 隔离安装与版本确认
 
@@ -93,7 +212,7 @@ python -m venv .venv
 当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新修复 tag 安装，让命令拥有独立环境：
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.1.2"
+pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0"
 ```
 
 未来正式发布到 PyPI 后，可改用更短的安装和升级命令：
@@ -128,8 +247,8 @@ smcub confirm-promotion state/self_evolve/<loop_id>/promotion_packet.json --deci
 一条命令跑完整个 toy 闭环：
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 pip install -e ".[dev]"
 smcub loop --preset toy --agent-trigger "自进化"
 ```
@@ -273,11 +392,17 @@ TradingAgents 的输出只会进入 reviewer / challenger / evidence / case-revi
 
 交易逻辑和复盘记忆是私有资产。`smartmoney-cub-harness` 的设计原则是：你的交易系统只在你本地进化。
 
+对市场和执行，它永远是只读的；对你的交易日志，它是可写的。你的成交、笔记和回测记录保存在
+本地或你的租户存储里，永远不会提交进这个仓库。
+
 每个 manifest、decision、outcome、evaluation、registry、doctor output 和 loop output 都必须携带：
 
 ```text
 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 ```
+
+这行声明只断言“不执行交易”，不代表系统不能写入：它写入你自己的日志和报告，
+但永远不会下单、撤单或修改券商账户。
 
 项目默认：
 
@@ -288,7 +413,7 @@ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 - No trading execution。
 - No broker automation。
 - CLI 输出前先 redaction。
-- 公开仓库只使用 toy examples。
+- 公开仓库只使用 toy examples；真实交易数据只存在于运行时存储。
 
 它明确不做：
 
@@ -297,7 +422,7 @@ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 - 不修改账户。
 - 不自动化券商。
 - 不连接真实交易执行。
-- 发布真实交易记录、真实 watchlist、账户数据、私有策略 prompt、私有路径、credentials 或 cookies。
+- 把真实交易记录、真实 watchlist、账户数据、私有策略 prompt、私有路径、credentials 或 cookies 提交进仓库。
 
 运行：
 
@@ -308,11 +433,30 @@ smcub doctor
 
 ## Privacy
 
-This project does not collect, upload, sell, or learn your trading logic. By default it has no server, no telemetry, no remote database, and no real account connection.
+This project does not collect, upload, sell, or learn your trading logic. The core runs offline with no telemetry, no remote database, and no real account connection. Hosted tenant mode is opt-in and drives your own tenant store behind the platform login.
 
-Your private trading logic should remain in local artifacts on your machine. It must not be copied into the public repository. Public examples must stay toy-only.
+Your private trading logic and your real trades should remain in your local or tenant store. They must not be copied into the public repository. Public examples must stay toy-only.
 
 See [docs/privacy.md](docs/privacy.md) and [docs/public-vs-private-quantkb.md](docs/public-vs-private-quantkb.md).
+
+## 界面入口在哪里
+
+界面由本地工作台服务提供，不能直接从磁盘打开：
+
+```bash
+npx smartmoney-cub        # 或：smcub workbench
+# 然后打开 http://127.0.0.1:8787
+```
+
+直接用浏览器打开 `gui/index.html` 会看到空白页，这是预期行为。那个文件是构建入口，
+引用的是尚未编译的源码，也没有本地接口可以调用。服务返回的页面里带着同样的说明，
+所以误用 `file://` 打开时会告诉你该怎么做，而不是一片空白。
+
+需要热更新时请启动开发服务器，它会把 `/api` 代理到本地服务：
+
+```bash
+cd gui && npm install && npm run dev
+```
 
 ## CLI Commands
 

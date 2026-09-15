@@ -17,18 +17,51 @@ from smartmoney_cub_harness.loop import run_agent_loop
 from smartmoney_cub_harness.manifest import validate_run_manifest
 from smartmoney_cub_harness.memory import save_memory_record
 from smartmoney_cub_harness.mentor_fit import build_mentor_fit
-from smartmoney_cub_harness.outcome import build_outcome
+from smartmoney_cub_harness.outcome import build_outcome, resolve_price_source
+from smartmoney_cub_harness.plugin_cli import (
+    plugin_catalog,
+    plugin_disable,
+    plugin_doctor,
+    plugin_enable,
+    plugin_install,
+    plugin_inspect,
+    plugin_list,
+    plugin_logs,
+    plugin_remove,
+    plugin_run,
+    profile_dump,
+    profile_reload,
+    profile_show,
+)
+from smartmoney_cub_harness.plugins.profiles import BUILTIN_PROFILES
 from smartmoney_cub_harness.privacy_audit import inspect_run_artifacts, load_payload_json, privacy_audit
 from smartmoney_cub_harness.registry import register_candidate
 from smartmoney_cub_harness.run_capture import capture_run, get_command_preset, parse_command
 from smartmoney_cub_harness.run_envelope import validate_run_envelope
 from smartmoney_cub_harness.safety import redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
-from smartmoney_cub_harness.self_evolve import confirm_promotion, run_self_evolve
+from smartmoney_cub_harness.self_evolve import run_self_evolve
+from smartmoney_cub_harness.share_cli import build_share_pack_from_source
+from smartmoney_cub_harness.trader_cli import run_trader_serve
 from smartmoney_cub_harness.tradingagents_adapter import (
     check_tradingagents_environment,
     ingest_tradingagents_report,
     run_tradingagents_local_bridge,
+)
+from smartmoney_cub_harness.workspace_cli import (
+    DEFAULT_WORKSPACE_DB,
+    confirm_promotion_with_workspace,
+    sync_registry_candidate_to_workspace,
+    sync_registry_file_to_workspace,
+    workspace_add_case,
+    workspace_import_csv,
+    workspace_list_cases,
+    workspace_promote_rule,
+    workspace_reject_rule,
+    workspace_record_outcome,
+    workspace_rules,
+    workspace_show_case,
+    workspace_summary,
 )
 
 
@@ -85,15 +118,24 @@ def doctor() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "cwd": str(Path.cwd()),
+        # network_required documents that the core is usable with no network: the
+        # package imports and runs fully offline. Built-in market sources are
+        # opt-in at call time, so no network is required to import or run the core.
         "network_required": False,
         "telemetry": False,
         "upload": False,
         "credentials_required": False,
         "github_auth_required": False,
+        # external_api_required stays False: built-in market sources are opt-in at
+        # call time, not required to import or run the core.
         "external_api_required": False,
         "broker_api_required": False,
         "execution_integrations": "disabled",
         "default_data_mode": "offline_json_fixtures",
+        # market_data_mode defaults to offline; online sources are opt-in per call.
+        "market_data_mode": "offline",
+        # tenant_mode defaults to the single local user for offline use and CI.
+        "tenant_mode": "local_single_user",
         "launcher": launcher_diagnostics(),
         "safety": SAFETY_DECLARATION,
     }
@@ -102,7 +144,10 @@ def doctor() -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="smcub",
-        description="Read-only trading companion harness for decision logging, outcome review, and rule evolution.",
+        description=(
+            "Local-first trading journal and review harness: read-only over markets "
+            "and execution, writable over your own journal."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -155,6 +200,19 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("registry")
     register.add_argument("candidate")
     register.add_argument("--confirm-promote", action="store_true")
+    register.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library the candidate is mirrored into (default: state/workspace/review.db)",
+    )
+    register.add_argument(
+        "--champion-note",
+        default="",
+        help=(
+            "Human confirmation note. Required with --confirm-promote, because the "
+            "note is the only thing that may write a champion row."
+        ),
+    )
 
     doctor_cmd = sub.add_parser("doctor", help="Show local package health and safety settings")
     doctor_cmd.set_defaults(command="doctor")
@@ -164,6 +222,17 @@ def build_parser() -> argparse.ArgumentParser:
     loop_cmd.add_argument("--agent-trigger", default="")
     loop_cmd.add_argument("--horizon", choices=["d1", "d3"], default="d1")
     loop_cmd.add_argument("--json", action="store_true", help="Print the final loop summary as JSON")
+    # run_agent_loop already accepted a root; the CLI simply never exposed it, so
+    # every invocation wrote its run directories into the process's working
+    # directory. That made the loop untestable without littering the checkout,
+    # and enough repeated runs exhausted unique_run_dir's 999-sibling cap and
+    # broke the suite. An explicit root lets a caller (and CI) keep runs out of
+    # the tree they are building in.
+    loop_cmd.add_argument(
+        "--root",
+        default=".",
+        help="Directory the run artifacts are written under (default: the current directory)",
+    )
 
     mentor_fit = sub.add_parser("mentor-fit", help="Build offline toy mentor-fit style anchor JSON")
     mentor_fit.add_argument("input", help="JSON payload with toy cases and optional public templates")
@@ -176,11 +245,21 @@ def build_parser() -> argparse.ArgumentParser:
     self_evolve.add_argument("--state-root", default="state/self_evolve")
     self_evolve.add_argument("--resume")
     self_evolve.add_argument("--interactive-confirm", action="store_true")
+    self_evolve.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library the proposed challenger is mirrored into (default: state/workspace/review.db)",
+    )
 
     confirm = sub.add_parser("confirm-promotion", help="Record a manual promotion decision")
     confirm.add_argument("promotion_packet")
     confirm.add_argument("--decision", required=True, choices=["promote", "defer", "reject"])
     confirm.add_argument("--note", default="")
+    confirm.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library that mirrors the decision (default: state/workspace/review.db)",
+    )
 
     privacy_cmd = sub.add_parser("privacy-audit", help="Show offline privacy and safety settings")
     privacy_cmd.set_defaults(command="privacy-audit")
@@ -218,8 +297,228 @@ def build_parser() -> argparse.ArgumentParser:
     append_ledger.add_argument("--ledger")
 
     save_memory = sub.add_parser("save-memory", help="Write local Markdown memory from a case record")
-    save_memory.add_argument("--case-record", required=True)
+    save_memory.add_argument("case_record")
     save_memory.add_argument("--output")
+
+    dashboard_cmd = sub.add_parser(
+        "dashboard", help="Launch the local AI trading journal & copilot web dashboard"
+    )
+    dashboard_cmd.add_argument("--host", default="127.0.0.1", help="Host address (default: 127.0.0.1)")
+    dashboard_cmd.add_argument("--port", type=int, default=8765, help="Port number (default: 8765)")
+    dashboard_cmd.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
+
+    workbench_cmd = sub.add_parser(
+        "workbench", help="Launch the local-first review workbench (A-plan interface)"
+    )
+    workbench_cmd.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    workbench_cmd.add_argument("--port", type=int, default=8787, help="Port (default: 8787)")
+    workbench_cmd.add_argument("--state-dir", default=None, help="Override the local state directory")
+    workbench_cmd.add_argument(
+        "--workspace-db",
+        default=None,
+        help="SQLite rule library (default: <state-dir>/workspace/review.db)",
+    )
+    workbench_cmd.add_argument("--no-browser", action="store_true", help="Do not open a browser")
+    workbench_cmd.add_argument(
+        "--token",
+        default=None,
+        help="Required access token when binding beyond loopback",
+    )
+
+    trader_cmd = sub.add_parser(
+        "trader", help="Run the trader product's HTTP surface (journal, analytics, backtest)"
+    )
+    trader_sub = trader_cmd.add_subparsers(dest="trader_command", required=True)
+    trader_serve = trader_sub.add_parser(
+        "serve", help="Serve the trader product and the review workbench on one port"
+    )
+    trader_serve.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    trader_serve.add_argument("--port", type=int, default=8787, help="Port (default: 8787)")
+    trader_serve.add_argument(
+        "--mode",
+        choices=["local", "hosted"],
+        default="local",
+        help="local is a single offline user; hosted resolves an alphatech identity",
+    )
+    trader_serve.add_argument(
+        "--database-url",
+        default=None,
+        help="Postgres URL for the tenant store; required in hosted mode",
+    )
+    trader_serve.add_argument(
+        "--state-dir", default=None, help="Local store directory (local mode only)"
+    )
+    trader_serve.add_argument(
+        "--token",
+        default=None,
+        help="Required access token when binding beyond loopback",
+    )
+    trader_serve.add_argument("--no-browser", action="store_true", help="Do not open a browser")
+
+    import_cmd = sub.add_parser("import", help="Import broker records into the local store")
+    import_sub = import_cmd.add_subparsers(dest="import_command", required=True)
+    import_file = import_sub.add_parser("file", help="Import a CSV, PDF, or screenshot file")
+    import_file.add_argument("path")
+    import_file.add_argument("--state-dir", default=None)
+    import_file.add_argument("--portfolio-id", default=None)
+    import_file.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    import_commit = import_sub.add_parser("commit", help="Commit reviewed rows from an extraction")
+    import_commit.add_argument("extraction_id")
+    import_commit.add_argument("--rows", default=None, help="JSON file with corrected rows")
+    import_commit.add_argument("--state-dir", default=None)
+    import_commit.add_argument("--portfolio-id", default=None)
+    import_commit.add_argument("--json", action="store_true")
+    import_sub.add_parser("list", help="List local documents already imported")
+
+    store_cmd = sub.add_parser("store", help="Inspect and maintain the local review store")
+    store_sub = store_cmd.add_subparsers(dest="store_command", required=True)
+    store_status = store_sub.add_parser("status", help="Show local store counts and paths")
+    store_status.add_argument("--state-dir", default=None)
+    store_status.add_argument("--json", action="store_true")
+    store_backup = store_sub.add_parser("backup", help="Copy the local store aside")
+    store_backup.add_argument("destination")
+    store_backup.add_argument("--state-dir", default=None)
+    store_backup.add_argument("--json", action="store_true")
+
+    skill_cmd = sub.add_parser("skill", help="Install the agent skill for a supported host")
+    skill_sub = skill_cmd.add_subparsers(dest="skill_command", required=True)
+    skill_install = skill_sub.add_parser("install", help="Write the skill into a host directory")
+    skill_install.add_argument("--target", default="codex", help="codex, claude, deepseek-harness, or a path")
+    skill_install.add_argument("--force", action="store_true", help="Overwrite an existing skill directory")
+    skill_install.add_argument("--json", action="store_true")
+    skill_sub.add_parser("show", help="Print the packaged skill definition")
+
+    plugin_cmd = sub.add_parser("plugin", help="Discover, inspect, and run read-only plugins")
+    plugin_sub = plugin_cmd.add_subparsers(dest="plugin_command", required=True)
+
+    def add_common(parser_obj: argparse.ArgumentParser) -> None:
+        parser_obj.add_argument("--profile", default="default-offline", choices=sorted(BUILTIN_PROFILES))
+        parser_obj.add_argument("--plugin-dir", action="append", default=[])
+        parser_obj.add_argument("--state-db")
+
+    plugin_list_cmd = plugin_sub.add_parser("list", help="List discovered plugins and entry points")
+    add_common(plugin_list_cmd)
+
+    plugin_inspect_cmd = plugin_sub.add_parser("inspect", help="Validate and show a plugin manifest")
+    plugin_inspect_cmd.add_argument("manifest")
+
+    plugin_enable_cmd = plugin_sub.add_parser("enable", help="Activate a discovered plugin")
+    plugin_enable_cmd.add_argument("plugin_id")
+    add_common(plugin_enable_cmd)
+
+    plugin_disable_cmd = plugin_sub.add_parser("disable", help="Deactivate a plugin and roll back its effects")
+    plugin_disable_cmd.add_argument("plugin_id")
+    add_common(plugin_disable_cmd)
+
+    plugin_remove_cmd = plugin_sub.add_parser("remove", help="Revoke a plugin entry while keeping its audit trail")
+    plugin_remove_cmd.add_argument("plugin_id")
+    plugin_remove_cmd.add_argument("--state-db")
+
+    plugin_doctor_cmd = plugin_sub.add_parser("doctor", help="Check plugin tree, capabilities, and gates")
+    add_common(plugin_doctor_cmd)
+
+    plugin_logs_cmd = plugin_sub.add_parser("logs", help="Show recorded plugin lifecycle events")
+    plugin_logs_cmd.add_argument("plugin_id")
+    plugin_logs_cmd.add_argument("--state-db")
+    plugin_logs_cmd.add_argument("--limit", type=int, default=50)
+
+    plugin_run_cmd = plugin_sub.add_parser("run", help="Run a plugin capability as wrapped review evidence")
+    plugin_run_cmd.add_argument("plugin_id")
+    plugin_run_cmd.add_argument("--capability")
+    plugin_run_cmd.add_argument("--request")
+    plugin_run_cmd.add_argument("--decision-time", required=True)
+    plugin_run_cmd.add_argument("--available-at", required=True)
+    plugin_run_cmd.add_argument("--data-source", default="")
+    plugin_run_cmd.add_argument("--data-quality", default="ok")
+    plugin_run_cmd.add_argument("--result-kind", default="review_observation")
+    plugin_run_cmd.add_argument("--workspace-db", help="Persist the wrapped evidence into this workspace")
+    plugin_run_cmd.add_argument("--case-id", help="Link the recorded evidence to a review case")
+    add_common(plugin_run_cmd)
+
+    plugin_sub.add_parser("catalog", help="List curated external projects and integration levels")
+
+    plugin_install_cmd = plugin_sub.add_parser(
+        "install",
+        help="Register a locally obtained plugin (never downloads)",
+    )
+    plugin_install_cmd.add_argument("source", help="Local plugin directory or manifest path")
+    add_common(plugin_install_cmd)
+
+    profile_cmd = sub.add_parser("profile", help="Inspect and reload plugin composition profiles")
+    profile_sub = profile_cmd.add_subparsers(dest="profile_command", required=True)
+    profile_show_cmd = profile_sub.add_parser("show", help="Show one resolved profile and its entry tree")
+    profile_show_cmd.add_argument("name", choices=sorted(BUILTIN_PROFILES))
+    profile_dump_cmd = profile_sub.add_parser("dump", help="Dump every built-in profile as JSON")
+    profile_dump_cmd.add_argument("--output")
+    profile_reload_cmd = profile_sub.add_parser("reload", help="Rebuild the plugin tree explicitly")
+    add_common(profile_reload_cmd)
+
+    share_pack_cmd = sub.add_parser(
+        "share-pack", help="Build a privacy-reduced static HTML review pack for local sharing"
+    )
+    share_pack_cmd.add_argument("--csv", help="Optional broker or 同花顺 CSV; omit to use labelled demo data")
+    share_pack_cmd.add_argument("--output", help="Output directory for the static HTML pack")
+    share_pack_cmd.add_argument("--regime", default="生长")
+    share_pack_cmd.add_argument("--title", default="SmartMoney-Cub Review Pack")
+    share_pack_cmd.add_argument("--write", action="store_true", help="Write the pack to --output")
+
+    workspace_cmd = sub.add_parser(
+        "workspace", help="Query and update the local SQLite review workspace"
+    )
+    workspace_sub = workspace_cmd.add_subparsers(dest="workspace_command", required=True)
+
+    ws_add = workspace_sub.add_parser("add-case", help="Record a review case with its risk contract")
+    ws_add.add_argument("payload", help="JSON payload describing the case")
+    ws_add.add_argument("--db")
+
+    ws_list = workspace_sub.add_parser("list-cases", help="List review cases with optional filters")
+    ws_list.add_argument("--db")
+    ws_list.add_argument("--action")
+    ws_list.add_argument("--symbol")
+    ws_list.add_argument("--regime")
+
+    ws_show = workspace_sub.add_parser("show-case", help="Show one case with outcomes and evidence")
+    ws_show.add_argument("case_id")
+    ws_show.add_argument("--db")
+
+    ws_outcome = workspace_sub.add_parser("record-outcome", help="Record a D1/D3 style outcome")
+    ws_outcome.add_argument("case_id")
+    ws_outcome.add_argument("--horizon", required=True)
+    ws_outcome.add_argument("--return-pct", type=float, required=True)
+    ws_outcome.add_argument("--max-adverse-excursion-pct", type=float)
+    ws_outcome.add_argument("--outcome-time")
+    ws_outcome.add_argument("--detail", default="")
+    ws_outcome.add_argument("--db")
+
+    ws_import = workspace_sub.add_parser("import-csv", help="Import broker CSV round trips as facts")
+    ws_import.add_argument("csv_path")
+    ws_import.add_argument("--db")
+    ws_import.add_argument("--regime", default="")
+
+    ws_summary = workspace_sub.add_parser("summary", help="Show workspace counts and sample limits")
+    ws_summary.add_argument("--db")
+
+    ws_rules = workspace_sub.add_parser("rules", help="List the rule library with promotion blockers")
+    ws_rules.add_argument("--db")
+    ws_rules.add_argument("--status")
+
+    # --note is deliberately NOT required at the argparse level: a promotion
+    # without a written confirmation must fail as a clean JSON error on the
+    # workspace error contract (exit 2), not as an argparse usage dump that
+    # prints no JSON at all. The gate itself is enforced in Workspace, so no
+    # entry point can bypass it.
+    ws_promote = workspace_sub.add_parser(
+        "promote-rule", help="Promote a rule to champion with a human confirmation note"
+    )
+    ws_promote.add_argument("rule_id")
+    ws_promote.add_argument("--note", default="")
+    ws_promote.add_argument("--db")
+
+    ws_reject = workspace_sub.add_parser("reject-rule", help="Reject a rule candidate")
+    ws_reject.add_argument("rule_id")
+    ws_reject.add_argument("--note", default="")
+    ws_reject.add_argument("--db")
+
     return parser
 
 
@@ -272,7 +571,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.get("evidence_status") == "verified" else 2
 
     if args.command == "build-outcome":
-        outcome_path = build_outcome(args.run_dir, horizon=args.horizon, price_source=args.price_source)
+        resolved = resolve_price_source(args.price_source)
+        outcome_path = build_outcome(args.run_dir, horizon=args.horizon, price_source=resolved)
         _print_json({"status": "ok", "outcome_path": str(outcome_path), "safety": SAFETY_DECLARATION})
         return 0
 
@@ -281,7 +581,42 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "register-candidate":
-        _print_json(register_candidate(args.registry, _read_json(args.candidate), confirm_promote=args.confirm_promote))
+        candidate = _read_json(args.candidate)
+        if args.confirm_promote and not args.champion_note.strip():
+            # Refuse before registry.register_candidate writes the JSON champion.
+            # The JSON registry and the sqlite rule library must not disagree: a
+            # promote with no written confirmation mutates neither.
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "code": "ValueError",
+                        "message": "champion rule requires an explicit human confirmation note",
+                    },
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        result = register_candidate(
+            args.registry, candidate, confirm_promote=args.confirm_promote
+        )
+        try:
+            result["workspace_rule"] = sync_registry_candidate_to_workspace(
+                rule_id=str(candidate.get("rule_id") or ""),
+                registry_status=str(result.get("status") or "challenger"),
+                family=str(candidate.get("family") or ""),
+                title=str(candidate.get("title") or ""),
+                metrics=candidate.get("metrics") if isinstance(candidate.get("metrics"), dict) else {},
+                note=args.champion_note,
+                db_path=args.workspace_db,
+            )
+        except ValueError as exc:
+            result["workspace_rule"] = {
+                "status": "error",
+                "error": {"code": type(exc).__name__, "message": str(exc)},
+                "safety": SAFETY_DECLARATION,
+            }
+        _print_json(result)
         return 0
 
     if args.command == "doctor":
@@ -294,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
                 preset=args.preset,
                 horizon=args.horizon,
                 agent_trigger=args.agent_trigger,
+                root=args.root,
             )
         )
         return 0
@@ -311,18 +647,46 @@ def main(argv: list[str] | None = None) -> int:
             state_root=args.state_root,
             resume=args.resume,
         )
+        # Mirror every candidate the loop wrote into the shared rule library, so a
+        # challenger proposed by self-evolve is visible next to one proposed by
+        # the review assistant. The loop's own JSON registry is untouched.
+        loop_dir = Path(args.state_root) / str(result["loop_id"])
+        result["workspace_sync"] = sync_registry_file_to_workspace(
+            loop_dir / "rule_registry.json", db_path=args.workspace_db
+        )
         if args.interactive_confirm and result.get("promotion_status") == "promotion_recommended":
             sys.stderr.write("Promotion recommended. Enter promote, defer, or reject: ")
             decision = input().strip().lower()
             sys.stderr.write("Optional note: ")
             note = input()
-            packet_path = Path(args.state_root) / str(result["loop_id"]) / "promotion_packet.json"
-            result["confirmation"] = confirm_promotion(packet_path, decision=decision, note=note)
+            packet_path = loop_dir / "promotion_packet.json"
+            result["confirmation"] = confirm_promotion_with_workspace(
+                packet_path, decision=decision, note=note, db_path=args.workspace_db
+            )
         _print_json(result)
         return 0
 
     if args.command == "confirm-promotion":
-        _print_json(confirm_promotion(args.promotion_packet, decision=args.decision, note=args.note))
+        try:
+            result = confirm_promotion_with_workspace(
+                args.promotion_packet,
+                decision=args.decision,
+                note=args.note,
+                db_path=args.workspace_db,
+            )
+        except ValueError as exc:
+            # Same error contract as the workspace subcommands. A promote with no
+            # written confirmation reaches here, and it must not report success:
+            # the human gate is the point of this command.
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {"code": type(exc).__name__, "message": str(exc)},
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        _print_json(result)
         return 0
 
     if args.command == "privacy-audit":
@@ -388,6 +752,247 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "save-memory":
         _print_json(save_memory_record(args.case_record, output_path=args.output))
         return 0
+
+    if args.command == "dashboard":
+        from smartmoney_cub_harness.dashboard.server import start_dashboard_server
+
+        start_dashboard_server(host=args.host, port=args.port, open_browser=not args.no_browser)
+        return 0
+
+    if args.command == "workbench":
+        from smartmoney_cub_harness.convergence_cli import run_workbench
+
+        return run_workbench(
+            host=args.host,
+            port=args.port,
+            state_dir=args.state_dir,
+            workspace_db=args.workspace_db,
+            open_browser=not args.no_browser,
+            token=args.token,
+        )
+
+    if args.command == "trader":
+        return run_trader_serve(
+            host=args.host,
+            port=args.port,
+            mode=args.mode,
+            database_url=args.database_url,
+            state_dir=args.state_dir,
+            open_browser=not args.no_browser,
+            token=args.token,
+        )
+
+    if args.command == "import":
+        from smartmoney_cub_harness.convergence_cli import (
+            import_commit,
+            import_file,
+            import_list,
+        )
+
+        if args.import_command == "file":
+            return import_file(
+                args.path,
+                state_dir=args.state_dir,
+                portfolio_id=args.portfolio_id,
+                as_json=args.json,
+            )
+        if args.import_command == "commit":
+            return import_commit(
+                args.extraction_id,
+                rows_path=args.rows,
+                state_dir=args.state_dir,
+                portfolio_id=args.portfolio_id,
+                as_json=args.json,
+            )
+        if args.import_command == "list":
+            return import_list(state_dir=args.state_dir)
+
+    if args.command == "store":
+        from smartmoney_cub_harness.convergence_cli import store_backup, store_status
+
+        if args.store_command == "status":
+            return store_status(state_dir=args.state_dir, as_json=args.json)
+        if args.store_command == "backup":
+            return store_backup(args.destination, state_dir=args.state_dir, as_json=args.json)
+
+    if args.command == "skill":
+        from smartmoney_cub_harness.convergence_cli import skill_install, skill_show
+
+        if args.skill_command == "install":
+            return skill_install(target=args.target, force=args.force, as_json=args.json)
+        if args.skill_command == "show":
+            return skill_show()
+
+    if args.command == "plugin":
+        if args.plugin_command == "list":
+            _print_json(
+                plugin_list(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        if args.plugin_command == "inspect":
+            result = plugin_inspect(args.manifest)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "enable":
+            result = plugin_enable(
+                args.plugin_id,
+                profile_name=args.profile,
+                plugin_dirs=args.plugin_dir,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "disable":
+            result = plugin_disable(
+                args.plugin_id,
+                profile_name=args.profile,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "remove":
+            result = plugin_remove(args.plugin_id, state_db=args.state_db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "doctor":
+            _print_json(
+                plugin_doctor(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        if args.plugin_command == "logs":
+            _print_json(plugin_logs(args.plugin_id, state_db=args.state_db, limit=args.limit))
+            return 0
+        if args.plugin_command == "catalog":
+            _print_json(plugin_catalog())
+            return 0
+        if args.plugin_command == "install":
+            result = plugin_install(
+                args.source,
+                profile_name=args.profile,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.plugin_command == "run":
+            result = plugin_run(
+                args.plugin_id,
+                capability=args.capability,
+                request_path=args.request,
+                workspace_db=args.workspace_db,
+                case_id=args.case_id,
+                decision_time=args.decision_time,
+                available_at=args.available_at,
+                data_source=args.data_source,
+                data_quality=args.data_quality,
+                result_kind=args.result_kind,
+                profile_name=args.profile,
+                plugin_dirs=args.plugin_dir,
+                state_db=args.state_db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        parser.error(f"unknown plugin command: {args.plugin_command}")
+        return 2
+
+    if args.command == "profile":
+        if args.profile_command == "show":
+            _print_json(profile_show(args.name))
+            return 0
+        if args.profile_command == "dump":
+            _print_json(profile_dump(output_path=args.output))
+            return 0
+        if args.profile_command == "reload":
+            _print_json(
+                profile_reload(
+                    profile_name=args.profile,
+                    plugin_dirs=args.plugin_dir,
+                    state_db=args.state_db,
+                )
+            )
+            return 0
+        parser.error(f"unknown profile command: {args.profile_command}")
+        return 2
+
+    if args.command == "share-pack":
+        try:
+            result = build_share_pack_from_source(
+                csv_path=args.csv,
+                output_dir=args.output,
+                regime=args.regime,
+                title=args.title,
+                write=args.write,
+            )
+        except (OSError, ValueError) as exc:
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {"code": type(exc).__name__, "message": str(exc)},
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        _print_json(result)
+        return 0 if result.get("status") == "ok" else 2
+
+    if args.command == "workspace":
+        if args.workspace_command == "add-case":
+            result = workspace_add_case(_read_json(args.payload), db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "list-cases":
+            _print_json(
+                workspace_list_cases(
+                    db_path=args.db,
+                    action=args.action,
+                    symbol=args.symbol,
+                    regime=args.regime,
+                )
+            )
+            return 0
+        if args.workspace_command == "show-case":
+            result = workspace_show_case(args.case_id, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "record-outcome":
+            result = workspace_record_outcome(
+                case_id=args.case_id,
+                horizon=args.horizon,
+                return_pct=args.return_pct,
+                max_adverse_excursion_pct=args.max_adverse_excursion_pct,
+                outcome_time=args.outcome_time,
+                detail=args.detail,
+                db_path=args.db,
+            )
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "import-csv":
+            result = workspace_import_csv(args.csv_path, db_path=args.db, regime=args.regime)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "summary":
+            _print_json(workspace_summary(db_path=args.db))
+            return 0
+        if args.workspace_command == "rules":
+            _print_json(workspace_rules(db_path=args.db, status=args.status))
+            return 0
+        if args.workspace_command == "promote-rule":
+            result = workspace_promote_rule(args.rule_id, note=args.note, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "reject-rule":
+            result = workspace_reject_rule(args.rule_id, note=args.note, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        parser.error(f"unknown workspace command: {args.workspace_command}")
+        return 2
 
     parser.error(f"unknown command: {args.command}")
     return 2

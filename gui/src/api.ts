@@ -1,0 +1,252 @@
+import type {
+  AuditRecord, Extraction, Meta, Overview, RuleRecord,
+  SessionEvent, SessionSummary, UploadResult,
+  BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
+  Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
+  TraderCalendar, TradeLogDetail, TraderHealth, TraderImportResult, TraderMeta,
+  TraderSummaryEnvelope, TraderTrades,
+} from './types';
+
+// Every call goes to the local service on 127.0.0.1. There is no telemetry and
+// no third-party endpoint anywhere in this file.
+//
+// Why the API base is derived rather than written as a bare '/api': a hosted
+// deployment publishes the product under a path prefix (nginx maps
+// /trader/ to the app). A request for the absolute '/api/trader/health' leaves
+// that prefix, matches the proxy's default location, and 404s — the interface
+// would load its shell and then fail every call. Resolving against the current
+// document instead keeps the calls inside whatever prefix the app was served
+// under, and still resolves to '/api/...' when the app is served at the root
+// (the local single-user case), so both deployments work from one build.
+
+function apiUrl(path: string): string {
+  const base = document.baseURI || window.location.href;
+  return new URL(path.replace(/^\//, ''), base).toString();
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  const text = await response.text();
+  let payload: any = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(text.slice(0, 300) || 'invalid response');
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error || 'request failed: ' + response.status);
+  }
+  return payload as T;
+}
+
+// The trader product lives under /api/trader/* on the same local service, so
+// one process serves the review workbench and the journal. The route list is
+// frozen by the backend task; the calls below mirror it one-for-one.
+export const trader = {
+  health: () => request<TraderHealth>('/api/trader/health'),
+  meta: () => request<TraderMeta>('/api/trader/meta'),
+
+  marketProviders: () => request<MarketProviders>('/api/trader/market/providers'),
+  marketBars: (params: {
+    provider: string; symbol: string; interval: string;
+    start?: string; end?: string; limit?: number;
+  }) => request<MarketBars>('/api/trader/market/bars?' + new URLSearchParams(clean(params)).toString()),
+
+  trades: (params: {
+    account_id?: string; symbol?: string; from?: string; to?: string;
+    limit?: number; offset?: number;
+  } = {}) => request<TraderTrades>('/api/trader/trades?' + new URLSearchParams(clean(params)).toString()),
+  trade: (roundTripId: string) =>
+    request<TradeLogDetail>('/api/trader/trades/' + encodeURIComponent(roundTripId)),
+  /** Writes fills into the tenant journal. Send rows, or raw CSV text. */
+  importTrades: (payload: {
+    rows?: Array<Record<string, unknown>>;
+    content?: string;
+    format?: string;
+    account_id?: string;
+  }) => request<TraderImportResult>('/api/trader/trades/import', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+
+  accounts: () => request<TraderAccounts>('/api/trader/accounts'),
+  createAccount: (payload: {
+    name: string; broker?: string; currency?: string; initial_balance?: number;
+  }) => request<{ account: TraderAccounts['accounts'][number]; safety: string }>('/api/trader/accounts', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+
+  // The summary route nests its metrics under `summary`, beside the ledger
+  // counts and status. Unwrapping here keeps a caller reading the metrics
+  // directly, and the counts ride along on the returned object so the shell can
+  // report how many executions the journal holds without a second request.
+  summary: (params: { from?: string; to?: string; account_id?: string } = {}) =>
+    request<TraderSummaryEnvelope>('/api/trader/analytics/summary?' + new URLSearchParams(clean(params)).toString())
+      .then((envelope) => ({ ...envelope.summary, counts: envelope.counts })),
+  breakdown: (params: { dimension: string; from?: string; to?: string }) =>
+    request<TraderBreakdown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
+  // An unnamed dimension asks the same route for every group at once, which is
+  // the shape the grouping view renders. The named form above stays for the
+  // callers that want one dimension.
+  // The refresh flag asks the server to reconcile symbol names against the live
+  // quote feed before grouping, which is how a rename or an ST change lands.
+  breakdownAll: (params: { from?: string; to?: string; refresh?: string } = {}) =>
+    request<TraderBreakdownMap>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
+  calendar: (params: { year: number; month: number }) =>
+    request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(params)).toString()),
+
+  playbooks: () => request<Playbooks>('/api/trader/playbooks'),
+  createPlaybook: (payload: Partial<Playbook> & { name: string }) =>
+    request<{ playbook: Playbook; safety: string }>('/api/trader/playbooks', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+
+  runBacktest: (payload: { strategy: Record<string, unknown>; provider?: string; symbol?: string; interval?: string;
+    start?: string; end?: string; initial_cash?: number; fees_bps?: number }) =>
+    request<BacktestRunDetail>('/api/trader/backtest/run', { method: 'POST', body: JSON.stringify(payload) }),
+  backtestRuns: () => request<BacktestRuns>('/api/trader/backtest/runs'),
+  backtestRun: (runId: string) =>
+    request<BacktestRunDetail>('/api/trader/backtest/runs/' + encodeURIComponent(runId)),
+
+  createReplaySession: (payload: { provider: string; symbol: string; interval: string;
+    start?: string; end?: string; limit?: number; notes?: string }) =>
+    request<ReplaySession>('/api/trader/replay/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  replaySession: (sessionId: string) =>
+    request<ReplaySession>('/api/trader/replay/sessions/' + encodeURIComponent(sessionId)),
+};
+
+export const api = {
+  meta: () => request<Meta>('/api/meta'),
+  overview: (params: { portfolio_id?: string; year?: number; month?: number } = {}) =>
+    request<Overview>('/api/overview?' + new URLSearchParams(clean(params)).toString()),
+  rules: () => request<{ rules: RuleRecord[] }>('/api/rules'),
+  // Promotion is the one rule-library write, and it is deliberately a separate
+  // call with an explicit note: the server refuses a champion row without a
+  // written human confirmation, so the note is not an optional field here.
+  promoteRule: (ruleId: string, note: string) =>
+    // The response carries the promoted rule in the same shape as one entry of
+    // the list, so the view can render it without a second fetch.
+    request<{ rule: RuleRecord; promotion_note: string; safety: string }>(
+      '/api/rules/' + encodeURIComponent(ruleId) + '/promote',
+      { method: 'POST', body: JSON.stringify({ note }) },
+    ),
+  plugins: () => request<Record<string, any>>('/api/plugins'),
+  documents: (params: { portfolio_id?: string } = {}) =>
+    request<{ documents: Overview['recent_documents'] }>('/api/documents?' + new URLSearchParams(clean(params)).toString()),
+  settings: () => request<Record<string, any>>('/api/settings'),
+  updateSettings: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings', { method: 'POST', body: JSON.stringify(payload) }),
+  addProvider: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings/providers', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProvider: (providerId: string, payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings/providers/' + encodeURIComponent(providerId), {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  removeProvider: (providerId: string) =>
+    request<Record<string, any>>('/api/settings/providers/' + encodeURIComponent(providerId) + '/remove', {
+      method: 'POST', body: JSON.stringify({}),
+    }),
+  discoverModels: (payload: Record<string, unknown>) =>
+    request<{ models: string[] }>('/api/settings/discover', { method: 'POST', body: JSON.stringify(payload) }),
+  // Reconcile the declared model list against the live endpoint. Answers "is
+  // this model list still true?" without ever deleting a configured model.
+  checkModels: (providerId: string, payload: Record<string, unknown> = {}) =>
+    request<Record<string, any>>(
+      '/api/settings/providers/' + encodeURIComponent(providerId) + '/check-models',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  testProvider: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/settings/test', { method: 'POST', body: JSON.stringify(payload) }),
+  audit: (limit = 50) => request<{ audits: AuditRecord[] }>('/api/audit?limit=' + limit),
+  doctor: () => request<Record<string, any>>('/api/doctor'),
+
+  upload: (payload: { file_name: string; media_type: string; content_base64: string; portfolio_id?: string }) =>
+    request<UploadResult>('/api/import/upload', { method: 'POST', body: JSON.stringify(payload) }),
+  commitImport: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/import/commit', { method: 'POST', body: JSON.stringify(payload) }),
+  addManualFill: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>('/api/import/manual', { method: 'POST', body: JSON.stringify(payload) }),
+
+  sessions: () => request<{ sessions: SessionSummary[] }>('/api/assistant/sessions'),
+  createSession: (payload: Record<string, unknown>) =>
+    request<{ session: SessionSummary }>('/api/assistant/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  sessionDetail: (id: string, afterSeq = 0) =>
+    request<{ session: SessionSummary; events: SessionEvent[] }>(
+      '/api/assistant/sessions/' + encodeURIComponent(id) + '?after_seq=' + afterSeq,
+    ),
+  updateSession: (id: string, payload: Record<string, unknown>) =>
+    request<{ session: SessionSummary }>('/api/assistant/sessions/' + encodeURIComponent(id), {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  forkSession: (id: string, payload: Record<string, unknown> = {}) =>
+    request<{ session: SessionSummary }>('/api/assistant/sessions/' + encodeURIComponent(id) + '/fork', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+};
+
+function clean(params: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') out[key] = String(value);
+  }
+  return out;
+}
+
+export interface StreamHandlers {
+  onEvent: (event: Record<string, any>) => void;
+  onError: (message: string) => void;
+  onDone: () => void;
+  signal?: AbortSignal;
+}
+
+// The assistant turn is a server-sent event stream. The same events are stored
+// locally, so a dropped stream can be recovered by reloading the session.
+export async function streamTurn(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
+  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+    signal: handlers.signal,
+  });
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => '');
+    handlers.onError(detail || 'stream failed: ' + response.status);
+    return;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() || '';
+    for (const frame of frames) {
+      const line = frame.split('\n').find((item) => item.startsWith('data:'));
+      if (!line) continue;
+      try {
+        handlers.onEvent(JSON.parse(line.slice(5).trim()));
+      } catch {
+        // A partial frame is not worth failing the whole turn over.
+      }
+    }
+  }
+  handlers.onDone();
+}
+
+export function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(new Error('could not read the selected file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export type { Extraction };

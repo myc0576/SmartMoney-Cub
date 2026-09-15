@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/myc0576/smartmoney-cub-harness/schemas/plugin-evidence-envelope.schema.json",
+  "title": "Smartmoney Cub Plugin Evidence Envelope v1",
+  "description": "Uniform provenance wrapper for one plugin execution. Output whose data became available after the decision time is rejected before an envelope is produced.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "plugin_id",
+    "plugin_version",
+    "source_ref",
+    "capability",
+    "result_kind",
+    "input_sha256",
+    "output_sha256",
+    "decision_time",
+    "available_at",
+    "data_source",
+    "data_quality",
+    "network_used",
+    "model_used",
+    "permission",
+    "safety"
+  ],
+  "properties": {
+    "schema": { "const": "smartmoney_cub_plugin_evidence_envelope.v1" },
+    "plugin_id": { "type": "string", "minLength": 1 },
+    "plugin_version": { "type": "string", "minLength": 1 },
+    "source_ref": { "type": "string", "minLength": 1 },
+    "capability": { "type": "string", "minLength": 1 },
+    "result_kind": {
+      "description": "Separates facts, statistics, model opinions, and user records so external output is never read as a signal.",
+      "enum": [
+        "fact_data",
+        "model_opinion",
+        "statistical_result",
+        "user_record",
+        "review_observation"
+      ]
+    },
+    "review_only": { "type": "boolean" },
+    "input_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" },
+    "output_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$" },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "decision_time": { "type": ["string", "null"] },
+    "available_at": { "type": "string" },
+    "data_source": { "type": "string" },
+    "data_quality": { "type": "string", "minLength": 1 },
+    "network_used": { "type": "boolean" },
+    "model_used": { "type": "boolean" },
+    "error": { "type": ["string", "null"] },
+    "isolation": { "type": "string" },
+    "permission": {
+      "type": "object",
+      "properties": {
+        "order": { "const": false },
+        "cancel": { "const": false },
+        "trade": { "const": false },
+        "account_mutation": { "const": false },
+        "broker_access": { "const": false },
+        "network": { "type": "boolean" },
+        "enforcement": { "const": "declarative" },
+        "verified": { "const": false }
+      }
+    },
+    "replay": { "type": "object" },
+    "champion_mutated": { "const": false },
+    "core_rules_mutated": { "const": false },
+    "output": {},
+    "safety": { "const": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" }
+  }
+}

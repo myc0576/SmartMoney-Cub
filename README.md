@@ -1,5 +1,7 @@
 # smartmoney-cub-harness
 
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="72" height="72" align="right" />
+
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-pytest-informational)](tests/)
@@ -10,11 +12,16 @@
 
 ![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
 
-`smartmoney-cub-harness` is a **local-first, read-only, agent-agnostic control plane for trading review and evidence governance**. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
+`smartmoney-cub-harness` is a **local-first, agent-agnostic trading journal and review harness**: read-only over markets and execution, writable over your own journal. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
-It has **no embedded LLM**, **no broker connection**, and **no automatic trading**. It does not place, cancel, or execute trades; select stocks; mutate accounts; run a background autonomous trading Agent; or automatically mutate core rules.
+It has **no embedded LLM** in its core, **no broker connection**, and
+**no automatic trading**: the control plane runs entirely offline. The review assistant
+is a separate, opt-in surface that calls the provider you configure and sends only
+redacted structured fields. The project does not place, cancel, or execute trades;
+select stocks; mutate accounts; run a background autonomous trading Agent; or
+automatically mutate core rules.
 
 [简体中文](README.zh-CN.md)
 
@@ -31,12 +38,12 @@ See [docs/architecture.md](docs/architecture.md) for the text and Mermaid repres
 Install the package, then capture one deterministic toy run with external-Agent metadata:
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 python -m pip install -e ".[dev]"
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent" --agent-version "1.0" --agent-interface "cli"
 smcub validate-envelope tmp/sandbox/20260601/20260601_153100-after-close/run_envelope.json
-smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
@@ -97,13 +104,21 @@ Read-only. Human-in-the-loop. Built for review, discipline, and rule evolution.
 
 ## Safety & Disclaimer
 
-This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for local review and structured analysis.
+This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for the user's own journal and structured review.
+
+The harness is read-only with respect to markets and execution, and writable with
+respect to your own journal. Your trades, notes, and backtest runs live in your
+local or tenant store and are never committed to this repository.
 
 Every manifest, decision, outcome, evaluation, registry, and doctor output carries:
 
 ```text
 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 ```
+
+The declaration asserts the execution ban, and nothing more. It does not mean the
+harness cannot write: it writes your journal and your reports, and it never places,
+cancels, or modifies anything at a broker.
 
 ## The Story
 
@@ -140,7 +155,7 @@ In the AI era, good review does not have to depend on randomly meeting a mentor.
 - Not a single trading strategy.
 - Not a stock-picking bot.
 - Not a signal-selling system.
-- Not a broker or execution bot.
+- Not a broker or execution bot, and not a broker trading channel: it never connects to live execution.
 - Not an automated trading system.
 - Not financial advice.
 - Not a promise that small capital will grow large.
@@ -150,11 +165,14 @@ In the AI era, good review does not have to depend on randomly meeting a mentor.
 `smartmoney-cub-harness` can work with different levels of input:
 
 - Read-only broker/account export.
-- Read-only QMT or adapter integration if configured locally.
 - Trading journal CSV.
-- Watchlist files.
 - TongHuaShun or broker screenshots of positions, orders, and daily review.
 - Manually written trading notes.
+
+The journal import accepts CSV, TSV, PDF, and screenshots. A watchlist or a
+broker automation described in earlier drafts is not an input this project reads:
+there is no broker account integration and no QMT adapter in the code, and naming
+one would promise a connection the product deliberately does not make.
 
 All inputs are for review and journal generation only. The public core does not connect to live execution by default. It does not place orders, cancel orders, or modify accounts.
 
@@ -219,12 +237,12 @@ The human remains responsible for final judgment.
 ## Quick Start
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 python -m pip install -e .
 smcub doctor
 smcub capture-run --mode after-close --sandbox --decision-time "2026-06-01T15:30:00+08:00" --command "python examples/toy_strategy/leader_pullback_demo.py"
-smcub build-outcome tmp/sandbox/20260601/20260601_153000-after-close --horizon d1 --price-source examples/toy_strategy/sample_prices.json
+smcub build-outcome tmp/sandbox/20260601/20260601_153000-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub evaluate-run tmp/sandbox/20260601/20260601_153000-after-close --horizon d1
 ```
 
@@ -268,6 +286,165 @@ Toy evaluation:
 }
 ```
 
+## Everything Is a Plugin
+
+The harness ships a stable plugin protocol, a reference plugin, and a curated
+catalog. External trading projects stay out of the core release and are mounted by
+installing a plugin, not by editing the core. See [docs/plugins.md](docs/plugins.md)
+and [docs/plugin-development.md](docs/plugin-development.md).
+
+```bash
+smcub plugin inspect examples/toy_plugin/plugin.json
+smcub plugin doctor  --plugin-dir examples/toy_plugin
+smcub plugin run     toy.review-tagger \
+  --request request.json \
+  --decision-time 2026-09-10T15:00:00+08:00 \
+  --available-at  2026-09-10T14:00:00+08:00
+smcub plugin catalog
+smcub profile show a-share-review
+```
+
+Discovery, validation, dependency injection, activation, and evidence wrapping are
+automatic. Installation, network access, external models, and credentials are never
+automatic. Every plugin output is wrapped in an evidence envelope that records the
+plugin version, source reference, input and output hashes, time semantics, and data
+quality, and an output whose data became available after the decision time is
+refused as future leakage.
+
+## Review Workspace and Share Pack
+
+```bash
+smcub workspace import-csv exports/fills.csv
+smcub workspace list-cases --action AVOID
+smcub workspace summary
+smcub share-pack --csv exports/fills.csv --output tmp/share-pack --write
+```
+
+The workspace stores cases, D1/D3 outcomes, plugin evidence, and rule state. The
+share pack is a static offline HTML summary whose security codes, names, amounts,
+and intraday timestamps are reduced, then audited for identifiers and local paths.
+It is never uploaded; see [docs/share-pack.md](docs/share-pack.md) and
+[docs/review-workspace.md](docs/review-workspace.md).
+
+## Review Workbench (1.0)
+
+The workbench is the local-first interface: import a broker export or a screenshot,
+correct what the local parser read, and review the result with an assistant that
+only sees redacted fields.
+
+```bash
+npx smartmoney-cub                 # no Python setup needed on the user's side
+npx smartmoney-cub doctor
+npx smartmoney-cub install --with-ocr   # local OCR for screenshots and scanned PDFs
+smcub workbench                    # or run it straight from the Python package
+smcub skill install --target codex # install the agent skill
+```
+
+The interface has a left navigation rail, a middle working page, and a docked
+review assistant on the right. Pages: overview with an equity curve and calendar
+heatmap, trade log with a detail drawer and fill revision history, review calendar,
+performance analytics, rule library, import, plugins, and settings.
+
+### Rule evolution from the review conversation
+
+The assistant can propose a challenger rule from the reviewed evidence, and that
+proposal lands in the same rule library the rule-library page reads: its blockers
+are recorded, an entry is appended to `evolution_ledger.jsonl`, and a readable
+fragment is appended to `memory.md` beside the workspace database.
+
+Promotion is a separate, human step and the only write that can create a champion:
+
+```bash
+smcub workspace rules
+smcub workspace promote-rule RULE-1 --note "sample 24, false-alert 0.12, confirmed"
+```
+
+The note is the gate. A blank or missing note is refused and nothing is written, in
+the CLI and on the interface's promote route alike. Two gates stay separate on
+purpose: the sample and risk thresholds decide whether a recommendation is offered,
+and the written confirmation is what authorizes the rule to become champion. An
+assistant, a plugin, or an imported report can never substitute for it.
+
+### Default desensitization
+
+The assistant is redaction-first, and this is on by default with no switch to turn
+it off:
+
+- Broker screenshots, PDFs, and CSV originals are parsed **on this machine only**
+  and are **never uploaded** to AlphaTech or any other model API.
+- Account numbers, names, and direct identifiers are removed or replaced with a
+  device-stable pseudonym.
+- Security codes, portfolio names, exact quantities, exact amounts, and exact
+  timestamps are replaced with pseudonyms, range bands, or 15-minute time buckets.
+- Returns, holding periods, execution deviation, and statistical features are kept,
+  because the review is meaningless without them.
+- Every outbound request is written to a local audit table listing which fields were
+  sent and how many values were replaced. There is no override switch in the UI.
+
+When no provider key is configured, the assistant answers from local data and sends
+nothing.
+
+Providers come from a catalog: add a built-in one, add a custom gateway with its
+protocol, fetch the endpoint's model list, and pick the model and reasoning effort
+from the composer. See [docs/review-agent.md](docs/review-agent.md) and
+[docs/convergence.md](docs/convergence.md).
+
+## Where to open the interface
+
+The interface is served by the local workbench, not opened from disk:
+
+```bash
+npx smartmoney-cub        # or: smcub workbench
+# then open http://127.0.0.1:8787
+```
+
+Opening `gui/index.html` directly in a browser shows a blank page on
+purpose. That file is the build entry, so it points at uncompiled sources and there
+is no local API to talk to. The served page carries the same explanation, so an
+accidental `file://` open tells you what to do instead of showing an
+empty screen.
+
+For live editing, run the development server, which proxies `/api` to the
+local service:
+
+```bash
+cd gui && npm install && npm run dev
+```
+
+## Trader Product (hosted)
+
+The same package also ships the hosted trader product: a multi-tenant trading
+journal and review surface that joins the alphatech platform at
+[alphatech.net.cn/trader](https://alphatech.net.cn/trader), beside Alpha Canvas
+and the Commerce Workbench. It imports your own executions, computes performance
+analytics, scores your playbooks, backtests a JSON strategy DSL, and replays
+historical bars.
+
+One command serves both products from one process and one port:
+
+```bash
+pip install "smartmoney-cub-harness[hosted]"   # hosted extra: psycopg for Postgres
+smcub trader serve --mode local                # single offline user, SQLite
+smcub trader serve --mode hosted \
+  --database-url "postgresql://user:pass@host:5432/smcub" \
+  --host 0.0.0.0 --token "$TRADER_ACCESS_TOKEN" --no-browser
+```
+
+`smcub trader serve` mounts the trader API at `/api/trader/*` and the review
+workbench on the same socket. `smcub workbench` is the local single-user front
+door and mounts the same `/api/trader/*` surface for one offline user; `smcub
+trader serve --mode hosted` is the one that resolves a platform identity per
+request.
+Hosted mode requires a `postgresql://` URL and never falls back to a local file,
+and binding beyond loopback requires `--token`.
+
+The product does not place orders, cancel orders, modify a broker account, or
+automate execution, and it is not financial advice. What v1 covers, the
+non-goals, and the features deferred past v1 are documented in
+[the trader product README](docs/trader-product.md); the HTTP surface is in
+[docs/trader-api.md](docs/trader-api.md) and the three deployment routes are in
+[deploy/README.md](deploy/README.md).
+
 ## Development Checks
 
 ```bash
@@ -279,7 +456,7 @@ python -m smartmoney_cub_harness.cli --help
 
 ## Contributing
 
-Contributions are welcome when they preserve the safety contract. Keep examples offline and toy-only. Do not add live trading execution, broker automation, order placement, order cancellation, account modification, private watchlists, credentials, cookies, local absolute paths, or personal trading records.
+Contributions are welcome when they preserve the safety contract. Keep examples offline and toy-only. Do not add live trading execution, broker automation, order placement, order cancellation, account modification, private watchlists, credentials, cookies, local absolute paths, or committed personal trading records.
 
 ## License
 
@@ -287,4 +464,12 @@ MIT. See [LICENSE](LICENSE).
 
 ## Safety & Disclaimer
 
-This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for local review and structured analysis.
+This project is for research, journaling, review, and educational workflow design only. It is not financial advice, not a stock recommendation service, not price prediction, and not a trading execution system. Any account, screenshot, or trading-record input is used only for the user's own journal and structured review.
+
+The product keeps your journal in your own local or tenant store, never in this
+repository. It is read-only with respect to markets and execution: it does not
+place orders, cancel orders, modify a broker account, or automate execution. Every
+manifest, decision, outcome, evaluation, registry, doctor output, and generated
+report still carries the safety declaration
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`, which asserts the execution ban and
+nothing more.

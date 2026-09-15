@@ -13,8 +13,29 @@ def _parse_decision_date(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+PACKAGE_RESOURCE_PREFIX = "smartmoney_cub_harness:"
+
+
+def resolve_price_source(price_source: str | Path) -> Path:
+    """Resolve a price source path, including packaged resource references.
+
+    The toy loop records its price source as a package resource reference so an
+    installed copy stays independent of any source checkout. Read commands must
+    resolve the same reference form.
+    """
+    text = str(price_source)
+    if text.startswith(PACKAGE_RESOURCE_PREFIX):
+        from importlib.resources import files
+
+        relative = text[len(PACKAGE_RESOURCE_PREFIX) :]
+        _, _, resource = relative.partition("/")
+        target = files("smartmoney_cub_harness").joinpath("data", resource or relative)
+        return Path(str(target))
+    return Path(text)
+
+
 def _load_prices(price_source: str | Path) -> dict[str, Any]:
-    return json.loads(Path(price_source).read_text(encoding="utf-8"))
+    return json.loads(resolve_price_source(price_source).read_text(encoding="utf-8"))
 
 
 def _collect_codes(value: Any) -> list[str]:

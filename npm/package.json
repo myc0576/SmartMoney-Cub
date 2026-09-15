@@ -1,0 +1,33 @@
+{
+  "name": "smartmoney-cub",
+  "version": "1.0.0",
+  "description": "Local-first trading journal and review workbench: import your own fills, review performance, backtest a JSON strategy, and keep the review assistant. Read-only with respect to markets and execution.",
+  "license": "MIT",
+  "bin": {
+    "smartmoney-cub": "bin/smartmoney-cub.js",
+    "smcub": "bin/smartmoney-cub.js"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "trading-journal",
+    "trade-log",
+    "performance-analytics",
+    "backtesting",
+    "review",
+    "decision-log",
+    "read-only",
+    "local-first",
+    "harness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myc0576/Smartmoney-Cub.git"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "smartmoney_cub_plugin_manifest.v1",
+  "plugin_id": "toy.review-tagger",
+  "name": "Toy Review Tagger",
+  "version": "0.1.0",
+  "source_repo": "https://github.com/myc0576/SmartMoney-Cub",
+  "source_tag": "examples/toy_plugin",
+  "license": "MIT",
+  "maintainer": "smartmoney-cub-harness contributors",
+  "kind": "subprocess",
+  "trust_level": "review-only",
+  "api_range": ">=1,<2",
+  "entrypoint": ["python3", "examples/toy_plugin/provider.py"],
+  "capabilities": ["reviewer"],
+  "provides": ["toy.reviewer"],
+  "required_services": [],
+  "optional_services": [],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "symbol": { "type": "string" },
+      "return_pct": { "type": "number" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "observations": { "type": "array" }
+    }
+  },
+  "required_permissions": [],
+  "network_required": false,
+  "credential_requirements": [],
+  "supported_markets": ["CN-A"],
+  "data_time_semantics": "historical_export",
+  "health_check": "always_ok",
+  "provenance_policy": "evidence_envelope_required",
+  "description": "Reference offline plugin that turns a fill into deterministic review observations. It never places orders and never mutates rules.",
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}

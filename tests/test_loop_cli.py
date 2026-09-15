@@ -63,6 +63,32 @@ def run_cli(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[st
     )
 
 
+def run_loop(*args: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Run the loop with its artifacts isolated under tmp_path.
+
+    Why this wrapper exists: every invocation used to write its run directories
+    into the checkout, so a long-lived working tree accumulated
+    tmp/sandbox/<day>/<stamp>-<n>/ until unique_run_dir's 999-sibling cap was
+    reached and these tests began failing with "too many run directories" --
+    a breakage the tests caused themselves and one that never reproduced on a
+    fresh clone.
+
+    The summary's artifact keys are relative to the run root, so a caller reads
+    them as tmp_path/<key>. That keeps the assertions about output shape intact
+    while leaving the repository untouched. The process working directory is
+    also tmp_path, so a run that writes anything relative still lands there.
+    """
+    return run_cli("loop", *args, "--root", str(tmp_path), cwd=tmp_path)
+
+
+def load_isolated(summary: dict, tmp_path: Path) -> tuple[str, str, list[dict]]:
+    """Read a loop report and trace out of the isolated root."""
+    report_text = (tmp_path / summary["loop_report"]).read_text(encoding="utf-8")
+    trace_text = (tmp_path / summary["trace"]).read_text(encoding="utf-8")
+    trace = [json.loads(line) for line in trace_text.splitlines() if line.strip()]
+    return report_text, trace_text, trace
+
+
 def load_summary(result: subprocess.CompletedProcess[str]) -> dict:
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -86,8 +112,8 @@ def assert_forbidden_phrases_absent(*texts: str) -> None:
         assert phrase not in lowered
 
 
-def test_loop_preset_toy_exits_successfully_and_prints_safe_summary():
-    result = run_cli("loop", "--preset", "toy", "--json")
+def test_loop_preset_toy_exits_successfully_and_prints_safe_summary(tmp_path: Path):
+    result = run_loop("--preset", "toy", "--json", tmp_path=tmp_path)
 
     summary = load_summary(result)
 
@@ -116,9 +142,9 @@ def test_loop_preset_toy_works_outside_repository(tmp_path: Path):
     assert str(tmp_path) not in json.dumps(outcome)
 
 
-def test_loop_accepts_chinese_and_english_agent_triggers():
-    chinese = load_summary(run_cli("loop", "--preset", "toy", "--agent-trigger", "自进化"))
-    english = load_summary(run_cli("loop", "--preset", "toy", "--agent-trigger", "loop"))
+def test_loop_accepts_chinese_and_english_agent_triggers(tmp_path: Path):
+    chinese = load_summary(run_loop("--preset", "toy", "--agent-trigger", "自进化", tmp_path=tmp_path))
+    english = load_summary(run_loop("--preset", "toy", "--agent-trigger", "loop", tmp_path=tmp_path))
 
     assert chinese["status"] == "ok"
     assert english["status"] == "ok"
@@ -126,17 +152,19 @@ def test_loop_accepts_chinese_and_english_agent_triggers():
     assert english["agent_intent"] == "full_loop"
 
 
-def test_loop_generates_report_trace_and_required_artifacts():
-    summary = load_summary(run_cli("loop", "--preset", "toy", "--agent-trigger", "loop", "--horizon", "d1"))
+def test_loop_generates_report_trace_and_required_artifacts(tmp_path: Path):
+    summary = load_summary(
+        run_loop("--preset", "toy", "--agent-trigger", "loop", "--horizon", "d1", tmp_path=tmp_path)
+    )
 
     for key in REQUIRED_ARTIFACT_KEYS:
-        assert (REPO_ROOT / summary[key]).exists(), key
+        assert (tmp_path / summary[key]).exists(), key
 
-    report_text, trace_text, trace = read_loop_outputs(summary)
+    report_text, trace_text, trace = load_isolated(summary, tmp_path)
     doctor_output = next(line["output"] for line in trace if line["step"] == "doctor")
-    case_record = json.loads((REPO_ROOT / summary["case_record"]).read_text(encoding="utf-8"))
-    memory_text = (REPO_ROOT / summary["memory_record"]).read_text(encoding="utf-8")
-    ledger_lines = (REPO_ROOT / summary["ledger"]).read_text(encoding="utf-8").splitlines()
+    case_record = json.loads((tmp_path / summary["case_record"]).read_text(encoding="utf-8"))
+    memory_text = (tmp_path / summary["memory_record"]).read_text(encoding="utf-8")
+    ledger_lines = (tmp_path / summary["ledger"]).read_text(encoding="utf-8").splitlines()
 
     assert [line["step"] for line in trace] == REQUIRED_STEPS
     assert all(line["safety"] == SAFETY_DECLARATION for line in trace)
@@ -159,10 +187,10 @@ def test_loop_generates_report_trace_and_required_artifacts():
     assert_forbidden_phrases_absent(result_text, report_text, trace_text, memory_text)
 
 
-def test_challenger_rule_proposal_does_not_mutate_champion_registry():
-    summary = load_summary(run_cli("loop", "--preset", "toy", "--agent-trigger", "规则进化"))
-    registry = json.loads((REPO_ROOT / summary["rule_registry_path"]).read_text(encoding="utf-8"))
-    proposal = json.loads((REPO_ROOT / summary["proposed_challenger_rule_path"]).read_text(encoding="utf-8"))
+def test_challenger_rule_proposal_does_not_mutate_champion_registry(tmp_path: Path):
+    summary = load_summary(run_loop("--preset", "toy", "--agent-trigger", "规则进化", tmp_path=tmp_path))
+    registry = json.loads((tmp_path / summary["rule_registry_path"]).read_text(encoding="utf-8"))
+    proposal = json.loads((tmp_path / summary["proposed_challenger_rule_path"]).read_text(encoding="utf-8"))
 
     assert registry["champions"] == {}
     assert proposal["candidate_role"] == "challenger"
@@ -170,8 +198,8 @@ def test_challenger_rule_proposal_does_not_mutate_champion_registry():
     assert proposal["requires_human_confirmation"] is True
 
 
-def test_readme_demo_command_shape_works_with_current_source():
-    result = run_cli("loop", "--preset", "toy", "--agent-trigger", "loop")
+def test_readme_demo_command_shape_works_with_current_source(tmp_path: Path):
+    result = run_loop("--preset", "toy", "--agent-trigger", "loop", tmp_path=tmp_path)
 
     summary = load_summary(result)
 

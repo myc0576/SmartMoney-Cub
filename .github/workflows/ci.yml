@@ -12,6 +12,28 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
+    # The hosted store has its own tests, and they activate when this variable is
+    # set. Without a database they skip, which means the Postgres engine — the one
+    # a hosted deployment actually runs on — was never exercised in CI. A real
+    # service makes those tests run rather than report green while skipping.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smcub
+          POSTGRES_PASSWORD: smcub
+          POSTGRES_DB: smcub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smcub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SMARTMONEY_TEST_DATABASE_URL: postgresql://smcub:smcub@127.0.0.1:5432/smcub_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +42,50 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install -e ".[dev,hosted]"
+          # crossplane and pyyaml are dependencies of the test suite itself, not
+          # only of the deploy checks further down: tests/test_trader_deploy.py
+          # parses the shipped nginx config with crossplane and expands the
+          # compose file with yaml. Installing them after `pytest -q` meant those
+          # tests ran without them on every Python in the matrix, so the suite
+          # reported "PASS: parses cleanly" for a check that had silently skipped.
+          python -m pip install crossplane pyyaml
 
       - name: Test
         run: pytest -q
+
+      - name: Hosted store tests must not skip
+        run: |
+          # A skip here means the hosted engine went untested, which is how it
+          # shipped unexercised before. Fail loudly instead of passing quietly.
+          python -m pytest tests/test_trader_storage.py -q -rs | tee "$RUNNER_TEMP/storage.txt"
+          if grep -q "skipped" "$RUNNER_TEMP/storage.txt"; then
+            echo "the hosted store tests skipped; the postgres service is not reachable" >&2
+            exit 1
+          fi
+
+      - name: Execute the deployment path a launch depends on
+        run: |
+          # hosted-e2e and preflight both existed and both ran nowhere in CI, and
+          # this build's own history is that its late defects lived in the operator
+          # path: configuration that was reviewed but never executed. Running them
+          # only when someone remembers is the same as not running them.
+          #
+          # pgserver lets hosted-e2e start its own throwaway PostgreSQL, so this
+          # needs no Docker and no service of its own. That is deliberate: it means
+          # the check that covers tenant isolation over HTTP cannot be skipped by a
+          # missing service, which is exactly how the hosted engine shipped
+          # unexercised before.
+          python -m pip install pgserver
+
+          # The hosted configuration, actually run: two tenants, tenant isolation
+          # over HTTP, 401 refusals, and both identity modes.
+          SMARTMONEY_HOSTED_E2E=1 python scripts/hosted-e2e.py
+
+          # The local deployment shape: the product started the way the service
+          # units start it, with the shipped proxy rules in front of it.
+          python scripts/preflight.py
 
       - name: Doctor
         run: smcub doctor
@@ -33,3 +95,169 @@ jobs:
 
       - name: Loop demo Chinese
         run: smcub loop --preset toy --agent-trigger "自进化"
+
+      - name: Plugin contract doctor
+        run: |
+          smcub plugin inspect examples/toy_plugin/plugin.json
+          smcub plugin doctor --plugin-dir examples/toy_plugin --state-db "$RUNNER_TEMP/plugins.db"
+          smcub profile show a-share-review
+          smcub plugin catalog
+
+      - name: Plugin run wraps evidence and blocks future data
+        run: |
+          printf '%s' '{"symbol":"600111","return_pct":-8.5}' > "$RUNNER_TEMP/request.json"
+          smcub plugin run toy.review-tagger \
+            --request "$RUNNER_TEMP/request.json" \
+            --decision-time 2026-09-10T15:00:00+08:00 \
+            --available-at  2026-09-10T14:00:00+08:00 \
+            --plugin-dir examples/toy_plugin \
+            --state-db "$RUNNER_TEMP/plugins.db" > "$RUNNER_TEMP/envelope.json"
+          python -c "import json,sys; d=json.load(open('$RUNNER_TEMP/envelope.json')); assert d['status']=='ok', d; e=d['envelope']; assert e['review_only'] and e['champion_mutated'] is False and e['permission']['order'] is False"
+          if smcub plugin run toy.review-tagger \
+              --decision-time 2026-09-10T15:00:00+08:00 \
+              --available-at  2026-09-11T15:00:00+08:00 \
+              --plugin-dir examples/toy_plugin \
+              --state-db "$RUNNER_TEMP/plugins.db"; then
+            echo "future leakage was not blocked" >&2
+            exit 1
+          fi
+
+      - name: Plugin install refuses remote sources
+        run: |
+          if smcub plugin install https://github.com/akfamily/akshare --state-db "$RUNNER_TEMP/plugins.db"; then
+            echo "remote install was not refused" >&2
+            exit 1
+          fi
+
+      - name: Workbench imports, redaction, and outbound audit
+        run: |
+          smcub store status --json > "$RUNNER_TEMP/store.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/store.json')); assert d['status']=='ok', d; assert d['safety']=='READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE', d"
+
+          printf '%s\n' \
+            '成交日期,成交时间,证券代码,证券名称,操作,成交均价,成交数量,手续费' \
+            '2026-09-01,09:40:00,600111,北方稀土,买入,10.00,1000,5' \
+            '2026-09-03,14:00:00,600111,北方稀土,卖出,11.00,1000,5' \
+            > "$RUNNER_TEMP/fills.csv"
+          smcub import file "$RUNNER_TEMP/fills.csv" --state-dir "$RUNNER_TEMP/conv" --json > "$RUNNER_TEMP/upload.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/upload.json')); assert d['status']=='ok', d; assert d['raw_file_stays_local'] is True, d; assert d['extraction']['row_count']==2, d"
+          extraction_id="$(python -c "import json; print(json.load(open('$RUNNER_TEMP/upload.json'))['extraction']['extraction_id'])")"
+          smcub import commit "$extraction_id" --state-dir "$RUNNER_TEMP/conv" --json > "$RUNNER_TEMP/commit.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/commit.json')); assert d['inserted_count']==2, d; assert d['ledger_status']=='ok', d"
+
+      - name: Workbench never sends raw fields to a provider
+        run: python -m pytest tests/test_redaction.py tests/test_agent_outbound.py -q
+
+      - name: Workbench refuses a non-loopback bind without a token
+        run: |
+          if smcub workbench --host 0.0.0.0 --port 8799 --no-browser --state-dir "$RUNNER_TEMP/conv"; then
+            echo "a public bind was not refused" >&2
+            exit 1
+          fi
+
+      - name: Install the agent skill
+        run: |
+          smcub skill install --target "$RUNNER_TEMP/skill-target" --json > "$RUNNER_TEMP/skill.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/skill.json')); assert d['status']=='ok', d"
+          grep -q "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" "$RUNNER_TEMP/skill-target/SKILL.md"
+
+      - name: Workspace and share pack stay offline and private
+        run: |
+          smcub share-pack --output "$RUNNER_TEMP/share-pack" --write > "$RUNNER_TEMP/share.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/share.json')); assert d['upload'] is False, d; assert d['audit']['status']=='ok', d; assert d['data_origin']=='demo_fixture', d"
+          smcub workspace summary --db "$RUNNER_TEMP/workspace.db"
+
+  # The interface is a build artifact that ships inside the wheel, and before this
+  # job existed nothing in CI compiled it: a TypeScript error or a broken build
+  # would reach a release green. It is a separate job because it needs Node, not
+  # Python, and because a frontend break should be reported as its own failure.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - name: Install the interface toolchain
+        working-directory: gui
+        run: npm ci
+
+      - name: Typecheck the interface
+        working-directory: gui
+        run: npm run typecheck
+
+      - name: Build the interface into the package
+        working-directory: gui
+        run: npm run build
+
+      - name: The build must produce the interface the wheel ships
+        run: |
+          test -f src/smartmoney_cub_harness/workbench/web/index.html || {
+            echo "the interface build produced no index.html in the package" >&2
+            exit 1
+          }
+          test -n "$(ls -A src/smartmoney_cub_harness/workbench/web/assets)" || {
+            echo "the interface build produced no assets in the package" >&2
+            exit 1
+          }
+
+      - name: The safety declaration must survive the build
+        run: |
+          # The declaration is user-visible in the footer. An interface that lost
+          # it would misrepresent what the product does.
+          grep -rq "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" src/smartmoney_cub_harness/workbench/web/assets/ || {
+            echo "the built interface does not carry the safety declaration" >&2
+            exit 1
+          }
+
+      - name: The interface must ship no new runtime dependency
+        run: |
+          python -c "
+          import json
+          deps = sorted(json.load(open('gui/package.json'))['dependencies'])
+          assert deps == ['react', 'react-dom'], deps
+          print('interface dependencies:', deps)
+          "
+
+      - name: Check the shipped proxy and container configuration
+        run: |
+          # These two checks run without Docker or nginx: the nginx parser reads
+          # the config, and the Dockerfile checks assert the parts a reviewer
+          # would check by reading. They catch the class of deployment fault that
+          # no unit test reaches.
+          python -m pip install crossplane
+          python scripts/nginx-check.py
+          python -c "
+          import re, pathlib
+          dockerfile = pathlib.Path('deploy/Dockerfile').read_text()
+          compose = pathlib.Path('deploy/docker-compose.yml').read_text()
+          assert 'HEALTHCHECK' in dockerfile, 'the image declares no healthcheck'
+          assert 'USER ' in dockerfile, 'the image runs as root'
+          assert 'db' in compose and 'app' in compose, 'compose is missing a service'
+          print('deploy configuration: healthcheck, non-root user, both services present')
+          "
+
+      - name: The committed interface must match its source
+        run: |
+          # The built interface is committed on purpose so an installed wheel needs
+          # no Node toolchain. The cost of that choice is drift: editing gui/src and
+          # forgetting to rebuild ships a stale interface, and nothing would say so.
+          #
+          # This runs after the build step above, which is what makes it work: the
+          # build regenerates web/ from gui/src into this same checkout, so the
+          # build output now differs from the committed copy exactly when the
+          # committed one is stale. Checked with 'status --porcelain' rather than
+          # 'diff --quiet' because a rebuild can also leave a *deleted* old asset
+          # and an *untracked* new one, which 'diff' alone does not report.
+          drift="$(git status --porcelain -- src/smartmoney_cub_harness/workbench/web)"
+          if [ -n "$drift" ]; then
+            echo "the committed interface is stale: gui/src changed without a rebuild." >&2
+            echo "Run 'cd gui && npm run build' and commit the result." >&2
+            echo "$drift" >&2
+            exit 1
+          fi
+          echo "the committed interface matches a fresh build"

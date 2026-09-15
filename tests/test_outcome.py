@@ -5,7 +5,46 @@ from pathlib import Path
 
 import pytest
 
-from smartmoney_cub_harness.outcome import build_outcome
+from smartmoney_cub_harness.outcome import build_outcome, resolve_price_source
+
+
+def test_packaged_price_source_reference_is_resolved() -> None:
+    """README and loop output use a package resource reference; it must resolve."""
+    resolved = resolve_price_source("smartmoney_cub_harness:data/sample_prices.json")
+    assert resolved.is_file()
+    payload = json.loads(resolved.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict) and payload
+
+
+def test_plain_price_source_path_is_returned_unchanged() -> None:
+    assert resolve_price_source("examples/toy/prices.json") == Path("examples/toy/prices.json")
+
+
+def test_build_outcome_accepts_packaged_reference(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "decision.json").write_text(
+        json.dumps(
+            {
+                "action_label": "ALERT",
+                "decision_time": "2026-06-01T15:30:00+08:00",
+                "symbol": "TOY.CUB",
+            }
+        ),
+        encoding="utf-8",
+    )
+    prices = {
+        "TOY.CUB": {
+            "20260601": {"close": 10.0, "low": 9.5},
+            "20260602": {"close": 11.0, "low": 10.2},
+        }
+    }
+    price_path = tmp_path / "prices.json"
+    price_path.write_text(json.dumps(prices), encoding="utf-8")
+
+    outcome_path = build_outcome(run_dir, horizon="d1", price_source=resolve_price_source(price_path))
+    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+    assert outcome["symbol"] == "TOY.CUB"
 
 
 def _prices(path: Path) -> Path:

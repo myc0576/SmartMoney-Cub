@@ -11,12 +11,12 @@ from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+def run_cli(*args: str, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
     return subprocess.run(
         [sys.executable, "-m", "smartmoney_cub_harness.cli", *args],
-        cwd=REPO_ROOT,
+        cwd=cwd,
         env=env,
         text=True,
         capture_output=True,
@@ -24,7 +24,47 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_readme_quick_start_loop_command_is_real():
+def test_documented_control_plane_sequence_is_executable(tmp_path):
+    """The advertised toy workflow must run exactly as documented."""
+    decision_dir = tmp_path / "run"
+    decision_time = "2026-06-01T15:31:00+08:00"
+
+    capture = run_cli(
+        "capture-run",
+        "--mode",
+        "after-close",
+        "--preset",
+        "toy",
+        "--root",
+        str(tmp_path),
+        "--decision-time",
+        decision_time,
+    )
+    assert capture.returncode == 0, capture.stderr
+    captured = json.loads(capture.stdout)
+    assert captured["run_dir"]
+
+    # CLI output redacts absolute paths, so locate the run directory on disk.
+    run_dirs = sorted(p for p in tmp_path.rglob("run_manifest.json"))
+    assert len(run_dirs) == 1, run_dirs
+    run_dir = run_dirs[0].parent
+
+    # build-outcome must accept the package resource reference the toy loop records.
+    outcome = run_cli(
+        "build-outcome",
+        str(run_dir),
+        "--horizon",
+        "d1",
+        "--price-source",
+        "smartmoney_cub_harness:data/sample_prices.json",
+    )
+    assert outcome.returncode == 0, outcome.stderr
+    assert json.loads(outcome.stdout)["status"] == "ok"
+
+    evaluated = run_cli("evaluate-run", str(run_dir), "--horizon", "d1")
+    assert evaluated.returncode == 0, evaluated.stderr
+    assert json.loads(evaluated.stdout)["status"] == "evaluated"
+def test_readme_quick_start_loop_command_is_real(tmp_path):
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     zh_readme = (REPO_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
     command = 'smcub loop --preset toy --agent-trigger "自进化"'
@@ -34,7 +74,15 @@ def test_readme_quick_start_loop_command_is_real():
     assert SAFETY_DECLARATION in readme
     assert SAFETY_DECLARATION in zh_readme
 
-    result = run_cli("loop", "--preset", "toy", "--agent-trigger", "自进化")
+    # The documented invocation is checked verbatim above; here the same loop is
+    # run with its artifacts rooted in tmp_path. Running it against the checkout
+    # accumulated run directories in the repository until unique_run_dir's
+    # 999-sibling cap was hit and this test began failing for a reason that had
+    # nothing to do with the README.
+    result = run_cli(
+        "loop", "--preset", "toy", "--agent-trigger", "自进化",
+        "--root", str(tmp_path), cwd=tmp_path,
+    )
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
@@ -81,7 +129,10 @@ def test_versioning_policy_covers_all_supported_update_paths():
     assert "vX.Y.Z" in policy
     assert "does not update automatically" in policy.lower()
     assert "Current release channel: GitHub Releases" in policy
-    assert "git+https://github.com/myc0576/smartmoney-cub-harness.git@v0.1.2" in policy
+    # The repository was renamed; the clone URL in the policy has to name the
+    # repository that actually exists, or a user following the upgrade path hits
+    # a redirect (or, for a push, the wrong remote).
+    assert "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0" in policy
 
 
 def test_local_virtual_environment_is_ignored():

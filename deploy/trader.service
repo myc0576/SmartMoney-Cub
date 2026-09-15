@@ -1,0 +1,115 @@
+# systemd unit for the hosted trader product on a plain Linux host.
+#
+# Install it as /etc/systemd/system/smcub-trader.service, with the package in
+# the virtualenv at /opt/smcub/venv and an unprivileged account named smcub:
+#
+#     sudo useradd --system --create-home --home-dir /var/lib/smcub \
+#         --shell /usr/sbin/nologin smcub
+#     sudo python3 -m venv /opt/smcub/venv
+#     sudo /opt/smcub/venv/bin/pip install ".[hosted]"
+#     sudo install -m 0640 -o root -g smcub /dev/null /etc/smcub/trader.env
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now smcub-trader
+#
+# The secrets live in /etc/smcub/trader.env, which systemd reads as root
+# before it drops to the smcub user. Put both of these lines in it:
+#
+#     DATABASE_URL=postgresql://smcub:...@127.0.0.1:5432/smcub
+#     TRADER_ACCESS_TOKEN=...            # openssl rand -hex 32
+#
+# The file is root-owned and group-readable, never world-readable, and it is
+# never committed: it is the deployment's secret, not the repository's.
+#
+# URL-encode the password inside DATABASE_URL. systemd splits the command line
+# on whitespace, so an unencoded space or '#' in a password changes the
+# argument the server receives.
+
+[Unit]
+Description=smartmoney-cub trader product (hosted)
+Documentation=https://github.com/myc0576/smartmoney-cub-harness
+# Postgres is usually a separate unit. Drop this line if the database is
+# remote, and keep it if it runs on the same host.
+After=network-online.target postgresql.service
+Wants=network-online.target
+# Restart on failure, but stop after a bounded number of attempts in a
+# window. A crash loop that only a human can fix -- a bad DATABASE_URL -- must
+# not restart forever. These two are [Unit] settings since systemd v230;
+# systemd warns and ignores them in [Service].
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+
+# A dedicated unprivileged account with no login shell. The service never runs
+# as root, and it owns only its own state directory.
+User=smcub
+Group=smcub
+
+# The journal is in Postgres. This directory holds the review workbench's own
+# state (assistant sessions and settings), which is the only thing the process
+# needs to write. StateDirectory= creates it as the service user and, with a
+# DynamicUser-free setup like this one, is the supported way to hand a
+# directory to a system account.
+StateDirectory=smcub
+WorkingDirectory=/var/lib/smcub
+
+# Every variable the server needs, including both secrets. The file is read by
+# systemd as root; the variables are visible only to this service. The leading
+# '/' (no '-') means a missing file is a startup failure rather than a service
+# that quietly starts unauthenticated.
+EnvironmentFile=/etc/smcub/trader.env
+
+# Fail closed before exec: both variables must actually be defined in the file.
+# Hosted mode needs the postgres URL, and the token is what keeps a reachable
+# port from being an open journal.
+ExecStartPre=/usr/bin/grep -qE '^[[:space:]]*DATABASE_URL=' /etc/smcub/trader.env
+ExecStartPre=/usr/bin/grep -qE '^[[:space:]]*TRADER_ACCESS_TOKEN=' /etc/smcub/trader.env
+
+# Hosted mode, one alphatech tenant per platform identity. The server refuses
+# to start without a postgres URL, and refuses to bind 0.0.0.0 without a
+# token, so this line cannot accidentally come up as a local SQLite file.
+#
+# It binds loopback only, because nginx (deploy/nginx.conf) is the thing that
+# faces the network and terminates TLS. --token is still required: it is what
+# gates the interface and the trader surface, and it must be given because a
+# deployment that can be repointed at 0.0.0.0 must not be able to come up
+# without one.
+ExecStart=/opt/smcub/venv/bin/smcub trader serve \
+    --mode hosted \
+    --host 127.0.0.1 \
+    --port 8787 \
+    --database-url ${DATABASE_URL} \
+    --token ${TRADER_ACCESS_TOKEN} \
+    --no-browser
+
+# The identity settings are optional here because they have defaults; the two
+# above are not. ALPHATECH_AUTH_MODE=session forwards the caller's platform
+# cookie to ALPHATECH_BASE_URL (default https://alphatech.net.cn). Switch to
+# hmac and set ALPHATECH_SSO_SECRET if the platform signs an identity header
+# instead. An absent secret in hmac mode fails closed with 401.
+# Add all three to /etc/smcub/trader.env to override them.
+
+Restart=on-failure
+RestartSec=5s
+
+# A trading journal holds one process's worth of work; there is no reason for
+# it to keep draining CPU or time after a hang.
+TimeoutStopSec=20s
+
+# Modest hardening. ReadWritePaths is not needed because StateDirectory
+# already grants the state path; the rest keeps the service out of /home and
+# out of the rest of the filesystem.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
