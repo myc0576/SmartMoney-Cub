@@ -29,7 +29,7 @@ jobs:
       # here too, because the interface is a committed build that ships inside the
       # wheel and a tag is exactly when a stale one would reach users.
       - name: Install the test toolchain
-        run: python -m pip install -e ".[dev,hosted]"
+        run: python -m pip install -e ".[dev,hosted]" crossplane pyyaml
 
       - name: Run the test suite
         run: pytest -q
@@ -127,6 +127,7 @@ jobs:
 
       - name: Pack the npm package
         run: |
+          mkdir -p "$RUNNER_TEMP/npm"
           cd npm
           npm pack --pack-destination "$RUNNER_TEMP/npm"
 
