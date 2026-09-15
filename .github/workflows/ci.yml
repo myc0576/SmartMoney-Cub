@@ -42,7 +42,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: python -m pip install -e ".[dev,hosted]"
+        run: |
+          python -m pip install -e ".[dev,hosted]"
+          # crossplane and pyyaml are dependencies of the test suite itself, not
+          # only of the deploy checks further down: tests/test_trader_deploy.py
+          # parses the shipped nginx config with crossplane and expands the
+          # compose file with yaml. Installing them after `pytest -q` meant those
+          # tests ran without them on every Python in the matrix, so the suite
+          # reported "PASS: parses cleanly" for a check that had silently skipped.
+          python -m pip install crossplane pyyaml
 
       - name: Test
         run: pytest -q
