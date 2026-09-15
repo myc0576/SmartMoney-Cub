@@ -186,6 +186,20 @@ claims produced most of them.
 - **A flaky redaction assertion** searched a whole ledger file for a short
   secret, so it failed whenever those letters fell inside the entry's random
   `ledger_id` -- about one run in fifty, and it looked like a privacy failure.
++- **`smcub workbench` served an interface that could not boot.** The documented
+  front door for the local product did not mount `/api/trader/*`, the surface the
+  interface reads every number through. The shell loaded, each request for its own
+  data came back as the HTML page with status 200, and the user was told the local
+  review service was unreachable while it was running. It now mounts the surface
+  for one offline user under `--state-dir`; `smcub trader serve --mode hosted`
+  remains the only entry point that resolves a platform identity per request.
+  Found by driving the shipped command in a browser rather than by reading it.
+- **The favicon was not in the wheel.** `workbench/web/assets/*` does not match a
+  file at the web root, so an installed copy would have served a missing icon.
+- **An assistant proposal could be promoted into a row the interface misread.** A
+  promotion returned `rule_status` where a listed rule carries `status`, so the
+  page had to special-case the response; it now returns the same shape as a list row.
+
 
 ### Compatibility
 

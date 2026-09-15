@@ -1,5 +1,55 @@
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
+
+# ---- the documented front door actually serves the interface ---------------
+
+
+def test_run_workbench_mounts_the_journal_surface_the_interface_reads(tmp_path) -> None:
+    """`smcub workbench` must mount /api/trader/*, or its own page cannot boot.
+
+    The interface reads every number through the trader surface. When this command
+    did not mount it, the shell still loaded and every request for its own data
+    came back as the HTML page with status 200, so the user was told the local
+    service was unreachable while it was running. This asserts the route answers
+    with JSON instead.
+    """
+    from smartmoney_cub_harness.convergence_cli import run_workbench
+    from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
+
+    captured: dict[str, object] = {}
+
+    def fake_start_workbench(**kwargs) -> None:
+        # Record what the entry point hands the server, then return instead of
+        # blocking on serve_forever.
+        captured.update(kwargs)
+
+    server_module = importlib.import_module("smartmoney_cub_harness.workbench.server")
+    original = server_module.start_workbench
+    server_module.start_workbench = fake_start_workbench
+    try:
+        code = run_workbench(host="127.0.0.1", port=8787, state_dir=str(tmp_path), open_browser=False)
+    finally:
+        server_module.start_workbench = original
+
+    assert code == 0
+    # A trader service is mounted, and its store lives under the state directory
+    # rather than at a path relative to the process working directory.
+    service = captured.get("trader_service")
+    assert service is not None, "run_workbench did not mount the trader surface"
+    assert Path(captured["root"]) == tmp_path
+
+    from smartmoney_cub_harness.trader.api import routes as trader_routes
+
+    status, payload = trader_routes.dispatch(
+        service, "GET", "/api/trader/meta", query={}, headers={}, body=b"", content_type=""
+    )
+    assert status == 200, payload
+    assert payload["safety"] == SAFETY_DECLARATION
+    assert payload["auth_mode"] == "local"
+    assert payload["tenant"]["mode"] == "local"
+
 import json
 
 from smartmoney_cub_harness import analytics

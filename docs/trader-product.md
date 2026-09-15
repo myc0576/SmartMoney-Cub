@@ -31,7 +31,12 @@ workbench interface on the same socket and the same port. A local run is a
 single offline user on SQLite in `--state-dir`; a hosted run is one tenant per
 platform identity, in Postgres.
 
-`smcub workbench` is a different command and does not mount `/api/trader/*`.
+`smcub workbench` is the local single-user front door. It mounts the same
+`/api/trader/*` surface for one offline user in `--state-dir`, because the
+interface reads the journal through it; without that mount the page loads and
+every request for its own data comes back as the HTML shell. Hosted mode remains
+`smcub trader serve --mode hosted`, which is the only entry point that resolves a
+platform identity per request.
 Only `smcub trader serve` serves both.
 
 ### Keep the journal in a tenant store

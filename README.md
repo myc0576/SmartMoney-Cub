@@ -423,7 +423,10 @@ smcub trader serve --mode hosted \
 ```
 
 `smcub trader serve` mounts the trader API at `/api/trader/*` and the review
-workbench on the same socket; `smcub workbench` does not mount the trader API.
+workbench on the same socket. `smcub workbench` is the local single-user front
+door and mounts the same `/api/trader/*` surface for one offline user; `smcub
+trader serve --mode hosted` is the one that resolves a platform identity per
+request.
 Hosted mode requires a `postgresql://` URL and never falls back to a local file,
 and binding beyond loopback requires `--token`.
 

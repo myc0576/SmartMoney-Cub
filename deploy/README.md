@@ -35,8 +35,12 @@ misconfigured rather than unlucky:
   meant hosted, and quietly writing a local file would put the data somewhere
   other than where you expect it.
 
-`smcub workbench` is a different command and does **not** mount `/api/trader/*`.
-Only `smcub trader serve` serves both products.
+`smcub workbench` is the local single-user front door and mounts `/api/trader/*`
+for one offline user, because the interface reads the journal through that
+surface. A hosted deployment uses `smcub trader serve --mode hosted`, which
+resolves a platform identity on every request, so it is the only entry point a
+shared host may use: the local workbench serves one user and carries no tenant
+identity.
 
 On start the server writes to stderr:
 

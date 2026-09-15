@@ -8,6 +8,8 @@ from typing import Any
 from smartmoney_cub_harness import __version__
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
+from smartmoney_cub_harness.trader.auth import MODE_LOCAL
+from smartmoney_cub_harness.trader.storage import StoreError, open_store
 
 # Command line entry points for the convergence workbench. Every command keeps
 # the read-only contract and reports the store location instead of absolute
@@ -34,6 +36,7 @@ def run_workbench(
         is_loopback,
         start_workbench,
     )
+    from smartmoney_cub_harness.trader.api import TraderService
 
     if not is_loopback(host) and not token:
         sys.stderr.write(
@@ -42,21 +45,42 @@ def run_workbench(
         )
         return 2
 
+    # The interface is one product and it reads the journal through
+    # /api/trader/*, so this command has to mount that surface. It once did not,
+    # and the result was the worst kind of failure: the page loaded, every request
+    # for the shell's own data came back as an HTML page with status 200, and the
+    # user saw "cannot reach the local review service" while the service was
+    # running. This mounts a single local tenant store under the state root; a
+    # hosted deployment still goes through `smcub trader serve`, which resolves a
+    # platform identity per request and is the only entry point that does.
+    root = state_root(state_dir)
+    try:
+        store = open_store(root / "journal", mode=MODE_LOCAL)
+        service = TraderService(store, auth_mode=MODE_LOCAL)
+    except StoreError as error:
+        sys.stderr.write("could not open the local journal: " + str(error) + "\n")
+        return 2
+
     def announce(url: str) -> None:
         sys.stderr.write("smartmoney-cub workbench: " + url + "\n")
-        sys.stderr.write("state: " + str(state_root(state_dir)) + "\n")
+        sys.stderr.write("state: " + str(root) + "\n")
+        sys.stderr.write("mode: local (single offline user)\n")
         sys.stderr.write(SAFETY_DECLARATION + "\n")
 
-    start_workbench(
-        root=state_root(state_dir),
-        host=host,
-        port=port,
-        asset_dir=bundled_asset_dir(),
-        open_browser=open_browser,
-        access_token=token,
-        workspace_db=workspace_db,
-        ready=announce,
-    )
+    try:
+        start_workbench(
+            root=root,
+            host=host,
+            port=port,
+            asset_dir=bundled_asset_dir(),
+            open_browser=open_browser,
+            access_token=token,
+            workspace_db=workspace_db,
+            trader_service=service,
+            ready=announce,
+        )
+    finally:
+        store.close()
     return 0
 
 

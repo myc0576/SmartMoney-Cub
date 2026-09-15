@@ -192,7 +192,13 @@ def test_deploy_readme_documents_three_routes() -> None:
     assert "postgresql://" in readme
     assert "--token" in readme
     assert "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" in readme
-    assert "does **not** mount" in readme
+    # The workbench mounts /api/trader/* for one local user, because the interface
+    # reads the journal through it; what matters for a deployment is that only
+    # `trader serve --mode hosted` resolves a platform identity. The earlier
+    # assertion pinned the opposite claim, which is why a `smcub workbench` page
+    # could load and then fail every request for its own data.
+    assert "resolves a platform identity on every request" in readme
+    assert "local single-user front door" in readme
     assert "/api/trader/*" in readme
     assert "mode hosted" in readme
 
