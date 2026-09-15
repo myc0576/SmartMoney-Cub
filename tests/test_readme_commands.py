@@ -129,7 +129,10 @@ def test_versioning_policy_covers_all_supported_update_paths():
     assert "vX.Y.Z" in policy
     assert "does not update automatically" in policy.lower()
     assert "Current release channel: GitHub Releases" in policy
-    assert "git+https://github.com/myc0576/smartmoney-cub-harness.git@v1.0.0" in policy
+    # The repository was renamed; the clone URL in the policy has to name the
+    # repository that actually exists, or a user following the upgrade path hits
+    # a redirect (or, for a push, the wrong remote).
+    assert "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0" in policy
 
 
 def test_local_virtual_environment_is_ignored():

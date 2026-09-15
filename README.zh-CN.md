@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="88" height="88" />
+
 ![smartmoney-cub-harness cover](assets/smartmoney-cub-harness-cover.png)
 
 ## 游资复盘引擎 · 让每一次决策都变成系统的进化
@@ -70,6 +72,23 @@ smcub skill install --target codex      # 安装 Agent Skill
 页面：总览（权益曲线、月历热力图、待复盘清单）、交易日志（表格 + 详情抽屉 + 成交版本历史）、
 复盘日历、绩效分析（按标的／市场状态／星期／持有周期／标签归因，并显示样本量）、规则库、
 数据导入、插件、设置（Provider、隐私与诊断）。
+
+### 对话驱动的规则进化
+
+复盘助手可以从已确认的证据里提出候选（challenger）规则，并且这条候选会和规则库页面读的是
+同一个库：门禁缺口会被记录，同时在 workspace 数据库旁追加一条 `evolution_ledger.jsonl`
+记录和一段可读的 `memory.md` 片段。
+
+晋升是单独的一步，也是唯一能产生 champion 的写入：
+
+```bash
+smcub workspace rules
+smcub workspace promote-rule RULE-1 --note "样本 24 笔，误报率 0.12，确认纳入"
+```
+
+那条确认说明就是门禁本身：说明为空或缺失时一律拒绝，且不写入任何东西——命令行与界面的
+晋升接口行为一致。两道门禁刻意分开：样本与风险阈值只决定是否给出晋升建议，人写下的确认
+说明才是规则变成 champion 的依据。助手、插件、导入的报告都不能替代它。
 
 ### 🔒 默认脱敏
 
@@ -154,7 +173,7 @@ smcub share-pack --csv exports/fills.csv --output tmp/share-pack --write
 | Cursor | `请按 docs/agent-loop.md 使用本项目，跑 toy loop 并总结复盘产物；所有规则更新只能保持 challenger 状态。` |
 | Gemini CLI | `请阅读 docs/harness-contract.md，执行 toy offline loop，确认输出包含 READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE。` |
 | OpenCode / OpenClaw | `帮我用这个仓库做一次只读复盘演示：运行 smcub doctor，再运行 smcub loop --preset toy --agent-trigger "自进化"。` |
-| CLI 直用 | `git clone https://github.com/myc0576/smartmoney-cub-harness.git && cd smartmoney-cub-harness && pip install -e ".[dev]" && smcub loop --preset toy --agent-trigger "自进化"` |
+| CLI 直用 | `git clone https://github.com/myc0576/SmartMoney-Cub.git && cd SmartMoney-Cub && pip install -e ".[dev]" && smcub loop --preset toy --agent-trigger "自进化"` |
 
 ### 隔离安装与版本确认
 
@@ -181,7 +200,7 @@ python -m venv .venv
 当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新修复 tag 安装，让命令拥有独立环境：
 
 ```bash
-pipx install "git+https://github.com/myc0576/smartmoney-cub-harness.git@v1.0.0"
+pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0"
 ```
 
 未来正式发布到 PyPI 后，可改用更短的安装和升级命令：
@@ -216,8 +235,8 @@ smcub confirm-promotion state/self_evolve/<loop_id>/promotion_packet.json --deci
 一条命令跑完整个 toy 闭环：
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 pip install -e ".[dev]"
 smcub loop --preset toy --agent-trigger "自进化"
 ```

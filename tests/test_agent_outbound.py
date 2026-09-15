@@ -13,6 +13,12 @@ from smartmoney_cub_harness.workbench.server import WorkbenchService
 
 CAPTURED: list[dict] = []
 
+# The multi-round provider below records every request of a turn separately, so
+# the outbound check can run against each hop rather than only the first one.
+ROUND_REQUESTS: list[dict] = []
+
+THESIS_TEXT = "板块主线龙头，止损 9.5，账号 88888888，联系 13800138000"
+
 
 class FakeProvider(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002
@@ -61,7 +67,11 @@ class FakeProvider(BaseHTTPRequestHandler):
 
 
 def _start_provider():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeProvider)
+    return _start_provider_for(FakeProvider)
+
+
+def _start_provider_for(handler):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_port}/v1"
 
@@ -84,7 +94,7 @@ def _fill(**overrides):
         "price": 10.0,
         "quantity": 1000,
         "fee": 5.0,
-        "thesis": "板块主线龙头，止损 9.5，账号 88888888，联系 13800138000",
+        "thesis": THESIS_TEXT,
     }
     fill.update(overrides)
     return fill
@@ -221,6 +231,114 @@ def test_testing_a_provider_lists_models_without_leaking_the_key(tmp_path) -> No
             assert result["status"] == "ok"
             assert "deepseek-v3" in result["models"]
             assert "test-key" not in json.dumps(result)
+        finally:
+            service.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+class FakeTwoRoundProvider(BaseHTTPRequestHandler):
+    """Asks for two tool rounds, then answers.
+
+    Redaction is only proven for the first hop by a single-round provider: the
+    tool results the model sees arrive on the second and third requests, so this
+    provider forces both. The second tool is ``open_positions`` on purpose: it
+    returns the seeded position with its exact quantity and cost, which is the
+    local data that must be reduced before the third request leaves.
+    """
+
+    def log_message(self, format, *args):  # noqa: A002
+        return
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length") or 0)
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        ROUND_REQUESTS.append(payload)
+        round_index = len(ROUND_REQUESTS)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for frame in self._frames(round_index):
+            self.wfile.write(("data: " + json.dumps(frame) + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+
+    def _frames(self, round_index: int) -> list[dict]:
+        if round_index == 1:
+            return [_tool_call_frame(0, "call_round_1", "analytics_summary", {})]
+        if round_index == 2:
+            return [
+                _tool_call_frame(
+                    1, "call_round_2", "open_positions", {"portfolio_id": "PORT-DEFAULT"}
+                )
+            ]
+        return [
+            {
+                "choices": [
+                    {"delta": {"content": "两轮工具已跑完。"}, "finish_reason": "stop"}
+                ]
+            }
+        ]
+
+
+def _tool_call_frame(index: int, call_id: str, name: str, arguments: dict) -> dict:
+    return {
+        "choices": [
+            {
+                "delta": {
+                    "tool_calls": [
+                        {
+                            "index": index,
+                            "id": call_id,
+                            "function": {"name": name, "arguments": json.dumps(arguments)},
+                        }
+                    ]
+                },
+                "finish_reason": "tool_calls",
+            }
+        ]
+    }
+
+
+def test_a_multi_round_turn_redacts_every_hop_and_audits_each_one(tmp_path) -> None:
+    ROUND_REQUESTS.clear()
+    server, base_url = _start_provider_for(FakeTwoRoundProvider)
+    try:
+        service = _service_with_provider(tmp_path, base_url)
+        try:
+            service.store.add_fills([_fill()])
+            session = service.create_session({"title": "复盘"})
+            events = list(
+                service.stream_turn(session["session"]["session_id"], {"text": "两轮复盘"})
+            )
+            assert events[-1]["kind"] == "done"
+            assert [event["kind"] for event in events if event["kind"] == "tool_result"] == [
+                "tool_result",
+                "tool_result",
+            ]
+            assert len(ROUND_REQUESTS) == 3
+
+            # The seeded account name, exact price, quantity, and thesis must not
+            # appear in any request of the turn, including the ones that carry the
+            # tool results back.
+            for index, payload in enumerate(ROUND_REQUESTS):
+                sent = json.dumps(payload, ensure_ascii=False)
+                for secret in ("88888888", "13800138000", "600111", "北方稀土", THESIS_TEXT):
+                    assert secret not in sent, f"request {index} leaked {secret}"
+                scalars = _collect_scalars(payload)
+                assert "1000" not in scalars, f"request {index} carried an exact quantity"
+                assert 1000 not in scalars, f"request {index} carried an exact quantity"
+                assert 10.0 not in scalars, f"request {index} carried an exact price"
+
+            # Each hop is redacted and audited on its own, so the audit trail
+            # matches the number of requests that actually left the machine.
+            audits = service.store.list_audits()
+            assert len(audits) == len(ROUND_REQUESTS)
+            for audit in audits:
+                assert audit["blocked"] is False
+                assert audit["payload_sha256"]
         finally:
             service.close()
     finally:

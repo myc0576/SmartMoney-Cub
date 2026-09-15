@@ -122,6 +122,16 @@ export const api = {
   overview: (params: { portfolio_id?: string; year?: number; month?: number } = {}) =>
     request<Overview>('/api/overview?' + new URLSearchParams(clean(params)).toString()),
   rules: () => request<{ rules: RuleRecord[] }>('/api/rules'),
+  // Promotion is the one rule-library write, and it is deliberately a separate
+  // call with an explicit note: the server refuses a champion row without a
+  // written human confirmation, so the note is not an optional field here.
+  promoteRule: (ruleId: string, note: string) =>
+    // The response carries the promoted rule in the same shape as one entry of
+    // the list, so the view can render it without a second fetch.
+    request<{ rule: RuleRecord; promotion_note: string; safety: string }>(
+      '/api/rules/' + encodeURIComponent(ruleId) + '/promote',
+      { method: 'POST', body: JSON.stringify({ note }) },
+    ),
   plugins: () => request<Record<string, any>>('/api/plugins'),
   documents: (params: { portfolio_id?: string } = {}) =>
     request<{ documents: Overview['recent_documents'] }>('/api/documents?' + new URLSearchParams(clean(params)).toString()),

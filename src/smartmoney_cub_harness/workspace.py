@@ -12,6 +12,19 @@ from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 WORKSPACE_SCHEMA = "smartmoney_cub_workspace.v1"
 
+# The rule lifecycle, in the only vocabulary the rule library accepts. A rule
+# moves challenger -> promotion_recommended -> champion only through an explicit
+# human confirmation, and rejected/deferred record that the human said no (or
+# not yet). Keeping this as one tuple means the storage layer and the CLI
+# validate against the same list instead of drifting apart.
+RULE_STATUSES = (
+    "challenger",
+    "promotion_recommended",
+    "champion",
+    "rejected",
+    "deferred",
+)
+
 # Review-case decisions. The first six are the review vocabulary; the remaining
 # labels come from the existing harness decision contract so both stay usable.
 REVIEW_ACTIONS = (
@@ -385,7 +398,7 @@ class Workspace:
         metrics: dict[str, Any] | None = None,
         promotion_note: str | None = None,
     ) -> dict[str, Any]:
-        if status not in ("challenger", "promotion_recommended", "champion", "rejected", "deferred"):
+        if status not in RULE_STATUSES:
             raise ValueError("unsupported rule status")
         # A champion row may only be written with an explicit human note.
         if status == "champion" and not (promotion_note or "").strip():
@@ -437,6 +450,115 @@ class Workspace:
         else:
             rows = self._connection.execute("SELECT rule_id FROM rule_state ORDER BY rule_id").fetchall()
         return [record for record in (self.get_rule(row["rule_id"]) for row in rows) if record]
+
+    def list_rules_with_blockers(self, *, status: str | None = None) -> list[dict[str, Any]]:
+        """List rules with the promotion blockers computed from each row's metrics.
+
+        Attaching the blockers at read time keeps the stored row an honest record
+        of what was proposed: the thresholds live in one frozen place
+        (registry.promotion_blockers) and a row can never carry a stale, hand
+        edited copy of them.
+        """
+        # Imported lazily because registry imports only schemas, but a future
+        # registry-side import of Workspace would otherwise make this a cycle.
+        from smartmoney_cub_harness.registry import promotion_blockers  # noqa: PLC0415
+
+        rules: list[dict[str, Any]] = []
+        for rule in self.list_rules(status=status):
+            payload = dict(rule)
+            metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+            blockers = promotion_blockers(metrics)
+            payload["promotion_blockers"] = blockers
+            # Named "recommendable", not "recommended", so it cannot be mistaken
+            # for the promotion_recommended status stored on the row.
+            payload["promotion_recommendable"] = not blockers
+            rules.append(payload)
+        return rules
+
+    def promote_rule(
+        self,
+        *,
+        rule_id: str,
+        note: str,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Promote a rule to champion behind the human confirmation gate.
+
+        Two separate gates apply, and they are deliberately not the same gate:
+
+        * The threshold gate (sample_count, false-alert, missed-opportunity,
+          future-leakage, risk-contract) decides whether the evidence may produce
+          a promotion RECOMMENDATION. It does not by itself authorize champion
+          mutation -- see docs/harness-contract.md, "Promotion Thresholds":
+          passing thresholds may create a promotion recommendation, while
+          champion mutation still requires explicit confirmation.
+        * The human gate is the non-blank note. An assistant can only propose a
+          challenger; a human writes the note, and that note is the only thing
+          that can write a champion row.
+
+        So blockers do NOT hard-refuse here. Refusing on any blocker would make
+        the recommendation and the mutation the same decision, which is exactly
+        the distinction the contract draws, and it would silently turn a
+        threshold check into policy authority. Instead this returns the blockers
+        in the payload so the caller (CLI, HTTP, reviewer) can explain why a
+        promotion is or is not advised, and the human decides with that in hand.
+
+        The blank-note refusal is re-checked in this layer on purpose. The CLI
+        also rejects an empty note, but the HTTP and direct-call paths reach this
+        method without passing through argparse, so the gate has to live where
+        the row is actually written.
+        """
+        # set_rule_state also refuses a blank champion note; this earlier check
+        # makes the intent explicit and keeps the failure message stable.
+        if not (note or "").strip():
+            raise ValueError("champion rule requires an explicit human confirmation note")
+
+        from smartmoney_cub_harness.registry import promotion_blockers  # noqa: PLC0415
+
+        # Prefer the caller's metrics when supplied; otherwise keep whatever the
+        # rule already carried so a promotion does not erase the evidence that
+        # was reviewed. Family and title are carried forward for the same reason:
+        # set_rule_state's upsert replaces those columns, and a promotion must not
+        # blank the description of the rule the human just approved.
+        existing = self.get_rule(rule_id) or {}
+        resolved_metrics = metrics if metrics is not None else existing.get("metrics") or {}
+        blockers = promotion_blockers(resolved_metrics)
+
+        record = self.set_rule_state(
+            rule_id=rule_id,
+            status="champion",
+            family=existing.get("family") or "",
+            title=existing.get("title") or "",
+            metrics=resolved_metrics,
+            promotion_note=note,
+        )
+        return {
+            **record,
+            "promotion_note": note,
+            "promotion_blockers": blockers,
+            "promotion_recommendable": not blockers,
+            "blockers_are_advisory": True,
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def reject_rule(self, *, rule_id: str, note: str = "") -> dict[str, Any]:
+        """Mark a rule rejected. No note is required: refusing a promotion asks
+        nothing of the evidence, whereas granting one is the action that needs a
+        human to own it.
+        """
+        # Carry the existing description and any earlier human note forward. A
+        # rejection is not a reason to silently erase why the rule was approved
+        # before, and the upsert would otherwise blank both columns.
+        existing = self.get_rule(rule_id) or {}
+        record = self.set_rule_state(
+            rule_id=rule_id,
+            status="rejected",
+            family=existing.get("family") or "",
+            title=existing.get("title") or "",
+            metrics=existing.get("metrics") or {},
+            promotion_note=note or existing.get("promotion_note"),
+        )
+        return {**record, "note": note, "safety": SAFETY_DECLARATION}
 
     # ---- reporting -------------------------------------------------------
 

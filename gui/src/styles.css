@@ -1,9 +1,10 @@
-/* No :root block here. tokens.css owns the palette; this file only composes
-   it. The short names (`--bg`, `--panel`, `--border` ...) are defined there as
-   aliases of the `--color-*` semantic tokens, so the rules below need no edit
-   when the palette changes. */
+/* tokens.css owns the palette; this file only composes it. The short names
+   (`--bg`, `--panel`, `--border` ...) are defined there as aliases of the
+   `--color-*` semantic tokens, so the rules below need no edit when the palette
+   changes. The single custom property declared here is not an interface colour,
+   so it is not part of that palette -- see the brand rules below for why. */
 
-:root { font-synthesis-weight: none; }
+:root { font-synthesis-weight: none; --brand-plate: #f6f7f9; }
 
 * { box-sizing: border-box; }
 
@@ -41,7 +42,28 @@ input, select, textarea { font: inherit; color: inherit; }
   padding: 6px 9px 3px; text-transform: none;
 }
 .brand { font-weight: 700; letter-spacing: 0.02em; padding: 4px 8px 12px; }
+.brand-head { display: flex; align-items: center; gap: 8px; }
+.brand-name { min-width: 0; }
 .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; margin-top: 2px; }
+/*
+   The mark's lower form is charcoal, which sits close to the dark sidebar and
+   would read as a smudge against it. The plate is therefore light in both
+   themes rather than following --panel: it is the surface the artwork was drawn
+   on, so the greens and the charcoal keep the contrast they were designed with.
+   The radius stops it reading as a hard white box inside the rounded sidebar,
+   and the mark's own transparent edge means there is no seam to cover.
+
+   `--brand-plate` is declared in :root above as a plain value instead of aliasing
+   a token, because the palette's surfaces flip with the theme and this one must
+   not: the charcoal would disappear from its own backing in dark mode, which is
+   the exact failure the plate exists to prevent.
+*/
+.brand-mark {
+  width: 26px; height: 26px; flex: none; border-radius: 7px;
+  display: block; object-fit: contain;
+  background: var(--brand-plate);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
 .nav-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 9px; border-radius: 6px; border: 1px solid transparent;

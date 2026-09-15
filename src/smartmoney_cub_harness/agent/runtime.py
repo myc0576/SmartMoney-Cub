@@ -8,6 +8,7 @@ from smartmoney_cub_harness import analytics
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
     OFFLINE_PROVIDER_ID,
+    REASONING_ALIASES,
     ProviderError,
     default_settings,
     load_credentials,
@@ -31,6 +32,11 @@ from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 
 MAX_TOOL_ROUNDS = 6
 
+# Fallback key when a provider event carries no field name of its own. The
+# provider only ever emits the reasoning event for a field it really sent, so
+# this is a defensive default for a hand-built event, not an invented value.
+REASONING_FIELD_DEFAULT = REASONING_ALIASES[0]
+
 SYSTEM_PROMPT = """你是 smartmoney-cub 的复盘助手。
 
 你的职责是帮助用户复盘已经确认的交易记录，指出执行偏差，并给出可以验证的改进规则。
@@ -50,10 +56,21 @@ SYSTEM_PROMPT = """你是 smartmoney-cub 的复盘助手。
 class ReviewAgentRuntime:
     """Owns session turns, provider calls, redaction, and event persistence."""
 
-    def __init__(self, store: Store, *, credentials_root: str | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        credentials_root: str | None = None,
+        workspace_db: str | None = None,
+    ) -> None:
         self.store = store
         self.credentials_root = credentials_root or str(store.root)
-        self.toolbox = ToolBox(store)
+        # The rule library lives beside the review store the session already
+        # uses. Defaulting to the store root (rather than the process working
+        # directory) keeps a rule proposed in a session inside the same
+        # --state-dir the server was started with.
+        self.toolbox = ToolBox(store, workspace_db)
+        self.workspace_db = self.toolbox.workspace_db
 
     # ---- session helpers ----------------------------------------------
 
@@ -250,29 +267,47 @@ class ReviewAgentRuntime:
     ) -> Iterator[dict[str, Any]]:
         model = session.get("model") or provider.get("default_model") or ""
         effort = session.get("reasoning") or "off"
-        prepared = self._prepare(messages, session=session, context=context)
-        if prepared.get("blocked"):
-            reason = prepared.get("reason")
-            self.store.append_event(
-                session_id, kind="error", payload={"text": f"outbound blocked: {reason}"}
-            )
-            self.store.update_session(session_id, status="error")
-            yield {"kind": "error", "error": f"outbound blocked: {reason}", "safety": SAFETY_DECLARATION}
-            return
-
-        working = list(prepared["redacted_messages"])
+        # The transcript kept here is local. Every request is a redacted and
+        # audited copy made at the moment it is sent, because a later round
+        # carries tool results that the first round never contained: the outbound
+        # payload changes on each hop, so the redaction and the audit have to be
+        # redone on each hop rather than inherited from the first one.
+        working = list(messages)
         assistant_text = ""
         rounds = 0
         while rounds < MAX_TOOL_ROUNDS:
             rounds += 1
+            prepared = self._prepare(working, session=session, context=context)
+            if prepared.get("blocked"):
+                reason = prepared.get("reason")
+                self.store.append_event(
+                    session_id, kind="error", payload={"text": f"outbound blocked: {reason}"}
+                )
+                self.store.update_session(session_id, status="error")
+                yield {
+                    "kind": "error",
+                    "error": f"outbound blocked: {reason}",
+                    "safety": SAFETY_DECLARATION,
+                }
+                return
+            request_messages = prepared["redacted_messages"]
             tool_calls: list[dict[str, Any]] = []
             turn_text = ""
+            round_reasoning: dict[str, str] = {}
             for event in stream_chat(
-                provider, model=model, messages=working, tools=TOOL_SPECS, effort=effort
+                provider, model=model, messages=request_messages, tools=TOOL_SPECS, effort=effort
             ):
                 if event["kind"] == "delta":
                     turn_text += event["text"]
                     yield {"kind": "delta", "text": event["text"], "safety": SAFETY_DECLARATION}
+                elif event["kind"] == "reasoning":
+                    # Forwarded under the exact field the provider used, and only
+                    # because the provider actually sent one. Thinking text stays
+                    # out of the browser stream; it only goes back to the model
+                    # that produced it, which is why it is kept per round rather
+                    # than added to the persisted turn.
+                    field = str(event.get("field") or REASONING_FIELD_DEFAULT)
+                    round_reasoning[field] = round_reasoning.get(field, "") + event["text"]
                 elif event["kind"] == "tool_call":
                     tool_calls.append(event["call"])
                 elif event["kind"] == "done":
@@ -280,28 +315,34 @@ class ReviewAgentRuntime:
 
             if turn_text:
                 assistant_text += turn_text
-                working.append({"role": "assistant", "content": turn_text})
 
             if not tool_calls:
+                # The last round is the answer itself, so its text is the
+                # assistant message and the loop ends.
+                if turn_text:
+                    working.append({"role": "assistant", "content": turn_text})
                 break
 
-            working.append(
-                {
-                    "role": "assistant",
-                    "content": turn_text or None,
-                    "tool_calls": [
-                        {
-                            "id": call["call_id"] or f"call_{index}",
-                            "type": "function",
-                            "function": {
-                                "name": call["name"],
-                                "arguments": call["arguments"] or "{}",
-                            },
-                        }
-                        for index, call in enumerate(tool_calls)
-                    ],
-                }
-            )
+            # Exactly one assistant message per round. Appending the visible text
+            # separately as well would send the provider the same sentence twice
+            # in one turn, which reads as a duplicated transcript.
+            assistant_message: dict[str, Any] = {
+                "role": "assistant",
+                "content": turn_text or None,
+                "tool_calls": [
+                    {
+                        "id": call["call_id"] or f"call_{index}",
+                        "type": "function",
+                        "function": {
+                            "name": call["name"],
+                            "arguments": call["arguments"] or "{}",
+                        },
+                    }
+                    for index, call in enumerate(tool_calls)
+                ],
+            }
+            assistant_message.update(round_reasoning)
+            working.append(assistant_message)
 
             for index, call in enumerate(tool_calls):
                 call_id = call["call_id"] or f"call_{index}"
@@ -319,12 +360,10 @@ class ReviewAgentRuntime:
                     "safety": SAFETY_DECLARATION,
                 }
                 result = self.toolbox.call(call["name"], call["arguments"])
-                # A tool result is local data that the model may see. It goes
-                # through the same redactor as the prompt.
-                redacted_result, _ = _redact_messages(
-                    [{"role": "tool", "content": json.dumps(result, ensure_ascii=False)}],
-                    salt=self._salt(),
-                )
+                # A tool result is local data that the model may see. The local
+                # transcript and the browser keep the real row; the copy sent
+                # back is redacted when the next request is built.
+                redacted_result = _redact_tool_result(result, salt=self._salt())
                 self.store.append_event(
                     session_id, kind="tool_result", payload={"call_id": call_id, "result": result}
                 )
@@ -339,7 +378,7 @@ class ReviewAgentRuntime:
                     {
                         "role": "tool",
                         "tool_call_id": call_id,
-                        "content": redacted_result[0]["content"],
+                        "content": redacted_result,
                     }
                 )
 
@@ -396,6 +435,20 @@ def _redact_messages(
             copy["content"] = content
         redacted.append(copy)
     return redacted, {"policy": "redaction.v1", "counts": total, "total": sum(total.values())}
+
+
+def _redact_tool_result(result: dict[str, Any], *, salt: str) -> str:
+    """Return the redacted text of a tool result for the outbound request.
+
+    A tool result is structured review data -- keys such as quantity, price, and
+    symbol -- so it goes through the payload redactor, which reduces each value
+    by its own rule. That runs on every hop rather than once: a range band such
+    as "1000-5000" only survives the string pass untouched, and an exact value
+    that reaches the transcript later must still be reduced before it leaves.
+    """
+    payload = json.dumps(result, ensure_ascii=False)
+    redacted, _ = redact_payload(json.loads(payload), salt=salt)
+    return json.dumps(redacted, ensure_ascii=False)
 
 
 def render_offline_review(context: dict[str, Any]) -> str:

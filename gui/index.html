@@ -20,6 +20,16 @@
       }
     </script>
     <title>SmartMoney-Cub 复盘工作台</title>
+    <!--
+      The tab icon. The path is document-relative on purpose: the hosted build is
+      published under a path prefix (nginx maps /trader/ to the app), so a
+      root-absolute '/favicon.png' would leave the prefix and 404, while './' still
+      points at the interface wherever it was served from -- the same reason the
+      bundle's own script and stylesheet tags below are relative. vite.config.ts
+      uses base './', and a file in gui/public/ is copied into the build output
+      with its name unchanged, so this URL survives the build.
+    -->
+    <link rel="icon" type="image/png" href="./smartmoney-cub-mark-32.png" />
     <style>
       /* The boot frame is styled from the same tokens as the app, so the
          fallback screen and the interface cannot drift apart. */

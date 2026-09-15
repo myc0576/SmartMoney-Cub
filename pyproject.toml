@@ -58,6 +58,10 @@ smartmoney_cub_harness = [
   "dashboard/templates/*.html",
   "trader/storage/*.sql",
   "workbench/web/*.html",
+  # The favicon is copied to the web root by the interface build, so it needs its
+  # own pattern: 'web/assets/*' does not match it, and an installed copy would
+  # serve a missing icon.
+  "workbench/web/*.png",
   "workbench/web/assets/*",
 ]
 

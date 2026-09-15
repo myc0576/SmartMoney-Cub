@@ -19,6 +19,13 @@ README_ZH = REPO / "README.zh-CN.md"
 
 COVER = "smartmoney-cub-harness-cover.png"
 FLOW = "smartmoney-cub-system-flow-bilingual.png"
+MARK = "smartmoney-cub-mark.png"
+
+# The company name burned into the source artwork below the mark. This test is
+# the one place the string is allowed to appear, because a guard has to name what
+# it forbids; the product's own name is smartmoney-cub, and the wordmark must
+# appear in none of the files the guard checks.
+FORBIDDEN_WORDMARK = "JIADING"
 
 
 def read(path: Path) -> str:
@@ -111,4 +118,47 @@ def test_readme_visuals() -> None:
             "TradingAgents" not in en.split("## ")[1].split("## ")[0],
             "README.md does not label reserved-slot tools as runtime-integrated")
 
+    # 13. the brand mark ships as its own asset. Only the geometric mark is
+    #     published: the source artwork pairs it with a company wordmark that
+    #     must never reach the product, so the file is checked here for being the
+    #     square mark it is meant to be and nothing wider.
+    mark_path = ASSETS / MARK
+    assert_(mark_path.exists(), f"asset exists: {mark_path}")
+    mw, mh = png_size(mark_path)
+    assert_((mw, mh) == (512, 512), f"{MARK} is 512x512 (got {mw}x{mh})")
+    mark_kb = mark_path.stat().st_size / 1024
+    assert_(mark_kb <= 400, f"{MARK} <= 400KB (got {mark_kb:.0f}KB)")
+
     print("\nAll README/asset regression checks passed.")
+
+
+def test_wordmark_never_ships() -> None:
+    """The source artwork's company wordmark must not reach the product.
+
+    The mark was cropped out of a lockup that pairs it with a company name that
+    is not this product's. That name is the one string that would make the two
+    look interchangeable, so it is guarded by name across every file that a user
+    can read directly: both READMEs, the interface entry point and component
+    that render the brand, and the built page a packaged install serves. The
+    built bundle is included because it is committed on purpose -- a stray copy
+    there would ship even though nothing in the sources mentions it.
+    """
+    for path in (
+        README_EN,
+        README_ZH,
+        REPO / "gui" / "index.html",
+        REPO / "gui" / "src" / "App.tsx",
+        REPO / "src" / "smartmoney_cub_harness" / "workbench" / "web" / "index.html",
+    ):
+        assert_(FORBIDDEN_WORDMARK not in read(path),
+                f"{path.name} does not carry the source artwork's company wordmark")
+
+
+if __name__ == "__main__":
+    # The suite finds these checks by name, and the file is also meant to be run
+    # directly: the reporting helpers above print one line per item instead of
+    # staying quiet, and a failure exits non-zero. The guard is what makes that
+    # true -- without it, running the file directly would import it, define the
+    # checks, and pass without checking anything at all.
+    test_readme_visuals()
+    test_wordmark_never_ships()

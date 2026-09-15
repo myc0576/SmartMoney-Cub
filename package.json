@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "looks-same": "^10.0.1",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0"
+  }
+}

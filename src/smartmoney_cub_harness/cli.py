@@ -40,7 +40,7 @@ from smartmoney_cub_harness.run_capture import capture_run, get_command_preset, 
 from smartmoney_cub_harness.run_envelope import validate_run_envelope
 from smartmoney_cub_harness.safety import redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
-from smartmoney_cub_harness.self_evolve import confirm_promotion, run_self_evolve
+from smartmoney_cub_harness.self_evolve import run_self_evolve
 from smartmoney_cub_harness.share_cli import build_share_pack_from_source
 from smartmoney_cub_harness.trader_cli import run_trader_serve
 from smartmoney_cub_harness.tradingagents_adapter import (
@@ -49,10 +49,17 @@ from smartmoney_cub_harness.tradingagents_adapter import (
     run_tradingagents_local_bridge,
 )
 from smartmoney_cub_harness.workspace_cli import (
+    DEFAULT_WORKSPACE_DB,
+    confirm_promotion_with_workspace,
+    sync_registry_candidate_to_workspace,
+    sync_registry_file_to_workspace,
     workspace_add_case,
     workspace_import_csv,
     workspace_list_cases,
+    workspace_promote_rule,
+    workspace_reject_rule,
     workspace_record_outcome,
+    workspace_rules,
     workspace_show_case,
     workspace_summary,
 )
@@ -193,6 +200,19 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("registry")
     register.add_argument("candidate")
     register.add_argument("--confirm-promote", action="store_true")
+    register.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library the candidate is mirrored into (default: state/workspace/review.db)",
+    )
+    register.add_argument(
+        "--champion-note",
+        default="",
+        help=(
+            "Human confirmation note. Required with --confirm-promote, because the "
+            "note is the only thing that may write a champion row."
+        ),
+    )
 
     doctor_cmd = sub.add_parser("doctor", help="Show local package health and safety settings")
     doctor_cmd.set_defaults(command="doctor")
@@ -225,11 +245,21 @@ def build_parser() -> argparse.ArgumentParser:
     self_evolve.add_argument("--state-root", default="state/self_evolve")
     self_evolve.add_argument("--resume")
     self_evolve.add_argument("--interactive-confirm", action="store_true")
+    self_evolve.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library the proposed challenger is mirrored into (default: state/workspace/review.db)",
+    )
 
     confirm = sub.add_parser("confirm-promotion", help="Record a manual promotion decision")
     confirm.add_argument("promotion_packet")
     confirm.add_argument("--decision", required=True, choices=["promote", "defer", "reject"])
     confirm.add_argument("--note", default="")
+    confirm.add_argument(
+        "--workspace-db",
+        default=DEFAULT_WORKSPACE_DB,
+        help="SQLite rule library that mirrors the decision (default: state/workspace/review.db)",
+    )
 
     privacy_cmd = sub.add_parser("privacy-audit", help="Show offline privacy and safety settings")
     privacy_cmd.set_defaults(command="privacy-audit")
@@ -283,6 +313,11 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_cmd.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     workbench_cmd.add_argument("--port", type=int, default=8787, help="Port (default: 8787)")
     workbench_cmd.add_argument("--state-dir", default=None, help="Override the local state directory")
+    workbench_cmd.add_argument(
+        "--workspace-db",
+        default=None,
+        help="SQLite rule library (default: <state-dir>/workspace/review.db)",
+    )
     workbench_cmd.add_argument("--no-browser", action="store_true", help="Do not open a browser")
     workbench_cmd.add_argument(
         "--token",
@@ -463,6 +498,27 @@ def build_parser() -> argparse.ArgumentParser:
     ws_summary = workspace_sub.add_parser("summary", help="Show workspace counts and sample limits")
     ws_summary.add_argument("--db")
 
+    ws_rules = workspace_sub.add_parser("rules", help="List the rule library with promotion blockers")
+    ws_rules.add_argument("--db")
+    ws_rules.add_argument("--status")
+
+    # --note is deliberately NOT required at the argparse level: a promotion
+    # without a written confirmation must fail as a clean JSON error on the
+    # workspace error contract (exit 2), not as an argparse usage dump that
+    # prints no JSON at all. The gate itself is enforced in Workspace, so no
+    # entry point can bypass it.
+    ws_promote = workspace_sub.add_parser(
+        "promote-rule", help="Promote a rule to champion with a human confirmation note"
+    )
+    ws_promote.add_argument("rule_id")
+    ws_promote.add_argument("--note", default="")
+    ws_promote.add_argument("--db")
+
+    ws_reject = workspace_sub.add_parser("reject-rule", help="Reject a rule candidate")
+    ws_reject.add_argument("rule_id")
+    ws_reject.add_argument("--note", default="")
+    ws_reject.add_argument("--db")
+
     return parser
 
 
@@ -525,7 +581,42 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "register-candidate":
-        _print_json(register_candidate(args.registry, _read_json(args.candidate), confirm_promote=args.confirm_promote))
+        candidate = _read_json(args.candidate)
+        if args.confirm_promote and not args.champion_note.strip():
+            # Refuse before registry.register_candidate writes the JSON champion.
+            # The JSON registry and the sqlite rule library must not disagree: a
+            # promote with no written confirmation mutates neither.
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {
+                        "code": "ValueError",
+                        "message": "champion rule requires an explicit human confirmation note",
+                    },
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        result = register_candidate(
+            args.registry, candidate, confirm_promote=args.confirm_promote
+        )
+        try:
+            result["workspace_rule"] = sync_registry_candidate_to_workspace(
+                rule_id=str(candidate.get("rule_id") or ""),
+                registry_status=str(result.get("status") or "challenger"),
+                family=str(candidate.get("family") or ""),
+                title=str(candidate.get("title") or ""),
+                metrics=candidate.get("metrics") if isinstance(candidate.get("metrics"), dict) else {},
+                note=args.champion_note,
+                db_path=args.workspace_db,
+            )
+        except ValueError as exc:
+            result["workspace_rule"] = {
+                "status": "error",
+                "error": {"code": type(exc).__name__, "message": str(exc)},
+                "safety": SAFETY_DECLARATION,
+            }
+        _print_json(result)
         return 0
 
     if args.command == "doctor":
@@ -556,18 +647,46 @@ def main(argv: list[str] | None = None) -> int:
             state_root=args.state_root,
             resume=args.resume,
         )
+        # Mirror every candidate the loop wrote into the shared rule library, so a
+        # challenger proposed by self-evolve is visible next to one proposed by
+        # the review assistant. The loop's own JSON registry is untouched.
+        loop_dir = Path(args.state_root) / str(result["loop_id"])
+        result["workspace_sync"] = sync_registry_file_to_workspace(
+            loop_dir / "rule_registry.json", db_path=args.workspace_db
+        )
         if args.interactive_confirm and result.get("promotion_status") == "promotion_recommended":
             sys.stderr.write("Promotion recommended. Enter promote, defer, or reject: ")
             decision = input().strip().lower()
             sys.stderr.write("Optional note: ")
             note = input()
-            packet_path = Path(args.state_root) / str(result["loop_id"]) / "promotion_packet.json"
-            result["confirmation"] = confirm_promotion(packet_path, decision=decision, note=note)
+            packet_path = loop_dir / "promotion_packet.json"
+            result["confirmation"] = confirm_promotion_with_workspace(
+                packet_path, decision=decision, note=note, db_path=args.workspace_db
+            )
         _print_json(result)
         return 0
 
     if args.command == "confirm-promotion":
-        _print_json(confirm_promotion(args.promotion_packet, decision=args.decision, note=args.note))
+        try:
+            result = confirm_promotion_with_workspace(
+                args.promotion_packet,
+                decision=args.decision,
+                note=args.note,
+                db_path=args.workspace_db,
+            )
+        except ValueError as exc:
+            # Same error contract as the workspace subcommands. A promote with no
+            # written confirmation reaches here, and it must not report success:
+            # the human gate is the point of this command.
+            _print_json(
+                {
+                    "status": "error",
+                    "error": {"code": type(exc).__name__, "message": str(exc)},
+                    "safety": SAFETY_DECLARATION,
+                }
+            )
+            return 2
+        _print_json(result)
         return 0
 
     if args.command == "privacy-audit":
@@ -647,6 +766,7 @@ def main(argv: list[str] | None = None) -> int:
             host=args.host,
             port=args.port,
             state_dir=args.state_dir,
+            workspace_db=args.workspace_db,
             open_browser=not args.no_browser,
             token=args.token,
         )
@@ -860,6 +980,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.workspace_command == "summary":
             _print_json(workspace_summary(db_path=args.db))
             return 0
+        if args.workspace_command == "rules":
+            _print_json(workspace_rules(db_path=args.db, status=args.status))
+            return 0
+        if args.workspace_command == "promote-rule":
+            result = workspace_promote_rule(args.rule_id, note=args.note, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
+        if args.workspace_command == "reject-rule":
+            result = workspace_reject_rule(args.rule_id, note=args.note, db_path=args.db)
+            _print_json(result)
+            return 0 if result["status"] == "ok" else 2
         parser.error(f"unknown workspace command: {args.workspace_command}")
         return 2
 

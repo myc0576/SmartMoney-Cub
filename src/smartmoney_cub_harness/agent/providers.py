@@ -27,6 +27,13 @@ REQUEST_TIMEOUT_SECONDS = 120
 MAX_TOKENS = 2048
 DISCOVERY_TIMEOUT_SECONDS = 30
 
+# The field names an OpenAI-compatible endpoint has been observed to use for the
+# private reasoning stream. DeepSeek and the gateways that proxy it send
+# ``reasoning_content``; the single-entry list is kept explicit so a new alias is
+# an intentional, reviewed addition rather than a wildcard match that could pick
+# up unrelated fields. The name that arrived is the name that must be sent back.
+REASONING_ALIASES: tuple[str, ...] = ("reasoning_content",)
+
 
 def iso_now() -> str:
     """UTC timestamp for a model check. UTC because it is compared, not read."""
@@ -1053,7 +1060,16 @@ def stream_chat(
 ) -> Iterator[dict[str, Any]]:
     """Yield provider events as dictionaries.
 
-    Event kinds: delta (text), tool_call (a complete call), done.
+    Event kinds: delta (visible text), reasoning (private thinking text),
+    tool_call (a complete call), done.
+
+    A thinking model streams its private reasoning beside the answer, and the
+    provider rejects the NEXT round with HTTP 400 when that text is dropped:
+    "The reasoning_content in the thinking mode must be passed back to the API".
+    So the field is forwarded verbatim under the event's ``text``. Only field
+    names the provider actually used are read, and the event is emitted only
+    when the field was present: inventing an empty reasoning field would make
+    the request shape wrong for the models that never emit one.
     """
     response = _open(
         provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
@@ -1069,6 +1085,13 @@ def stream_chat(
             chunk = parsed["chunk"]
             for choice in chunk.get("choices") or []:
                 delta = choice.get("delta") or {}
+                # Reasoning travels under the alias names seen in the wild; the
+                # alias determines the key the transcript uses on the way back,
+                # so it is carried with the event rather than flattened.
+                for alias in REASONING_ALIASES:
+                    if isinstance(delta.get(alias), str) and delta[alias]:
+                        yield {"kind": "reasoning", "field": alias, "text": delta[alias]}
+                        break
                 content = delta.get("content")
                 if content:
                     yield {"kind": "delta", "text": content}

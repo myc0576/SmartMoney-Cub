@@ -79,8 +79,23 @@ class WorkbenchService:
     def __init__(self, root: str | Path, *, workspace_db: str | None = None) -> None:
         self.root = Path(root)
         self.store = Store(self.root)
-        self.workspace_db = workspace_db or "state/workspace/review.db"
-        self.runtime = ReviewAgentRuntime(self.store, credentials_root=str(self.root))
+        # The rule library sits under this service's own state root, not under a
+        # relative path resolved against the process working directory. The
+        # literal that used to be here meant a workbench started with
+        # --state-dir elsewhere still wrote rules into ./state/workspace/review.db:
+        # a rule proposed in a session landed outside the review data the session
+        # was reading, and the rule library page showed a different store than the
+        # assistant had written to. A caller that wants one specific file (both the
+        # workbench and trader serve expose --workspace-db) still overrides it.
+        self.workspace_db = workspace_db or str(self.root / "workspace" / "review.db")
+        # The assistant writes the challenger rules it proposes into the same rule
+        # library this service reads. Passing the resolved path down is what makes
+        # that true: without it the runtime falls back to a store-root default and
+        # a rule proposed in a session would never appear in the rule library the
+        # user is looking at.
+        self.runtime = ReviewAgentRuntime(
+            self.store, credentials_root=str(self.root), workspace_db=self.workspace_db
+        )
         self._lock = threading.Lock()
 
     def close(self) -> None:
@@ -197,14 +212,63 @@ class WorkbenchService:
         }
 
     def rules(self) -> dict[str, Any]:
+        """List the rule library with the promotion blockers on each row.
+
+        The blockers are computed at read time from the one frozen threshold
+        check the rest of the product uses, so the interface can say what a rule
+        is still missing without storing a second, drift-prone copy of it.
+        """
         from smartmoney_cub_harness.workspace import Workspace  # noqa: PLC0415
 
         workspace = Workspace(self.workspace_db)
         try:
-            rules = workspace.list_rules()
+            rules = workspace.list_rules_with_blockers()
         finally:
             workspace.close()
         return {"status": "ok", "rules": rules, "safety": SAFETY_DECLARATION}
+
+    def promote_rule(self, rule_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Promote one challenger rule to champion behind the human gate.
+
+        The note is required and withheld no default: it is the artifact that
+        records who authorized the champion row and why. A blank note is refused
+        rather than substituted, because a defaulted note would turn the human
+        gate into a rubber stamp.
+        """
+        from smartmoney_cub_harness.workspace import Workspace  # noqa: PLC0415
+
+        note = str(payload.get("note") or "").strip()
+        if not note:
+            raise ApiError("晋级必须写一条确认说明", code="note_required")
+        workspace = Workspace(self.workspace_db)
+        try:
+            if workspace.get_rule(rule_id) is None:
+                raise ApiError(f"no rule {rule_id!r}", status=404, code="not_found")
+            try:
+                record = workspace.promote_rule(rule_id=rule_id, note=note)
+            except ValueError as error:
+                raise ApiError(str(error), code="promotion_refused") from error
+            # Re-read the row so the response has the same shape as one entry of
+            # GET /api/rules -- status, metrics, and the recomputed blockers.
+            # Returning the write result instead would give the caller a
+            # differently shaped object with rule_status where a listed rule has
+            # status, and the interface would have to special-case it.
+            promoted = next(
+                (
+                    rule
+                    for rule in workspace.list_rules_with_blockers()
+                    if rule["rule_id"] == rule_id
+                ),
+                None,
+            )
+        finally:
+            workspace.close()
+        return {
+            "status": "ok",
+            "rule": promoted or record,
+            "promotion_note": record.get("promotion_note", note),
+            "safety": SAFETY_DECLARATION,
+        }
 
     def plugins(self) -> dict[str, Any]:
         from smartmoney_cub_harness.plugin_cli import plugin_list  # noqa: PLC0415
@@ -1105,6 +1169,14 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/settings/test":
                 self._json(self.service.test_provider(self._read_json()))
+                return
+            if path.startswith("/api/rules/") and path.endswith("/promote"):
+                # The one rule-library write. It sits behind the same access
+                # check as every other route, and on a shared host the shipped
+                # proxy refuses the whole workbench surface, so promotion is
+                # reachable only from the local single-user workbench.
+                rule_id = urllib.parse.unquote(path[len("/api/rules/"):-len("/promote")])
+                self._json(self.service.promote_rule(rule_id, self._read_json()))
                 return
         except ApiError as error:
             self._json(

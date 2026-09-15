@@ -214,6 +214,87 @@ def test_challenger_state_does_not_require_note(tmp_path: Path) -> None:
     assert workspace.list_rules(status="champion") == []
 
 
+def test_list_rules_with_blockers_carries_the_frozen_thresholds(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    workspace.set_rule_state(
+        rule_id="RULE-WEAK",
+        status="challenger",
+        metrics={"sample_count": 3, "future_leakage_count": 1},
+    )
+    workspace.set_rule_state(
+        rule_id="RULE-STRONG",
+        status="promotion_recommended",
+        metrics={
+            "sample_count": 30,
+            "false_alert_rate": 0.1,
+            "missed_opportunity_rate": 0.1,
+            "future_leakage_count": 0,
+            "risk_contract_violation_rate": 0.0,
+        },
+    )
+
+    # list_rules orders by rule_id, so look the rows up by id rather than by position.
+    by_id = {rule["rule_id"]: rule for rule in workspace.list_rules_with_blockers()}
+    weak, strong = by_id["RULE-WEAK"], by_id["RULE-STRONG"]
+    assert weak["promotion_blockers"] == ["sample_count_below_20", "future_leakage_detected"]
+    assert weak["promotion_recommendable"] is False
+    assert strong["promotion_blockers"] == []
+    assert strong["promotion_recommendable"] is True
+
+    # The status filter still applies to the enriched listing.
+    only_challengers = workspace.list_rules_with_blockers(status="challenger")
+    assert [rule["rule_id"] for rule in only_challengers] == ["RULE-WEAK"]
+
+
+def test_promote_rule_keeps_blockers_advisory_and_records_the_note(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    workspace.set_rule_state(
+        rule_id="RULE-3",
+        status="challenger",
+        family="toy",
+        title="thin sample",
+        metrics={"sample_count": 2},
+    )
+
+    # A thin sample cannot make a promotion RECOMMENDATION, but only the human
+    # note gates the champion row. The contract separates those two decisions.
+    result = workspace.promote_rule(rule_id="RULE-3", note="reviewed by hand")
+    assert result["rule_status"] == "champion"
+    assert result["promotion_blockers"] == ["sample_count_below_20"]
+    assert result["blockers_are_advisory"] is True
+    assert workspace.get_rule("RULE-3")["family"] == "toy"
+    assert workspace.get_rule("RULE-3")["title"] == "thin sample"
+
+
+def test_promote_rule_without_a_note_refuses_and_writes_nothing(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    workspace.set_rule_state(rule_id="RULE-4", status="challenger")
+
+    with pytest.raises(ValueError) as excinfo:
+        workspace.promote_rule(rule_id="RULE-4", note="   ")
+    assert "explicit human confirmation note" in str(excinfo.value)
+    assert workspace.get_rule("RULE-4")["status"] == "challenger"
+    assert workspace.summary()["champion_rule_count"] == 0
+
+
+def test_reject_rule_records_rejection_without_losing_the_rule_description(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    workspace.set_rule_state(
+        rule_id="RULE-5",
+        status="promotion_recommended",
+        family="toy",
+        title="candidate",
+        metrics={"sample_count": 25},
+    )
+
+    result = workspace.reject_rule(rule_id="RULE-5")
+    assert result["rule_status"] == "rejected"
+    rule = workspace.get_rule("RULE-5")
+    assert rule["family"] == "toy"
+    assert rule["title"] == "candidate"
+    assert rule["metrics"]["sample_count"] == 25
+
+
 def test_summary_reports_sample_size_and_statistical_limits(tmp_path: Path) -> None:
     workspace = _workspace(tmp_path)
     _alert_case(workspace)

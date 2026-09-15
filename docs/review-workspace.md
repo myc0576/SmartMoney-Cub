@@ -55,9 +55,15 @@ smcub workspace show-case RT-600111-1
 smcub workspace record-outcome RT-600111-1 --horizon d1 --return-pct 3.5
 smcub workspace import-csv exports/fills.csv
 smcub workspace summary
+smcub workspace rules                 # the rule library, with promotion blockers
+smcub workspace rules --status champion
+smcub workspace promote-rule RULE-1 --note "reviewed the gates"
+smcub workspace reject-rule RULE-1 --note "superseded by RULE-2"
 ```
 
 The database defaults to `state/workspace/review.db`; override it with `--db`.
+`register-candidate`, `self-evolve`, and `confirm-promotion` accept `--workspace-db`
+so the JSON rule registry they write stays mirrored into this one library.
 
 ## Outcomes never rewrite history
 
@@ -82,6 +88,23 @@ status and every issue so the user can correct the export.
 status. A champion row cannot be written without an explicit human confirmation
 note. That constraint is enforced in the workspace layer, so a dashboard, a plugin,
 or a model cannot bypass it by writing to the database directly.
+
+Two gates are deliberately separate. The threshold gate -- `sample_count >= 20`,
+`false_alert_rate <= 0.2`, `missed_opportunity_rate <= 0.25`, zero future leakage,
+zero risk-contract violations -- decides whether the evidence may produce a
+promotion *recommendation*. It does not authorize the mutation. The human gate is
+the written note, and it is the only thing that writes a champion row. So
+`promote-rule` reports the outstanding blockers and then proceeds only when a note
+is supplied; a blank or missing note is refused, and nothing is written.
+
+Every rule carries its blockers wherever it is read, from the one frozen threshold
+check the rest of the product uses, so the interface and the CLI cannot disagree
+about what a rule is still missing.
+
+The review assistant can only ever propose a challenger. A proposal records its
+blockers, appends an entry to `evolution_ledger.jsonl` beside the workspace
+database, and appends a readable fragment to `memory.md` in the same directory. It
+cannot promote, and no tool it can call reaches a champion row.
 
 ## Statistics and their limits
 

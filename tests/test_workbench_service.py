@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import threading
+import urllib.error
+import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_BASE_URL,
@@ -19,6 +23,123 @@ from smartmoney_cub_harness.agent.providers import (
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.workbench.server import WorkbenchHandler, WorkbenchService
+from smartmoney_cub_harness.workspace import Workspace
+
+# ---- the rule library: where it lives, and the one write it accepts -------
+
+
+def test_the_rule_library_lives_under_the_state_root_not_the_process_cwd(tmp_path) -> None:
+    """A rule proposed in a session must land in the store the session reads.
+
+    The service used to keep the literal "state/workspace/review.db", resolved
+    against the process working directory, and then hand that value down to the
+    assistant runtime. A workbench started with --state-dir elsewhere therefore
+    wrote a proposed rule outside its own review data, and the rule library page
+    read a different store than the assistant had written to.
+    """
+    root = tmp_path / "state-dir"
+    outside = tmp_path / "cwd"
+    root.mkdir()
+    outside.mkdir()
+    previous = os.getcwd()
+    os.chdir(outside)
+    try:
+        service = WorkbenchService(root)
+        try:
+            # The path is anchored to the state root, and it is absolute, so it
+            # cannot be reinterpreted by whatever directory the process is in.
+            assert Path(service.workspace_db).is_absolute()
+            assert Path(service.workspace_db) == root / "workspace" / "review.db"
+            # The assistant writes where the library reads. Both halves agreeing
+            # is the property that makes a proposed rule visible on the page.
+            assert service.runtime.workspace_db == service.workspace_db
+            result = service.runtime.toolbox.call(
+                "propose_challenger_rule",
+                {"rule_id": "CWD-1", "title": "t", "family": "f", "sample_count": 3},
+            )
+            assert result["status"] == "ok"
+            assert (root / "workspace" / "review.db").is_file()
+            assert not (outside / "state").exists(), "a rule was written under the process CWD"
+            listed = service.rules()["rules"]
+            assert [rule["rule_id"] for rule in listed] == ["CWD-1"]
+        finally:
+            service.close()
+    finally:
+        os.chdir(previous)
+
+
+def test_an_explicit_workspace_db_still_wins(tmp_path) -> None:
+    explicit = tmp_path / "custom" / "rules.db"
+    service = WorkbenchService(tmp_path / "root", workspace_db=str(explicit))
+    try:
+        assert service.workspace_db == str(explicit)
+        assert service.runtime.workspace_db == str(explicit)
+    finally:
+        service.close()
+
+
+def test_http_promotion_requires_a_written_note(tmp_path) -> None:
+    """Promotion is the one rule-library write, and the note is the gate.
+
+    Driven over HTTP rather than by calling the service, because the route is
+    what the rule-library page actually uses and the gate has to hold there.
+    """
+    service = WorkbenchService(tmp_path)
+    try:
+        service.runtime.toolbox.call(
+            "propose_challenger_rule",
+            {"rule_id": "HTTP-1", "title": "t", "family": "f", "sample_count": 25},
+        )
+        handler = type(
+            "PromotionHandler",
+            (WorkbenchHandler,),
+            {"service": service, "asset_dir": None, "access_token": None},
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_port}"
+
+        def post(path: str, payload: dict) -> tuple[int, dict]:
+            request = urllib.request.Request(
+                base + path,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                return error.code, json.loads(error.read().decode("utf-8"))
+
+        try:
+            # A blank note is refused, and the refusal carries the declaration
+            # like every other response does.
+            status, body = post("/api/rules/HTTP-1/promote", {"note": "   "})
+            assert status == 400, body
+            assert body["safety"] == SAFETY_DECLARATION
+            # The rule is still a challenger: a refused promotion writes nothing.
+            assert Workspace(service.workspace_db).get_rule("HTTP-1")["status"] == "challenger"
+
+            status, body = post("/api/rules/NOPE/promote", {"note": "x"})
+            assert status == 404, body
+            assert body["safety"] == SAFETY_DECLARATION
+
+            status, body = post("/api/rules/HTTP-1/promote", {"note": "reviewed the gates"})
+            assert status == 200, body
+            assert body["safety"] == SAFETY_DECLARATION
+            assert body["rule"]["status"] == "champion"
+            assert Workspace(service.workspace_db).get_rule("HTTP-1")["promotion_note"] == "reviewed the gates"
+
+            # A promoted rule leaves the challenger list and joins the champions.
+            listed = service.rules()["rules"]
+            assert [r["rule_id"] for r in listed if r["status"] == "champion"] == ["HTTP-1"]
+        finally:
+            server.shutdown()
+            server.server_close()
+    finally:
+        service.close()
+
 
 
 def _fill(**overrides):

@@ -145,6 +145,12 @@ export interface RuleRecord {
   promotion_note: string | null;
   promoted_at: string | null;
   updated_at: string;
+  /**
+   * Why this rule cannot be recommended for promotion yet, computed by the same
+   * threshold check the rest of the product uses. Absent on a rule read before
+   * the field existed, so callers must treat it as optional.
+   */
+  promotion_blockers?: string[];
 }
 
 /**

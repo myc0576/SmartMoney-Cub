@@ -1,5 +1,7 @@
 # smartmoney-cub-harness
 
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="72" height="72" align="right" />
+
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-pytest-informational)](tests/)
@@ -31,8 +33,8 @@ See [docs/architecture.md](docs/architecture.md) for the text and Mermaid repres
 Install the package, then capture one deterministic toy run with external-Agent metadata:
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 python -m pip install -e ".[dev]"
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00" --agent-name "toy-doc-agent" --agent-version "1.0" --agent-interface "cli"
 smcub validate-envelope tmp/sandbox/20260601/20260601_153100-after-close/run_envelope.json
@@ -227,8 +229,8 @@ The human remains responsible for final judgment.
 ## Quick Start
 
 ```bash
-git clone https://github.com/myc0576/smartmoney-cub-harness.git
-cd smartmoney-cub-harness
+git clone https://github.com/myc0576/SmartMoney-Cub.git
+cd SmartMoney-Cub
 python -m pip install -e .
 smcub doctor
 smcub capture-run --mode after-close --sandbox --decision-time "2026-06-01T15:30:00+08:00" --command "python examples/toy_strategy/leader_pullback_demo.py"
@@ -334,6 +336,26 @@ The interface has a left navigation rail, a middle working page, and a docked
 review assistant on the right. Pages: overview with an equity curve and calendar
 heatmap, trade log with a detail drawer and fill revision history, review calendar,
 performance analytics, rule library, import, plugins, and settings.
+
+### Rule evolution from the review conversation
+
+The assistant can propose a challenger rule from the reviewed evidence, and that
+proposal lands in the same rule library the rule-library page reads: its blockers
+are recorded, an entry is appended to `evolution_ledger.jsonl`, and a readable
+fragment is appended to `memory.md` beside the workspace database.
+
+Promotion is a separate, human step and the only write that can create a champion:
+
+```bash
+smcub workspace rules
+smcub workspace promote-rule RULE-1 --note "sample 24, false-alert 0.12, confirmed"
+```
+
+The note is the gate. A blank or missing note is refused and nothing is written, in
+the CLI and on the interface's promote route alike. Two gates stay separate on
+purpose: the sample and risk thresholds decide whether a recommendation is offered,
+and the written confirmation is what authorizes the rule to become champion. An
+assistant, a plugin, or an imported report can never substitute for it.
 
 ### Default desensitization
 

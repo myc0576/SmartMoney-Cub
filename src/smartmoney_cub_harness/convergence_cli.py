@@ -25,6 +25,7 @@ def run_workbench(
     host: str = "127.0.0.1",
     port: int = 8787,
     state_dir: str | None = None,
+    workspace_db: str | None = None,
     open_browser: bool = True,
     token: str | None = None,
 ) -> int:
@@ -53,6 +54,7 @@ def run_workbench(
         asset_dir=bundled_asset_dir(),
         open_browser=open_browser,
         access_token=token,
+        workspace_db=workspace_db,
         ready=announce,
     )
     return 0
@@ -268,4 +270,3 @@ def _fail(message: str, *, as_json: bool = False) -> None:
 
 def _print_json(payload: Any) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n")
-

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, trader } from './api';
+import { BRAND_MARK_SRC } from './assets/brand';
 import type { Issue, Meta, OpenPosition, TradeLogEntry, TraderMeta, TraderSummary } from './types';
 import { AssistantPanel } from './components/AssistantPanel';
 import { OverviewView } from './views/OverviewView';
@@ -170,7 +171,14 @@ export function App() {
     <div className="shell">
       <nav className="sidebar">
         <div className="brand">
-          SmartMoney-Cub
+          {/* The mark sits beside the name rather than replacing it: the name
+              stays real text so it keeps a real font and stays selectable. The
+              image carries nothing the name does not, so alt="" keeps a screen
+              reader from reading the brand out twice. */}
+          <div className="brand-head">
+            <img className="brand-mark" src={BRAND_MARK_SRC} alt="" width={26} height={26} />
+            <span className="brand-name">SmartMoney-Cub</span>
+          </div>
           <small>本地复盘工作台 v{traderMeta?.version || '1.0.0'}</small>
         </div>
         {NAV.map((group) => (
