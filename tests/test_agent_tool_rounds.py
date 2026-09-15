@@ -331,6 +331,42 @@ def test_a_proposal_is_journalled_with_blockers_and_the_safety_declaration(tmp_p
         store.close()
 
 
+def test_a_secret_in_the_evidence_note_never_reaches_the_memory_file(tmp_path) -> None:
+    """The readable half of the journal is redacted like every other memory file.
+
+    docs/memory-loop.md requires memory output to go through the same redaction
+    layer as CLI JSON output. The JSON ledger entry is redacted by its own helper,
+    but the Markdown fragment was written from the raw argument, so the copy a
+    human reads and shares kept a token and a phone number that the ledger had
+    removed.
+    """
+    store = Store(tmp_path)
+    try:
+        runtime = ReviewAgentRuntime(store)
+        runtime.toolbox.call(
+            "propose_challenger_rule",
+            json.dumps(
+                {
+                    **TOOL_ARGUMENTS,
+                    "evidence_note": "token=supersecret123 联系 13800138000 /Users/someone/private",
+                }
+            ),
+        )
+        workspace_dir = Path(runtime.workspace_db).parent
+        memory = (workspace_dir / "memory.md").read_text(encoding="utf-8")
+        ledger = (workspace_dir / "evolution_ledger.jsonl").read_text(encoding="utf-8")
+
+        # The ledger is redacted by append_ledger_event; the memory file has to be
+        # redacted too, or the readable copy is the one that leaks.
+        for secret in ("supersecret123", "13800138000", "/Users/someone"):
+            assert secret not in memory, f"{secret} survived into memory.md"
+            assert secret not in ledger, f"{secret} survived into the ledger"
+        # The redaction is applied, not a silent truncation of the note.
+        assert "[REDACTED]" in memory
+    finally:
+        store.close()
+
+
 def test_the_provider_streams_reasoning_only_when_it_was_actually_sent(monkeypatch) -> None:
     """The provider event must mirror the wire, including its absence.
 

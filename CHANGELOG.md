@@ -199,6 +199,16 @@ claims produced most of them.
 - **An assistant proposal could be promoted into a row the interface misread.** A
   promotion returned `rule_status` where a listed rule carries `status`, so the
   page had to special-case the response; it now returns the same shape as a list row.
++- **An assistant proposal could be promoted into a row the interface misread.** A
+  promotion returned `rule_status` where a listed rule carries `status`, so the
+  page had to special-case the response; it now returns the same shape as a list row.
+- **The readable memory fragment kept secrets the ledger had removed.** An evidence
+  note is free text a person or a model wrote, so it can carry a token, a phone
+  number, or a local path. The JSON ledger entry was redacted by its helper, but
+  the Markdown fragment was written from the raw argument -- so the copy a human
+  reads and shares was the one that leaked. It now goes through the same redaction
+  layer that docs/memory-loop.md requires, with a test asserting a token, a phone
+  number, and a home path never survive into either file.
 
 
 ### Compatibility

@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from smartmoney_cub_harness import analytics
 from smartmoney_cub_harness.registry import promotion_blockers
+from smartmoney_cub_harness.safety import redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 
@@ -426,18 +427,26 @@ def append_memory_fragment(
     evidence, and what is still missing. It is appended, never rewritten, so the
     history of proposals stays intact, and the parent directory is created when
     the workspace has not been used yet. No absolute local paths are recorded.
+
+    The fragment goes through the same redaction layer as every other memory
+    artifact (see docs/memory-loop.md): an evidence note is free text the user or
+    the model wrote, so it can carry a token, a phone number, or a path. The JSON
+    ledger entry is redacted by its own helper, and the readable half has to match
+    it -- a memory file that keeps a secret the ledger removed is a worse leak,
+    because it is the copy a human reads and shares.
     """
     memory_path = Path(path)
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     blocker_text = ", ".join(blockers) if blockers else "无（仅表示达到阈值，晋升仍需人工确认）"
+    safe_title, safe_evidence = redact([title, evidence_note or "未提供"])
     fragment = "\n".join(
         [
             f"## 候选规则 {rule_id} · {_now_iso()}",
             "",
-            f"- 标题：{title}",
+            f"- 标题：{safe_title}",
             f"- 家族：{family or '未标注'}",
             f"- 样本量：{sample_count}",
-            f"- 证据：{evidence_note or '未提供'}",
+            f"- 证据：{safe_evidence}",
             f"- 晋升阻塞项：{blocker_text}",
             "- 状态：challenger（由复盘助手提出，未晋升为 champion）",
             f"- {SAFETY_DECLARATION}",
