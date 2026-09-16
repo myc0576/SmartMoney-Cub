@@ -53,6 +53,11 @@ class PluginStateStore:
                 last_error TEXT,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS plugin_config (
+                plugin_id TEXT PRIMARY KEY,
+                config_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS plugin_event (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 plugin_id TEXT NOT NULL,
@@ -141,6 +146,33 @@ class PluginStateStore:
             payload["manifest"] = None
         payload["safety"] = SAFETY_DECLARATION
         return payload
+
+    def set_config(self, plugin_id: str, config: dict[str, Any]) -> None:
+        raw = json.dumps(config, ensure_ascii=False)
+        self._connection.execute(
+            """
+            INSERT INTO plugin_config (plugin_id, config_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(plugin_id) DO UPDATE SET config_json = excluded.config_json, updated_at = excluded.updated_at
+            """,
+            (plugin_id, raw, _now_iso()),
+        )
+        self._connection.execute(
+            "INSERT INTO plugin_event (plugin_id, from_state, to_state, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+            (plugin_id, "CONFIGURED", "CONFIGURED", "config_updated", _now_iso()),
+        )
+        self._connection.commit()
+
+    def get_config(self, plugin_id: str) -> dict[str, Any]:
+        row = self._connection.execute(
+            "SELECT config_json FROM plugin_config WHERE plugin_id = ?", (plugin_id,)
+        ).fetchone()
+        if row is None:
+            return {}
+        try:
+            return json.loads(row["config_json"]) if row["config_json"] else {}
+        except Exception:
+            return {}
 
     def list_all(self) -> list[dict[str, Any]]:
         rows = self._connection.execute(
