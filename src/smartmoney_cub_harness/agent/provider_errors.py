@@ -6,7 +6,7 @@ import socket
 import urllib.error
 from typing import Any
 
-from smartmoney_cub_harness.safety import redact, redact_string
+from smartmoney_cub_harness.safety import looks_sensitive_key, redact, redact_string
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 
@@ -72,6 +72,33 @@ class ProviderError(RuntimeError):
     """Base provider runtime error."""
 
 
+def _collect_provider_secrets(provider: dict[str, Any] | None) -> set[str]:
+    secrets: set[str] = set()
+    if not provider:
+        return secrets
+    for k, v in provider.items():
+        if isinstance(v, str) and v.strip():
+            if looks_sensitive_key(str(k)) or k in ("api_key", "token", "auth_token", "secret", "password"):
+                secrets.add(v.strip())
+    return secrets
+
+
+def _redact_all(value: Any, extra_secrets: set[str] | None = None) -> Any:
+    redacted = redact(value)
+    if not extra_secrets:
+        return redacted
+    if isinstance(redacted, str):
+        for sec in extra_secrets:
+            if sec and sec in redacted:
+                redacted = redacted.replace(sec, "[REDACTED]")
+        return redacted
+    if isinstance(redacted, dict):
+        return {k: _redact_all(v, extra_secrets) for k, v in redacted.items()}
+    if isinstance(redacted, list):
+        return [_redact_all(item, extra_secrets) for item in redacted]
+    return redacted
+
+
 class ClassifiedProviderError(ProviderError):
     """Structured provider error with stable code, actionable remediation, and safe diagnostics."""
 
@@ -91,11 +118,13 @@ class ClassifiedProviderError(ProviderError):
         action_suggestion: str = "",
         recovery_suggestions: list[dict[str, str]] | None = None,
         safe_diagnostics: dict[str, Any] | None = None,
+        extra_secrets: set[str] | None = None,
     ) -> None:
-        super().__init__(message)
+        clean_msg = _redact_all(redact_string(message), extra_secrets)
+        super().__init__(clean_msg)
         self.code = code
-        self.message = message
-        self.raw_message = redact_string(raw_message or message)
+        self.message = clean_msg
+        self.raw_message = _redact_all(redact_string(raw_message or message), extra_secrets)
         self.http_status = http_status
         self.phase = phase
         self.provider_id = provider_id
@@ -105,7 +134,7 @@ class ClassifiedProviderError(ProviderError):
         self.portal_url = portal_url
         self.action_suggestion = action_suggestion
         self.recovery_suggestions = recovery_suggestions or []
-        self.safe_diagnostics = redact(safe_diagnostics or {})
+        self.safe_diagnostics = _redact_all(safe_diagnostics or {}, extra_secrets)
         self.safety = SAFETY_DECLARATION
 
     def to_dict(self) -> dict[str, Any]:
@@ -139,7 +168,7 @@ def _extract_http_status_and_body(error: Exception, detail: str = "") -> tuple[i
                 body = ""
     elif isinstance(error, ProviderError):
         msg = str(error)
-        match = re.search(r"HTTPs+(\d{3})", msg)
+        match = re.search(r"HTTP\s+(\d{3})", msg)
         if match:
             http_status = int(match.group(1))
         if not body and ":" in msg:
@@ -158,11 +187,13 @@ def classify_provider_error(
     provider = provider or {}
     provider_id = str(provider.get("provider_id") or "")
     portal_url = str(provider.get("portal_url") or "")
+    extra_secrets = _collect_provider_secrets(provider)
+
     http_status, body = _extract_http_status_and_body(error, detail=detail)
 
     combined_text = f"{error} {body}".lower()
-    sanitized_body = redact_string(body)
-    raw_message = redact_string(str(error))
+    sanitized_body = _redact_all(redact_string(body), extra_secrets)
+    raw_message = _redact_all(redact_string(str(error)), extra_secrets)
 
     # Base diagnostic information
     safe_diagnostics: dict[str, Any] = {
@@ -195,6 +226,7 @@ def classify_provider_error(
                 {"action": "retry_turn", "label": "重新发起当前复盘轮次"},
             ],
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 1. Quota exhaustion (403, 429 with insufficient_quota, 400 with quota message)
@@ -231,6 +263,7 @@ def classify_provider_error(
             action_suggestion=suggestion,
             recovery_suggestions=recovery_suggestions,
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 2. Rate limited (429 not quota)
@@ -255,6 +288,7 @@ def classify_provider_error(
                 {"action": "fallback", "label": "切换备用路线"},
             ],
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 3. Authentication failure (401, or 403 not quota)
@@ -271,16 +305,48 @@ def classify_provider_error(
             provider_id=provider_id,
             model=model,
             retryable_same_target=False,
-            fallbackable=False,
+            fallbackable=True,
             portal_url=portal_url,
             action_suggestion=suggestion,
             recovery_suggestions=[
                 {"action": "check_key", "label": "检查并更新 API Key"},
             ],
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
-    # 4. Server error (5xx)
+    # 4. Timeout (checked before generic 5xx so 504 and 408 classify as TIMEOUT)
+    is_timeout = (
+        isinstance(error, (socket.timeout, TimeoutError))
+        or http_status in (408, 504)
+        or "timed out" in combined_text
+        or "timeout" in combined_text
+    )
+    if is_timeout:
+        code = ProviderErrorCode.TIMEOUT
+        msg = f"模型服务响应超时 (HTTP {http_status or 'timeout'}: {model or provider_id})。"
+        suggestion = "请求超时未返回。可稍后重试或切换较快的小模型。"
+        return ClassifiedProviderError(
+            code=code,
+            message=msg,
+            raw_message=raw_message,
+            http_status=http_status,
+            phase=phase,
+            provider_id=provider_id,
+            model=model,
+            retryable_same_target=True,
+            fallbackable=True,
+            portal_url=portal_url,
+            action_suggestion=suggestion,
+            recovery_suggestions=[
+                {"action": "retry", "label": "重试请求"},
+                {"action": "fallback", "label": "切换备用路线"},
+            ],
+            safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
+        )
+
+    # 5. Server error (5xx, excluding 504)
     if http_status and 500 <= http_status <= 599:
         code = ProviderErrorCode.SERVER_ERROR
         msg = f"模型服务上游异常 (HTTP {http_status})。"
@@ -302,36 +368,7 @@ def classify_provider_error(
                 {"action": "fallback", "label": "切换候选路线"},
             ],
             safe_diagnostics=safe_diagnostics,
-        )
-
-    # 5. Timeout
-    is_timeout = (
-        isinstance(error, (socket.timeout, TimeoutError))
-        or http_status in (408, 504)
-        or "timed out" in combined_text
-        or "timeout" in combined_text
-    )
-    if is_timeout:
-        code = ProviderErrorCode.TIMEOUT
-        msg = f"模型服务响应超时 ({model or provider_id})。"
-        suggestion = "请求超时未返回。可稍后重试或切换较快的小模型。"
-        return ClassifiedProviderError(
-            code=code,
-            message=msg,
-            raw_message=raw_message,
-            http_status=http_status,
-            phase=phase,
-            provider_id=provider_id,
-            model=model,
-            retryable_same_target=True,
-            fallbackable=True,
-            portal_url=portal_url,
-            action_suggestion=suggestion,
-            recovery_suggestions=[
-                {"action": "retry", "label": "重试请求"},
-                {"action": "fallback", "label": "切换备用路线"},
-            ],
-            safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 6. Invalid request (400, 404, 422)
@@ -348,13 +385,14 @@ def classify_provider_error(
             provider_id=provider_id,
             model=model,
             retryable_same_target=False,
-            fallbackable=False,
+            fallbackable=True,
             portal_url=portal_url,
             action_suggestion=suggestion,
             recovery_suggestions=[
                 {"action": "check_settings", "label": "检查模型名称与参数"},
             ],
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 7. Network unreachable
@@ -383,6 +421,7 @@ def classify_provider_error(
                 {"action": "offline_mode", "label": "切换离线模式"},
             ],
             safe_diagnostics=safe_diagnostics,
+            extra_secrets=extra_secrets,
         )
 
     # 8. Fallback unknown error
@@ -404,4 +443,6 @@ def classify_provider_error(
             {"action": "switch_model", "label": "切换其他模型"},
         ],
         safe_diagnostics=safe_diagnostics,
+        extra_secrets=extra_secrets,
     )
+

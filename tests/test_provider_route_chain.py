@@ -243,7 +243,7 @@ def test_error_classification_auth_401() -> None:
     )
     assert classified.code == ProviderErrorCode.AUTHENTICATION
     assert classified.retryable_same_target is False
-    assert classified.fallbackable is False
+    assert classified.fallbackable is True
 
 
 def test_error_classification_invalid_request_400() -> None:
@@ -258,7 +258,7 @@ def test_error_classification_invalid_request_400() -> None:
     )
     assert classified.code == ProviderErrorCode.INVALID_REQUEST
     assert classified.retryable_same_target is False
-    assert classified.fallbackable is False
+    assert classified.fallbackable is True
 
 
 # ---------------------------------------------------------------------------
@@ -384,3 +384,142 @@ def test_safe_diagnostics_redacts_credentials() -> None:
     assert "[REDACTED]" in diag_str or "secret" not in diag_str
     assert classified.safety == SAFETY_DECLARATION
 
+
+
+# ---------------------------------------------------------------------------
+# Additional Focused Tests for Review Findings
+# ---------------------------------------------------------------------------
+
+def test_opaque_token_redacted_from_diagnostics_and_candidate_repr() -> None:
+    opaque_secret = "opaque_cust_token_XYZ9988776655"
+    provider = {
+        "provider_id": "custom-opaque",
+        "api_key": opaque_secret,
+    }
+    raw_error = urllib.error.HTTPError("https://api.example/v1", 403, "Forbidden", {}, None)
+    classified = classify_provider_error(
+        raw_error,
+        provider=provider,
+        model="m1",
+        phase=FailurePhase.PRE_STREAM,
+        detail=f"rejected request with token {opaque_secret} inside message",
+    )
+    serialized = json.dumps(classified.to_dict())
+    assert opaque_secret not in serialized
+    assert opaque_secret not in str(classified)
+    assert opaque_secret not in classified.raw_message
+    assert "[REDACTED]" in serialized
+
+    candidate = RouteCandidate(
+        provider_id="custom-opaque",
+        model="m1",
+        api_key=opaque_secret,
+    )
+    candidate_repr = repr(candidate)
+    assert opaque_secret not in candidate_repr
+
+
+def test_resolve_provider_preserves_portal_url(tmp_path) -> None:
+    resolved = resolve_provider(ALPHATECH_PROVIDER_ID)
+    assert resolved.get("portal_url") == "https://alphatech.net.cn"
+
+
+def test_runtime_emits_structured_classified_error(tmp_path) -> None:
+    from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime
+    from smartmoney_cub_harness.store import Store
+    from smartmoney_cub_harness.agent.providers import save_credentials
+
+    store = Store(tmp_path)
+    save_credentials(tmp_path, {"providers": {ALPHATECH_PROVIDER_ID: {"api_key": "sk-test"}}})
+    runtime = ReviewAgentRuntime(store)
+    session = store.create_session(title="复盘", provider_id=ALPHATECH_PROVIDER_ID, model="gpt-5.6-sol")
+    session_id = session["session_id"]
+
+    # Mock stream_chat to raise a 403 quota ClassifiedProviderError
+    def mock_stream_chat_fail(*args, **kwargs):
+        raise classify_provider_error(
+            urllib.error.HTTPError("https://api.example/v1", 403, "Forbidden", {}, None),
+            provider={"provider_id": ALPHATECH_PROVIDER_ID, "portal_url": "https://alphatech.net.cn"},
+            model="gpt-5.6-sol",
+            phase=FailurePhase.PRE_STREAM,
+            detail='{"error": {"message": "insufficient_quota"}}',
+        )
+
+    import smartmoney_cub_harness.agent.runtime as runtime_mod
+    runtime_mod.stream_chat = mock_stream_chat_fail
+    try:
+        events = list(runtime.run_turn(session_id, "复盘此交易"))
+        error_events = [e for e in events if e.get("kind") == "error"]
+        assert len(error_events) == 1
+        err_evt = error_events[0]
+        assert "classified" in err_evt
+        assert err_evt["classified"]["error_code"] == "insufficient_quota"
+        assert err_evt["classified"]["portal_url"] == "https://alphatech.net.cn"
+    finally:
+        runtime_mod.stream_chat = stream_chat
+
+
+def test_open_socket_timeout_classified_through_stream_chat(monkeypatch) -> None:
+    def fake_open(*args, **kwargs):
+        raise socket.timeout("connection timed out during open")
+
+    import smartmoney_cub_harness.agent.providers as prov_mod
+    monkeypatch.setattr(prov_mod, "_open", fake_open)
+
+    provider = {"provider_id": "test-p", "base_url": "http://127.0.0.1:9/v1"}
+    with pytest.raises(ClassifiedProviderError) as exc_info:
+        list(stream_chat(provider, model="m", messages=[]))
+    assert exc_info.value.code == ProviderErrorCode.TIMEOUT
+    assert exc_info.value.phase == FailurePhase.PRE_STREAM
+
+
+def test_http_504_and_408_classified_as_timeout() -> None:
+    provider = {"provider_id": "test-p"}
+    err_504 = urllib.error.HTTPError("https://api.example/v1", 504, "Gateway Timeout", {}, None)
+    classified_504 = classify_provider_error(err_504, provider=provider, model="m")
+    assert classified_504.code == ProviderErrorCode.TIMEOUT
+    assert classified_504.http_status == 504
+
+    err_408 = urllib.error.HTTPError("https://api.example/v1", 408, "Request Timeout", {}, None)
+    classified_408 = classify_provider_error(err_408, provider=provider, model="m")
+    assert classified_408.code == ProviderErrorCode.TIMEOUT
+    assert classified_408.http_status == 408
+
+
+def test_cooldown_excludes_candidate_and_returns_retry_after(mock_server: str) -> None:
+    MockProviderHandler.scenario = "quota_403"
+    candidate = RouteCandidate(provider_id="c1", model="m1", base_url=mock_server, api_key="k")
+    policy = RouteChainPolicy(max_same_target_retries=0)
+
+    # First attempt fails and puts candidate in cooldown
+    with pytest.raises(ClassifiedProviderError):
+        list(stream_chat_with_route_chain([candidate], messages=[{"role": "user", "content": "hi"}], policy=policy))
+
+    assert policy.cooldown_tracker.is_cooling_down("c1", "m1")
+
+    # Second invocation immediately during cooldown must not hit the server, and must raise 429 with retry-after
+    MockProviderHandler.request_count = 0
+    with pytest.raises(ClassifiedProviderError) as exc_info:
+        list(stream_chat_with_route_chain([candidate], messages=[{"role": "user", "content": "hi"}], policy=policy))
+
+    assert MockProviderHandler.request_count == 0  # Excluded! Never hit network
+    assert exc_info.value.http_status == 429
+    assert exc_info.value.code == ProviderErrorCode.RATE_LIMITED
+    assert "retry_after" in exc_info.value.safe_diagnostics
+
+
+def test_auth_and_invalid_request_fallback_to_next_candidate(mock_server: str) -> None:
+    MockProviderHandler.scenario = "auth_401"
+    primary_bad_auth = RouteCandidate(provider_id="p-bad", model="m", base_url=mock_server, api_key="bad")
+    fallback_offline = RouteCandidate(provider_id=OFFLINE_PROVIDER_ID, model="offline-m", protocol="offline")
+    policy = RouteChainPolicy(max_same_target_retries=0)
+
+    events = list(stream_chat_with_route_chain([primary_bad_auth, fallback_offline], messages=[], policy=policy))
+    assert any(e.get("kind") == "delta" for e in events)
+
+
+def test_http_status_parsed_from_provider_error_message() -> None:
+    base_err = ProviderError("provider returned HTTP 502: Bad gateway")
+    classified = classify_provider_error(base_err)
+    assert classified.http_status == 502
+    assert classified.code == ProviderErrorCode.SERVER_ERROR

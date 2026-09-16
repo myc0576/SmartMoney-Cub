@@ -415,6 +415,7 @@ def resolve_provider(
     resolved = {
         "provider_id": provider_id,
         "label": entry.get("label", provider_id),
+        "portal_url": entry.get("portal_url", "") or PROVIDER_CATALOG.get(provider_id, {}).get("portal_url", ""),
         "base_url": effective_base_url.rstrip("/"),
         "protocol": entry.get("protocol", "openai-chat"),
         "env_key": entry.get("env_key", ""),
@@ -851,6 +852,10 @@ def _open(
         raise classify_provider_error(
             error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
         ) from error
+    except (socket.timeout, TimeoutError) as error:
+        raise classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
+        ) from error
 
 
 def list_models(provider: dict[str, Any]) -> dict[str, Any]:
@@ -1087,9 +1092,16 @@ def stream_chat(
         yield {"kind": "done", "finish_reason": "stop"}
         return
 
-    response = _open(
-        provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
-    )
+    try:
+        response = _open(
+            provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
+        )
+    except ClassifiedProviderError:
+        raise
+    except Exception as error:
+        raise classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
+        ) from error
     pending: dict[int, dict[str, Any]] = {}
     emitted_any = False
     completed = False

@@ -9,6 +9,7 @@ from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
     OFFLINE_PROVIDER_ID,
     REASONING_ALIASES,
+    ClassifiedProviderError,
     ProviderError,
     default_settings,
     load_credentials,
@@ -16,7 +17,7 @@ from smartmoney_cub_harness.agent.providers import (
     resolve_provider,
     stream_chat,
 )
-from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox
+from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trader_service
 from smartmoney_cub_harness.redaction import prepare_outbound
 from smartmoney_cub_harness.redaction import redact_payload
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
@@ -62,14 +63,18 @@ class ReviewAgentRuntime:
         *,
         credentials_root: str | None = None,
         workspace_db: str | None = None,
+        trader_service: Any = None,
     ) -> None:
         self.store = store
         self.credentials_root = credentials_root or str(store.root)
-        # The rule library lives beside the review store the session already
-        # uses. Defaulting to the store root (rather than the process working
-        # directory) keeps a rule proposed in a session inside the same
-        # --state-dir the server was started with.
-        self.toolbox = ToolBox(store, workspace_db)
+        self.trader_service = (
+            trader_service
+            or _detect_trader_service(self.credentials_root)
+            or _detect_trader_service(self.store.root)
+        )
+        self.toolbox = ToolBox(
+            store, workspace_db, trader_service=self.trader_service
+        )
         self.workspace_db = self.toolbox.workspace_db
 
     # ---- session helpers ----------------------------------------------
@@ -85,18 +90,17 @@ class ReviewAgentRuntime:
         """Assemble the local context a turn may draw on."""
         context = context or {}
         portfolio_id = context.get("portfolio_id") or DEFAULT_PORTFOLIO_ID
-        fills = self.store.list_fills(portfolio_id=portfolio_id)
-        analysis = analytics.analyze(fills)
         today = date.today()
+        analysis = self.toolbox._analysis(
+            portfolio_id=portfolio_id, year=today.year, month=today.month
+        )
         payload: dict[str, Any] = {
             "portfolio": self.store.get_portfolio(portfolio_id),
             "summary": analysis["summary"],
             "open_positions": analysis["open_positions"],
             "ledger_status": analysis["ledger_status"],
             "blocking_issues": analysis["blocking_issues"][:20],
-            "calendar": analytics.calendar_days(
-                analytics.build_ledger(fills), year=today.year, month=today.month
-            ),
+            "calendar": analysis["calendar"],
         }
         if context.get("round_trip_id"):
             payload["focus_trade"] = next(
@@ -157,10 +161,19 @@ class ReviewAgentRuntime:
             for event in self._provider_turn(session_id, session, resolved, messages, context):
                 yield event
         except ProviderError as error:
-            payload = {"text": str(error)}
+            if isinstance(error, ClassifiedProviderError):
+                payload = error.to_dict()
+                yield {
+                    "kind": "error",
+                    "error": str(error),
+                    "classified": payload,
+                    "safety": SAFETY_DECLARATION,
+                }
+            else:
+                payload = {"text": str(error)}
+                yield {"kind": "error", "error": str(error), "safety": SAFETY_DECLARATION}
             self.store.append_event(session_id, kind="error", payload=payload)
             self.store.update_session(session_id, status="error")
-            yield {"kind": "error", "error": str(error), "safety": SAFETY_DECLARATION}
 
     # ---- provider path -------------------------------------------------
 
@@ -193,7 +206,11 @@ class ReviewAgentRuntime:
         return resolved
 
     def _build_messages(self, session: dict[str, Any], user_text: str) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        system_content = SYSTEM_PROMPT
+        custom_prompt = self.store.get_setting("agent_system_prompt")
+        if custom_prompt and str(custom_prompt).strip():
+            system_content = SYSTEM_PROMPT + "\n\n用户自定义预设要求：\n" + str(custom_prompt).strip()
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_content}]
         for event in self.store.list_events(session["session_id"]):
             if event["kind"] == "user_message":
                 messages.append({"role": "user", "content": event["payload"].get("text", "")})

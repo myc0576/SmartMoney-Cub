@@ -25,7 +25,7 @@ class RouteCandidate:
     label: str = ""
     base_url: str = ""
     protocol: str = "openai-chat"
-    api_key: str = ""
+    api_key: str = field(default="", repr=False)
     portal_url: str = ""
 
     def to_provider_dict(self) -> dict[str, Any]:
@@ -112,25 +112,6 @@ class RouteChainPolicy:
     cooldown_tracker: CooldownTracker = field(default_factory=CooldownTracker)
 
 
-def _order_candidates_by_cooldown(
-    candidates: list[RouteCandidate],
-    tracker: CooldownTracker,
-) -> list[RouteCandidate]:
-    now = time.time()
-    active: list[RouteCandidate] = []
-    cooling: list[tuple[float, RouteCandidate]] = []
-
-    for c in candidates:
-        rem = tracker.remaining_cooldown(c.provider_id, c.model, now=now)
-        if rem <= 0.0:
-            active.append(c)
-        else:
-            cooling.append((rem, c))
-
-    cooling.sort(key=lambda item: item[0])
-    return active + [c for _, c in cooling]
-
-
 def stream_chat_with_route_chain(
     candidates: list[RouteCandidate],
     messages: list[dict[str, Any]],
@@ -140,6 +121,8 @@ def stream_chat_with_route_chain(
 ) -> Iterator[dict[str, Any]]:
     """Stream chat through a candidate route chain with retries, cooldowns, and fallback.
 
+    - Excludes candidates currently in active cooldown. If all candidates are in cooldown,
+      raises a stable rate-limited error with retry-after diagnostics.
     - Pre-stream errors can retry bounded times on the same target, or fall back to
       subsequent candidates (including offline).
     - Mid-stream errors fail immediately and do not restart from scratch to prevent
@@ -153,11 +136,38 @@ def stream_chat_with_route_chain(
         )
 
     policy = policy or RouteChainPolicy()
-    ordered_candidates = _order_candidates_by_cooldown(candidates, policy.cooldown_tracker)
+    now = time.time()
+
+    # Exclude candidates currently under cooldown
+    eligible_candidates = [
+        c for c in candidates
+        if not policy.cooldown_tracker.is_cooling_down(c.provider_id, c.model, now=now)
+    ]
+
+    if not eligible_candidates:
+        min_rem = min(
+            policy.cooldown_tracker.remaining_cooldown(c.provider_id, c.model, now=now)
+            for c in candidates
+        )
+        retry_after_sec = max(1, int(min_rem) + 1)
+        raise ClassifiedProviderError(
+            code=ProviderErrorCode.RATE_LIMITED,
+            message=f"All route candidates are cooling down. Retry after {retry_after_sec}s.",
+            http_status=429,
+            phase=FailurePhase.PRE_STREAM,
+            retryable_same_target=True,
+            fallbackable=True,
+            action_suggestion="所有候选模型均处于临时冷却期中，请等待冷却时间结束后重试。",
+            recovery_suggestions=[
+                {"action": "wait_retry", "label": f"等待 {retry_after_sec} 秒后重试"},
+            ],
+            safe_diagnostics={"retry_after": retry_after_sec},
+        )
+
     last_error: ClassifiedProviderError | None = None
 
-    for idx, candidate in enumerate(ordered_candidates):
-        is_last_candidate = idx == len(ordered_candidates) - 1
+    for idx, candidate in enumerate(eligible_candidates):
+        is_last_candidate = idx == len(eligible_candidates) - 1
         provider_dict = candidate.to_provider_dict()
 
         # Handle offline candidate directly

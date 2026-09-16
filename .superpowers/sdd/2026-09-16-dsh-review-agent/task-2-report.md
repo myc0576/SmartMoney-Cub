@@ -81,3 +81,108 @@ The raw 403 error is now parsed and classified as `ProviderErrorCode.INSUFFICIEN
 ## Unresolved Issues
 None. All tests pass with zero regressions across provider and agent suites, and all frozen DoD criteria are verified with fresh execution evidence.
 
+
+
+---
+
+## Task 2 Review Fix Report
+
+### Issues Addressed
+1. **Opaque Credential Redaction & RouteCandidate Representation**:
+   - Implemented `_collect_provider_secrets()` and `_redact_all()` in `provider_errors.py` to identify any arbitrary or opaque secret string passed in provider configurations and redact it from raw messages, sanitized details, and `safe_diagnostics` / `to_dict()`.
+   - Set `repr=False` on `RouteCandidate.api_key` in `route_chain.py` so credentials are not representable.
+   - Added test `test_opaque_token_redacted_from_diagnostics_and_candidate_repr`.
+
+2. **Preserve `portal_url` & Emit Structured Error in Runtime**:
+   - Updated `resolve_provider()` in `providers.py` to preserve `portal_url` from the catalog/entry through resolution.
+   - Updated `ReviewAgentRuntime.run_turn()` in `runtime.py` to recognize `ClassifiedProviderError`, emit `classified` structured data in the streamed error event, and record the structured error payload in the store.
+   - Added tests `test_resolve_provider_preserves_portal_url` and `test_runtime_emits_structured_classified_error`.
+
+3. **Opening Timeout Classification**:
+   - Extended `_open()` in `providers.py` to catch `socket.timeout` and `TimeoutError`, and wrapped `_open()` call within `stream_chat()` to classify opening connection timeouts as pre-stream `ClassifiedProviderError`.
+   - Added test `test_open_socket_timeout_classified_through_stream_chat`.
+
+4. **HTTP 408/504 Classified as Timeout Before 5xx**:
+   - Reordered classification checks in `provider_errors.py` so that HTTP 408 / 504 are classified as `ProviderErrorCode.TIMEOUT` rather than generic 5xx server errors.
+   - Added test `test_http_504_and_408_classified_as_timeout`.
+
+5. **Cooldown Candidate Exclusion and Stable Retry-After**:
+   - Updated `stream_chat_with_route_chain()` in `route_chain.py` to exclude candidates in active cooldown. When all candidates are cooling down, it raises a stable 429 `rate_limited` error with `retry_after` seconds calculated from the minimum remaining cooldown time, bypassing network calls completely.
+   - Added test `test_cooldown_excludes_candidate_and_returns_retry_after`.
+
+6. **Authentication and Invalid Request Fallbackability**:
+   - Configured `fallbackable = True` for both `AUTHENTICATION` and `INVALID_REQUEST` in `provider_errors.py` while keeping `retryable_same_target = False`, allowing routes to fall back to alternative candidates or offline review.
+   - Added test `test_auth_and_invalid_request_fallback_to_next_candidate`.
+
+7. **HTTP Status Parser Regex Fix**:
+   - Fixed regex in `_extract_http_status_and_body()` from `HTTPs+(\d{3})` to `r"HTTP\s+(\d{3})"`.
+   - Added test `test_http_status_parsed_from_provider_error_message`.
+
+### Fresh TDD Verification Evidence
+
+#### RED Output (Covering All 8 Review Tests)
+```
+tests/test_provider_route_chain.py::test_opaque_token_redacted_from_diagnostics_and_candidate_repr FAILED [ 12%]
+tests/test_provider_route_chain.py::test_resolve_provider_preserves_portal_url FAILED [ 25%]
+tests/test_provider_route_chain.py::test_runtime_emits_structured_classified_error FAILED [ 37%]
+tests/test_provider_route_chain.py::test_open_socket_timeout_classified_through_stream_chat FAILED [ 50%]
+tests/test_provider_route_chain.py::test_http_504_and_408_classified_as_timeout FAILED [ 62%]
+tests/test_provider_route_chain.py::test_cooldown_excludes_candidate_and_returns_retry_after FAILED [ 75%]
+tests/test_provider_route_chain.py::test_auth_and_invalid_request_fallback_to_next_candidate FAILED [ 87%]
+tests/test_provider_route_chain.py::test_http_status_parsed_from_provider_error_message FAILED [100%]
+======================= 8 failed, 10 deselected in 1.26s =======================
+```
+
+#### GREEN Output (All 18 Tests in Route Chain Suite Passing)
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py -v
+```
+**Output**:
+```
+tests/test_provider_route_chain.py::test_error_classification_quota_403 PASSED [  5%]
+tests/test_provider_route_chain.py::test_error_classification_rate_limit_429 PASSED [ 11%]
+tests/test_provider_route_chain.py::test_error_classification_server_error_5xx PASSED [ 16%]
+tests/test_provider_route_chain.py::test_error_classification_timeout PASSED [ 22%]
+tests/test_provider_route_chain.py::test_error_classification_auth_401 PASSED [ 27%]
+tests/test_provider_route_chain.py::test_error_classification_invalid_request_400 PASSED [ 33%]
+tests/test_provider_route_chain.py::test_403_quota_actionable_result PASSED [ 38%]
+tests/test_provider_route_chain.py::test_pre_stream_vs_mid_stream PASSED [ 44%]
+tests/test_provider_route_chain.py::test_route_chain_retries_cooldown_and_fallback PASSED [ 50%]
+tests/test_provider_route_chain.py::test_safe_diagnostics_redacts_credentials PASSED [ 55%]
+tests/test_provider_route_chain.py::test_opaque_token_redacted_from_diagnostics_and_candidate_repr PASSED [ 61%]
+tests/test_provider_route_chain.py::test_resolve_provider_preserves_portal_url PASSED [ 66%]
+tests/test_provider_route_chain.py::test_runtime_emits_structured_classified_error PASSED [ 72%]
+tests/test_provider_route_chain.py::test_open_socket_timeout_classified_through_stream_chat PASSED [ 77%]
+tests/test_provider_route_chain.py::test_http_504_and_408_classified_as_timeout PASSED [ 83%]
+tests/test_provider_route_chain.py::test_cooldown_excludes_candidate_and_returns_retry_after PASSED [ 88%]
+tests/test_provider_route_chain.py::test_auth_and_invalid_request_fallback_to_next_candidate PASSED [ 94%]
+tests/test_provider_route_chain.py::test_http_status_parsed_from_provider_error_message PASSED [100%]
+============================== 18 passed in 2.75s ==============================
+```
+
+#### Full Regressions Suite Check
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py tests/test_model_providers.py tests/test_agent_tool_rounds.py tests/test_workbench_service.py -q
+```
+**Output**:
+```
+82 passed in 7.06s
+```
+
+#### Doctor Verification
+**Command**:
+```bash
+python3 -m smartmoney_cub_harness.cli doctor
+```
+**Output**:
+```json
+{
+  "status": "ok",
+  "package": "smartmoney-cub-harness",
+  "version": "1.0.0",
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}
+```
+
