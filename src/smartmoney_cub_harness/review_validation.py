@@ -375,8 +375,8 @@ def validate_challenger_only_mutation(payload: object) -> ValidationResult:
         "rule_status",
     )
 
-    def has_mutation_indicator(value: str) -> bool:
-        normalized = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    def has_mutation_key(key: str) -> bool:
+        normalized = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
         return any(fragment in normalized for fragment in mutation_fragments)
 
     def is_validated_guard(key: object, value: object) -> bool:
@@ -392,7 +392,7 @@ def validate_challenger_only_mutation(payload: object) -> ValidationResult:
                 child_path = f"{path}.{field_name}" if path else field_name
                 if top_level and is_validated_guard(key, value):
                     continue
-                if has_mutation_indicator(field_name):
+                if has_mutation_key(field_name):
                     return child_path
                 indicator_path = find_indicator(value, child_path)
                 if indicator_path is not None:
@@ -404,7 +404,8 @@ def validate_challenger_only_mutation(payload: object) -> ValidationResult:
                 if indicator_path is not None:
                     return indicator_path
             return None
-        if isinstance(node, str) and has_mutation_indicator(node):
+        # Values use exact role matching; explanatory prose is not a mutation key.
+        if isinstance(node, str) and node.strip().lower() == "champion":
             return path
         return None
 

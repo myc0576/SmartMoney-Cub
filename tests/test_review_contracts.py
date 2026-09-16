@@ -532,6 +532,36 @@ def test_challenger_validation_rejects_hidden_promotion_field() -> None:
     assert checked.errors[0].field == "promote_to"
 
 
+@pytest.mark.parametrize(
+    "metadata,expected_field",
+    [
+        ({"rationale": "Keep as challenger; no promotion is requested."}, None),
+        ({"rationale": "No champion or core rules were mutated."}, None),
+        ({"items": [{"promote_to": "challenger"}]}, "metadata.items[0].promote_to"),
+        ({"items": [{"PROMOTE-TO": "challenger"}]}, "metadata.items[0].PROMOTE-TO"),
+        ({"items": [{"champion_mutated": False}]}, "metadata.items[0].champion_mutated"),
+        ({"items": [{"Champion-Mutated": False}]}, "metadata.items[0].Champion-Mutated"),
+        ({"items": [{"role": "champion"}]}, "metadata.items[0].role"),
+        ({"items": [" ChAmPiOn "]}, "metadata.items[0]"),
+    ],
+)
+def test_challenger_metadata_distinguishes_prose_from_mutation_indicators(
+    metadata: dict, expected_field: str | None,
+) -> None:
+    checked = _validation().validate_challenger_only_mutation(
+        {"candidate_role": "challenger", "metadata": metadata}
+    )
+
+    assert checked.ok is (expected_field is None)
+    assert checked.safety == SAFETY
+    if expected_field is None:
+        assert checked.errors == ()
+    else:
+        assert len(checked.errors) == 1
+        assert checked.errors[0].code == "challenger_only_mutation"
+        assert checked.errors[0].field == expected_field
+
+
 def test_plugin_result_rejects_nested_challenger_promotion_metadata() -> None:
     contracts = _contracts()
     validation = _validation()
