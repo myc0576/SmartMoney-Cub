@@ -573,3 +573,37 @@ def test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_r
     assert opaque_secret not in json.dumps(direct_dict["recovery_suggestions"])
     assert opaque_secret not in json.dumps(direct_dict["safe_diagnostics"])
 
+
+
+def test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr() -> None:
+    opaque_secret = "opaque_token_never_in_vars_77665544"
+    provider = {
+        "provider_id": "custom-opaque-vars",
+        "api_key": opaque_secret,
+        "portal_url": f"https://portal.example.com/login?token={opaque_secret}",
+    }
+    raw_error = urllib.error.HTTPError("https://api.example/v1", 403, "Forbidden", {}, None)
+    classified = classify_provider_error(
+        raw_error,
+        provider=provider,
+        model="m1",
+        phase=FailurePhase.PRE_STREAM,
+        detail=f"insufficient_quota: rejected {opaque_secret}",
+    )
+
+    # 1. Assert vars(classified) does not contain the secret in any key or value
+    error_vars = vars(classified)
+    vars_str = json.dumps(error_vars, default=str)
+    assert opaque_secret not in vars_str
+    assert "extra_secrets" not in error_vars
+
+    # 2. Assert repr and str do not contain the secret
+    assert opaque_secret not in repr(classified)
+    assert opaque_secret not in str(classified)
+
+    # 3. Assert all fields and to_dict remain scrubbed
+    data = classified.to_dict()
+    assert opaque_secret not in json.dumps(data)
+    assert opaque_secret not in data["portal_url"]
+    assert "[REDACTED]" in data["portal_url"]
+

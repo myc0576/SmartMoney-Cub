@@ -265,3 +265,84 @@ python3 -m smartmoney_cub_harness.cli doctor
 }
 ```
 
+
+
+---
+
+## Task 2 Re-Review Fix Report (Round 3)
+
+### Critical Finding Resolved
+- **Zero Plaintext Secret Retention on Exception Instance**:
+  - Identified that storing `self.extra_secrets` on `ClassifiedProviderError` exposed raw plaintext credentials to ordinary inspection via `vars(error)`.
+  - Removed `self.extra_secrets` from `ClassifiedProviderError` completely.
+  - In `ClassifiedProviderError.__init__()`, all instance attributes (`self.message`, `self.raw_message`, `self.portal_url`, `self.action_suggestion`, `self.recovery_suggestions`, `self.safe_diagnostics`) are immutably sanitized with `_redact_all(..., secrets)` during initialization, and the secret collection is discarded without being attached to `self`.
+  - Verified `to_dict()` returns the pre-sanitized attributes directly with zero raw secrets accessible.
+  - Added regression test `test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr` asserting that `vars(error)`, `repr(error)`, and `str(error)` never contain the opaque secret while `portal_url`, `recovery_suggestions`, and `safe_diagnostics` remain sanitized.
+
+### Fresh TDD Verification Evidence
+
+#### RED Output
+```
+tests/test_provider_route_chain.py::test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr FAILED [100%]
+
+=================================== FAILURES ===================================
+___ test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr ___
+AssertionError: assert 'opaque_token_never_in_vars_77665544' not in '{"extra_secrets": "{'opaque_token_never_in_vars_77665544'}", ...}'
+======================= 1 failed, 19 deselected in 0.06s =======================
+```
+
+#### GREEN Output (Route Chain Suite: 20 Tests Passing)
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py -v
+```
+**Output**:
+```
+tests/test_provider_route_chain.py::test_error_classification_quota_403 PASSED [  5%]
+tests/test_provider_route_chain.py::test_error_classification_rate_limit_429 PASSED [ 10%]
+tests/test_provider_route_chain.py::test_error_classification_server_error_5xx PASSED [ 15%]
+tests/test_provider_route_chain.py::test_error_classification_timeout PASSED [ 20%]
+tests/test_provider_route_chain.py::test_error_classification_auth_401 PASSED [ 25%]
+tests/test_provider_route_chain.py::test_error_classification_invalid_request_400 PASSED [ 30%]
+tests/test_provider_route_chain.py::test_403_quota_actionable_result PASSED [ 35%]
+tests/test_provider_route_chain.py::test_pre_stream_vs_mid_stream PASSED [ 40%]
+tests/test_provider_route_chain.py::test_route_chain_retries_cooldown_and_fallback PASSED [ 45%]
+tests/test_provider_route_chain.py::test_safe_diagnostics_redacts_credentials PASSED [ 50%]
+tests/test_provider_route_chain.py::test_opaque_token_redacted_from_diagnostics_and_candidate_repr PASSED [ 55%]
+tests/test_provider_route_chain.py::test_resolve_provider_preserves_portal_url PASSED [ 60%]
+tests/test_provider_route_chain.py::test_runtime_emits_structured_classified_error PASSED [ 65%]
+tests/test_provider_route_chain.py::test_open_socket_timeout_classified_through_stream_chat PASSED [ 70%]
+tests/test_provider_route_chain.py::test_http_504_and_408_classified_as_timeout PASSED [ 75%]
+tests/test_provider_route_chain.py::test_cooldown_excludes_candidate_and_returns_retry_after PASSED [ 80%]
+tests/test_provider_route_chain.py::test_auth_and_invalid_request_fallback_to_next_candidate PASSED [ 85%]
+tests/test_provider_route_chain.py::test_http_status_parsed_from_provider_error_message PASSED [ 90%]
+tests/test_provider_route_chain.py::test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery PASSED [ 95%]
+tests/test_provider_route_chain.py::test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr PASSED [100%]
+============================== 20 passed in 2.70s ==============================
+```
+
+#### Regressions Suite Check (84 Tests Passing)
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py tests/test_model_providers.py tests/test_agent_tool_rounds.py tests/test_workbench_service.py -q
+```
+**Output**:
+```
+84 passed in 7.02s
+```
+
+#### Doctor Verification
+**Command**:
+```bash
+python3 -m smartmoney_cub_harness.cli doctor
+```
+**Output**:
+```json
+{
+  "status": "ok",
+  "package": "smartmoney-cub-harness",
+  "version": "1.0.0",
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}
+```
+
