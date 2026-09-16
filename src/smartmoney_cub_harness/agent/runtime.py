@@ -23,7 +23,6 @@ from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trad
 from smartmoney_cub_harness.redaction import prepare_outbound
 from smartmoney_cub_harness.redaction import redact_payload
 from smartmoney_cub_harness.review_contracts import (
-    REDACTED_REVIEW_ENVELOPE_SCHEMA,
     RedactedReviewEnvelope,
     ReviewScope,
     StructuredReviewPackage,
@@ -153,7 +152,8 @@ class ReviewAgentRuntime:
         are persisted, so replaying a session does not depend on the browser.
         """
         session = self.store.get_session(session_id)
-        cancel_event = self._cancel_events.setdefault(session_id, threading.Event())
+        with self._cancel_lock:
+            cancel_event = self._cancel_events.setdefault(session_id, threading.Event())
         # A previous cancelled run leaves its event set until the next explicit
         # turn/resume. Clearing here makes cancellation one-turn scoped.
         cancel_event.clear()
@@ -223,7 +223,8 @@ class ReviewAgentRuntime:
                 "session": session,
                 "safety": SAFETY_DECLARATION,
             }
-        event = self._cancel_events.setdefault(session_id, threading.Event())
+        with self._cancel_lock:
+            event = self._cancel_events.setdefault(session_id, threading.Event())
         event.set()
         self.store.append_event(
             session_id,
