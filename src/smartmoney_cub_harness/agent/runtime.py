@@ -24,7 +24,7 @@ from smartmoney_cub_harness.agent.route_chain import (
     stream_chat_with_route_chain,
 )
 from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trader_service
-from smartmoney_cub_harness.redaction import prepare_outbound
+from smartmoney_cub_harness.redaction import alias_for, prepare_outbound
 from smartmoney_cub_harness.redaction import redact_payload
 from smartmoney_cub_harness.review_contracts import (
     RedactedReviewEnvelope,
@@ -150,6 +150,7 @@ class ReviewAgentRuntime:
         user_text: str,
         *,
         dry_run: bool = False,
+        record_user_message: bool = True,
     ) -> Iterator[dict[str, Any]]:
         """Stream one assistant turn.
 
@@ -162,9 +163,10 @@ class ReviewAgentRuntime:
         # A previous cancelled run leaves its event set until the next explicit
         # turn/resume. Clearing here makes cancellation one-turn scoped.
         cancel_event.clear()
-        self.store.append_event(
-            session_id, kind="user_message", role="user", payload={"text": user_text}
-        )
+        if record_user_message:
+            self.store.append_event(
+                session_id, kind="user_message", role="user", payload={"text": user_text}
+            )
         if not dry_run:
             self.store.update_session(session_id, status="running")
             self.store.append_event(
@@ -246,6 +248,7 @@ class ReviewAgentRuntime:
         if session.get("status") not in {"interrupted", "cancelled", "error", "cancel_requested"}:
             raise ReviewLifecycleError("session_is_not_resumable")
         text = user_text.strip()
+        reused_last_user_turn = not text
         if not text:
             events = self.store.list_events(session_id)
             text = next(
@@ -264,7 +267,11 @@ class ReviewAgentRuntime:
             role="system",
             payload={"resume_from": session.get("status"), "safety": SAFETY_DECLARATION},
         )
-        yield from self.run_turn(session_id, text)
+        yield from self.run_turn(
+            session_id,
+            text,
+            record_user_message=not reused_last_user_turn,
+        )
 
     def _cancelled_events(self, session_id: str) -> Iterator[dict[str, Any]]:
         self.store.append_event(
@@ -294,7 +301,10 @@ class ReviewAgentRuntime:
             case_ids=tuple(session.get("context", {}).get("case_ids") or ()),
         )
         envelope_payload = {
-            "portfolio_id": redacted.get("portfolio", {}).get("portfolio_id", "REDACTED"),
+            "portfolio_id": redacted.get("portfolio", {}).get(
+                "portfolio_id",
+                alias_for(DEFAULT_PORTFOLIO_ID, salt=self._salt(), kind="portfolio"),
+            ),
             "summary": redacted.get("summary", {}),
             "open_positions": redacted.get("open_positions", []),
             "ledger_status": redacted.get("ledger_status", ""),
@@ -697,7 +707,7 @@ class ReviewAgentRuntime:
         credentials = load_credentials(self.credentials_root)
         context = session.get("context") or {}
         configured = context.get("route_chain")
-        entries: list[Any] = configured if isinstance(configured, list) else []
+        entries: list[Any] = list(configured) if isinstance(configured, list) else []
         primary_id = str(primary_provider.get("provider_id") or session.get("provider_id") or "")
         primary_model = str(session.get("model") or primary_provider.get("default_model") or "")
 

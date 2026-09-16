@@ -471,6 +471,7 @@ export function SettingsView({
             </svg>
             {openingFile ? '正在打开...' : '打开配置文件'}
           </button>
+          <span className="muted" style={{ fontSize: 10 }}>仅打开本机配置；不会上传或执行文件内容。</span>
         </div>
       </div>
 

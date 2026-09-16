@@ -1341,7 +1341,10 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     self._json(self.service.cancel_turn(session_id))
                     return
                 if action == "resume":
-                    self._stream_turn(session_id, self.service.resume_turn(session_id, self._read_json()))
+                    self._stream_events(
+                        session_id,
+                        self.service.resume_turn(session_id, self._read_json()),
+                    )
                     return
                 if action == "review/scope":
                     self._json(self.service.review_scope(session_id))
@@ -1466,6 +1469,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
 
     def _stream_turn(self, session_id: str, payload: dict[str, Any]) -> None:
         events = self.service.stream_turn(session_id, payload)
+        self._stream_events(session_id, events)
+
+    def _stream_events(self, session_id: str, events: Any) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")

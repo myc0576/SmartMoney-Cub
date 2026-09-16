@@ -453,6 +453,39 @@ def test_http_get_endpoints_and_unknown_routes(tmp_path) -> None:
         service.close()
 
 
+def test_http_resume_stream_uses_the_resume_generator(tmp_path) -> None:
+    service = _service(tmp_path)
+    session_id = service.create_session({"title": "HTTP 恢复"})["session"]["session_id"]
+    service.store.append_event(session_id, kind="user_message", role="user", payload={"text": "继续本地复盘"})
+    service.store.update_session(session_id, status="interrupted")
+    handler = type(
+        "TestHandler",
+        (WorkbenchHandler,),
+        {"service": service, "asset_dir": None, "access_token": None},
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    import urllib.request
+
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/api/assistant/sessions/{session_id}/resume",
+            data=json.dumps({}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = response.read().decode("utf-8")
+        assert response.status == 200
+        assert "本地离线复盘" in body
+        assert '"kind": "done"' in body
+        assert service.store.get_session(session_id)["status"] == "idle"
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.close()
+
+
 def test_workbench_service_integrates_trader_service(tmp_path: Path) -> None:
     from smartmoney_cub_harness.trader.storage import open_store
     from smartmoney_cub_harness.trader.auth import MODE_LOCAL
@@ -787,6 +820,49 @@ def test_runtime_uses_explicit_route_chain_for_review_turns(tmp_path, monkeypatc
         service.close()
 
 
+def test_runtime_does_not_mutate_explicit_route_chain_context(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        route_chain = [{"provider_id": "offline", "model": "local-template"}]
+        session_id = service.create_session(
+            {
+                "title": "路线链复制",
+                "provider_id": "primary",
+                "model": "primary-model",
+                "context": {"route_chain": route_chain},
+            }
+        )["session"]["session_id"]
+        primary = {
+            "provider_id": "primary",
+            "model": "primary-model",
+            "label": "Primary",
+            "protocol": "offline",
+            "has_key": True,
+        }
+
+        service.runtime._route_candidates(service.store.get_session(session_id), primary)
+
+        assert route_chain == [{"provider_id": "offline", "model": "local-template"}]
+        assert service.store.get_session(session_id)["context"]["route_chain"] == route_chain
+    finally:
+        service.close()
+
+
+def test_review_envelope_uses_a_valid_portfolio_alias_when_context_is_sparse(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session({"title": "稀疏范围"})["session"]["session_id"]
+        service.runtime.context_payload = lambda _context: {"summary": {"trade_count": 0}}
+
+        envelope = service.runtime.build_review_envelope(session_id)
+
+        assert envelope.payload["portfolio_id"].startswith("portfolio-")
+        assert len(envelope.payload["portfolio_id"]) == len("portfolio-") + 8
+        assert service.runtime.build_review_envelope(session_id).payload["portfolio_id"] == envelope.payload["portfolio_id"]
+    finally:
+        service.close()
+
+
 def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
     service = _service(tmp_path)
     session = service.create_session({"title": "可恢复复盘"})["session"]
@@ -802,6 +878,13 @@ def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
         kinds = [event["kind"] for event in service.store.list_events(session_id)]
         assert "turn_cancel_requested" in kinds
         assert "turn_resumed" in kinds
+
+        service.store.append_event(session_id, kind="user_message", role="user", payload={"text": "恢复时复用这条"})
+        service.store.update_session(session_id, status="interrupted")
+        before = [event for event in service.store.list_events(session_id) if event["kind"] == "user_message"]
+        list(service.resume_turn(session_id, {}))
+        after = [event for event in service.store.list_events(session_id) if event["kind"] == "user_message"]
+        assert len(after) == len(before)
     finally:
         service.close()
 

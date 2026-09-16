@@ -30,10 +30,10 @@
 
 - Task 1: complete (scoped fix-round-3 re-review approved)
 - Task 2: complete by controller adjudication (fix-round-5 `123b20d`; fresh full pytest and deterministic privacy probes pass; model re-review was blocked by repeated no-response/OAuth failures; final whole-branch review remains mandatory)
-- Task 3: complete by controller implementation/tests; final whole-branch review pending
-- Task 4: complete by controller implementation/tests; final whole-branch review pending
-- Task 5: complete by controller implementation/tests; final whole-branch review pending
-- Task 6: complete by controller implementation/build; final whole-branch review pending
+- Task 3: complete by controller implementation/tests; final whole-branch review approved
+- Task 4: complete by controller implementation/tests; final whole-branch review approved
+- Task 5: complete by controller implementation/tests; final whole-branch review approved
+- Task 6: complete by controller implementation/build; final whole-branch review approved
 
 ## Task 2 review
 
@@ -60,3 +60,11 @@
 - Task 5: controller packaged the existing curated catalog/adapters as `1b88133`, including manifest validation, metadata-only state transitions, two toy Cordis adapters, explicit profile reload, and plugin exports.
 - Task 6: controller packaged `03e68bb` and `cc03391`, adding scope confirmation/cancel API consumption and curated adapter marketplace rendering; frontend typecheck/build passed.
 - Model independent reviews for Tasks 3–6 were unavailable because the delegated implementation agents returned no output; final review must be performed against the complete branch before any completion claim.
+
+## Final verification and review
+
+- Final code review by Popper: approved with no Critical or Important findings. The one Minor finding (missing small-screen `onClose`) was fixed in the current change set.
+- Final test review by Parfit: `./scripts/verify.sh` passed with `865 passed, 6 skipped`; the safety declaration and offline execution contract were confirmed.
+- Final visual review by Aquinas: identified and verified fixes for the small-screen assistant drawer, resume affordance, scope preview, cancellation/error feedback, and complete plugin safety copy.
+- Computer Use E2E: at 580px, opened/closed the assistant drawer, created a session, confirmed the redacted scope, ran a toy offline review, navigated Plugins and Settings, and resumed a clean interrupted session through the UI. The resume HTTP/SSE defect found during this run was fixed and re-tested; the resumed session produced one answer without duplicating the prior user event.
+- Final GUI validation: `npm run typecheck && npm run build` passed. `git diff --check` passed.

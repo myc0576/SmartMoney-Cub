@@ -14,11 +14,14 @@ interface TurnState {
   error?: string;
 }
 
-export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
+const RESUMABLE_STATUSES = new Set(['interrupted', 'cancelled', 'error', 'cancel_requested']);
+
+export function AssistantPanel({ meta, context, onClose, onMetaReload, className }: {
   meta: Meta | null;
   context: Record<string, unknown>;
   onClose?: () => void;
   onMetaReload?: () => void;
+  className?: string;
 }) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -28,6 +31,9 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [reviewScope, setReviewScope] = useState<import('../types').ReviewScopeResponse | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [actionNotice, setActionNotice] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
   // Set when the assistant surface cannot be reached at all. On a shared host the
   // review workbench API is closed at the trust boundary, so every call here
   // 403s. Without this the panel looked entirely functional -- example prompts,
@@ -123,54 +129,29 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     if (node) node.scrollTop = node.scrollHeight;
   }, [events, turn]);
 
-  const startSession = async () => {
-    const created = await api.createSession({
-      title: '复盘 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      context,
-      provider_id: meta?.default_provider || 'alphatech',
-    });
+  const refreshSession = async (sessionId: string) => {
+    const detail = await api.sessionDetail(sessionId);
+    setEvents(detail.events);
     await loadSessions();
-    setActiveId(created.session.session_id);
-    setShowSessions(false);
   };
 
-  const send = async () => {
-    const text = input.trim();
-    if (!text || busy) return;
-    let sessionId = activeId;
-    if (!sessionId) {
-      const created = await api.createSession({
-        title: text.slice(0, 18),
-        context,
-        provider_id: selection.provider_id,
-        model: selection.model,
-        reasoning: selection.reasoning,
-      });
-      sessionId = created.session.session_id;
-      setActiveId(sessionId);
-      await loadSessions();
-    }
-    if (!reviewScope?.confirmed || reviewScope.envelope.scope.review_id !== sessionId) {
-      const preview = await api.reviewScope(sessionId);
-      setReviewScope(preview);
-      return;
-    }
-    setInput('');
+  const runStream = async (sessionId: string, text: string, resume = false) => {
+    setActionError('');
+    setActionNotice('');
     setBusy(true);
     setTurn({ text: '', toolCalls: [] });
     const controller = new AbortController();
     abortRef.current = controller;
-    setEvents((prev) => [
-      ...prev,
-      {
-        event_id: -1, seq: -1, kind: 'user_message', role: 'user',
-        payload: { text }, created_at: new Date().toISOString(),
-      },
-    ]);
+    let streamError = false;
 
-    await streamTurn(sessionId, text, {
+    const complete = () => {
+      setBusy(false);
+      if (!streamError) setTurn(null);
+      void refreshSession(sessionId).catch(() => undefined);
+    };
+    const handlers = {
       signal: controller.signal,
-      onEvent: (event) => {
+      onEvent: (event: Record<string, any>) => {
         if (event.kind === 'delta') {
           setTurn((prev) => ({ text: (prev?.text || '') + event.text, toolCalls: prev?.toolCalls || [] }));
         } else if (event.kind === 'tool_call') {
@@ -186,51 +167,160 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
             ),
           }));
         } else if (event.kind === 'error') {
+          streamError = true;
           setTurn((prev) => ({ text: prev?.text || '', toolCalls: prev?.toolCalls || [], error: event.error }));
+        } else if (event.kind === 'cancelled') {
+          setActionNotice('本轮已停止，可以继续上一轮。');
         }
       },
-      onError: (message) => {
+      onError: (message: string) => {
+        streamError = true;
         setTurn((prev) => ({ text: prev?.text || '', toolCalls: prev?.toolCalls || [], error: message }));
-      },
-      onDone: () => {
         setBusy(false);
-        setTurn(null);
-        void api.sessionDetail(sessionId!).then((detail) => setEvents(detail.events));
-        void loadSessions();
+        void refreshSession(sessionId).catch(() => undefined);
       },
+      onDone: complete,
+    };
+
+    try {
+      if (resume) {
+        await api.resumeTurn(sessionId, text, handlers);
+      } else {
+        await streamTurn(sessionId, text, handlers);
+      }
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        streamError = true;
+        const message = failure instanceof Error ? failure.message : String(failure);
+        setTurn((prev) => ({ text: prev?.text || '', toolCalls: prev?.toolCalls || [], error: message }));
+        setBusy(false);
+        void refreshSession(sessionId).catch(() => undefined);
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  };
+
+  const startSession = async () => {
+    const created = await api.createSession({
+      title: '复盘 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      context,
+      provider_id: meta?.default_provider || 'alphatech',
     });
+    await loadSessions();
+    setActiveId(created.session.session_id);
+    setShowSessions(false);
+  };
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setActionError('');
+    try {
+      let sessionId = activeId;
+      if (!sessionId) {
+        const created = await api.createSession({
+          title: text.slice(0, 18),
+          context,
+          provider_id: selection.provider_id,
+          model: selection.model,
+          reasoning: selection.reasoning,
+        });
+        sessionId = created.session.session_id;
+        setActiveId(sessionId);
+        await loadSessions();
+      }
+      if (!reviewScope?.confirmed || reviewScope.envelope.scope.review_id !== sessionId) {
+        const preview = await api.reviewScope(sessionId);
+        setReviewScope(preview);
+        return;
+      }
+      setInput('');
+      setEvents((prev) => [
+        ...prev,
+        {
+          event_id: -1, seq: -1, kind: 'user_message', role: 'user',
+          payload: { text }, created_at: new Date().toISOString(),
+        },
+      ]);
+      await runStream(sessionId, text);
+    } catch (failure) {
+      setActionError(failure instanceof Error ? failure.message : String(failure));
+    }
   };
 
   const stop = async () => {
-    if (activeId && busy) {
-      await api.cancelTurn(activeId).catch(() => undefined);
+    if (!activeId || !busy) return;
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const result = await api.cancelTurn(activeId);
+      setActionNotice(result.status === 'cancel_requested' ? '已请求停止本轮，可以继续上一轮。' : '当前没有正在运行的复盘。');
+      await loadSessions();
+    } catch (failure) {
+      setActionError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      abortRef.current?.abort();
+      setBusy(false);
+      setTurn(null);
+      setActionBusy(false);
     }
-    abortRef.current?.abort();
-    setBusy(false);
-    setTurn(null);
+  };
+
+  const resume = async () => {
+    if (!activeId || busy || actionBusy) return;
+    setActionBusy(true);
+    try {
+      await runStream(activeId, input.trim(), true);
+      setInput('');
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const confirmScope = async () => {
     if (!activeId) return;
-    const confirmed = await api.confirmReviewScope(activeId, { review_id: activeId });
-    setReviewScope(confirmed);
-    await loadSessions();
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const confirmed = await api.confirmReviewScope(activeId, { review_id: activeId });
+      setReviewScope(confirmed);
+      setActionNotice('复盘范围已确认。');
+      await loadSessions();
+    } catch (failure) {
+      setActionError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const fork = async () => {
     if (!activeId) return;
-    const result = await api.forkSession(activeId, {});
-    await loadSessions();
-    setActiveId(result.session.session_id);
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const result = await api.forkSession(activeId, {});
+      await loadSessions();
+      setActiveId(result.session.session_id);
+      setActionNotice('已创建复盘分支。');
+    } catch (failure) {
+      setActionError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const activeSession = sessions.find((session) => session.session_id === activeId) || null;
   const providers = meta?.providers || [];
   const seatModel = findModel(providers, selection.provider_id, selection.model);
   const seatProvider = providers.find((item) => item.provider_id === selection.provider_id);
+  const resumable = Boolean(activeSession && RESUMABLE_STATUSES.has(activeSession.status));
+  const scopePayload = reviewScope?.envelope.payload || {};
+  const scopeSummary = (scopePayload.summary as Record<string, unknown> | undefined) || {};
+  const scopeIssues = Array.isArray(scopePayload.blocking_issues) ? scopePayload.blocking_issues.length : 0;
 
   return (
-    <aside className="assistant">
+    <aside className={'assistant' + (className ? ' ' + className : '')}>
       <div className="assistant-head">
         <strong style={{ fontSize: 12 }}>复盘助手</strong>
         <span className="muted" style={{ fontSize: 11 }}>
@@ -263,16 +353,30 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
 
       <div className="assistant-body" ref={bodyRef}>
         {reviewScope && !reviewScope.confirmed ? (
-          <div className="notice" style={{ fontSize: 12, lineHeight: 1.6 }}>
+          <div className="notice scope-preview" style={{ fontSize: 12, lineHeight: 1.6 }}>
             <strong>请先确认本次复盘范围</strong>
-            <div className="muted" style={{ marginTop: 4 }}>
-              DSH 只会收到脱敏后的摘要；决策时间：{String(reviewScope.envelope.scope.decision_time || '—')}。
+            <div className="scope-flow" aria-label="本次复盘工作流">
+              <span className="scope-flow-lead">TL 调度</span>
+              <span>范围</span><span>证据</span><span>综合</span><span>challenger</span>
             </div>
-            <button className="primary" style={{ marginTop: 8 }} onClick={() => void confirmScope()}>
-              确认范围并继续
+            <div className="scope-grid">
+              <div><span>输入</span><strong>本地台账脱敏摘要</strong></div>
+              <div><span>决策时间</span><strong>{String(reviewScope.envelope.scope.decision_time || '—')}</strong></div>
+              <div><span>时间约束</span><strong>available_at ≤ 决策时间</strong></div>
+              <div><span>数据质量</span><strong>{String(scopeSummary.sample_note || '本地台账 · 待模型评估')}</strong></div>
+              <div><span>样本量</span><strong>{String(scopeSummary.trade_count ?? '0')} 笔 · 阻断问题 {scopeIssues}</strong></div>
+              <div><span>能力边界</span><strong>只读 · 无 shell / 文件 / 网络 / 交易</strong></div>
+            </div>
+            <div className="muted scope-hint">
+              原文只在本机解析；规则只生成 challenger，champion 变更必须由你显式确认。
+            </div>
+            <button className="primary" style={{ marginTop: 8 }} onClick={() => void confirmScope()} disabled={actionBusy}>
+              {actionBusy ? '确认中...' : '确认范围并继续'}
             </button>
           </div>
         ) : null}
+        {actionNotice ? <div className="notice" role="status" style={{ fontSize: 12 }}>{actionNotice}</div> : null}
+        {actionError ? <div className="bubble error" role="alert" style={{ fontSize: 12 }}>{actionError}</div> : null}
         {unavailable ? (
           <div className="notice" style={{ fontSize: 12, lineHeight: 1.7 }}>
             复盘助手在这个部署里不可用：{unavailable}
@@ -335,9 +439,20 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       </div>
 
       <div className="assistant-foot">
+        {resumable && !busy ? (
+          <div className="resume-card">
+            <div>
+              <strong>上一轮已中断</strong>
+              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>可沿用最近一条问题继续，或在下方输入新的复盘问题。</div>
+            </div>
+            <button className="ghost" onClick={() => void resume()} disabled={actionBusy}>
+              {actionBusy ? '恢复中...' : '继续上一轮'}
+            </button>
+          </div>
+        ) : null}
         <textarea
           value={input}
-          disabled={Boolean(unavailable)}
+          disabled={Boolean(unavailable) || actionBusy}
           placeholder="描述你想复盘的问题（回车发送，Shift+回车换行）"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -351,13 +466,13 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
           <ModelPicker
             providers={providers}
             selection={selection}
-            onSelect={(next) => void applySelection(next)}
+            onSelect={(next) => void applySelection(next).catch((failure) => setActionError(failure instanceof Error ? failure.message : String(failure)))}
           />
           <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             {busy ? (
-              <button className="ghost" onClick={() => void stop()}>停止</button>
+              <button className="ghost" onClick={() => void stop()} disabled={actionBusy}>{actionBusy ? '停止中...' : '停止'}</button>
             ) : (
-              <button className="primary" onClick={send} disabled={!input.trim() || Boolean(unavailable)}>发送</button>
+              <button className="primary" onClick={() => void send()} disabled={!input.trim() || Boolean(unavailable) || actionBusy}>发送</button>
             )}
           </div>
         </div>

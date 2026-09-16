@@ -273,6 +273,8 @@ export function App() {
             <AssistantPanel
               meta={meta}
               context={assistantContext}
+              className="drawer open"
+              onClose={() => setAssistantOpen(false)}
               onMetaReload={() => void loadMeta()}
             />
           ) : null}

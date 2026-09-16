@@ -133,7 +133,7 @@ export function PluginsView() {
         <div>
           <strong>复盘安全底线：</strong>插件只能读取外部数据并作为复盘证据使用。禁止下单、改账户与绕过脱敏。任何 <code>available_at</code> 晚于决策时间的数据都会被判定为未来数据拒绝。
         </div>
-        <Badge kind="ok">READ_ONLY</Badge>
+        <Badge kind="ok">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</Badge>
       </div>
 
       {notice ? <div className="notice" role="status" style={{ borderLeftColor: 'var(--color-accent)' }}>{notice}</div> : null}

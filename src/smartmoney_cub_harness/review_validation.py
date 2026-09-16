@@ -106,6 +106,13 @@ def _is_alias(value: object, *, kind: str) -> bool:
     return isinstance(value, str) and re.fullmatch(rf"{kind}-[0-9a-f]{{8}}", value) is not None
 
 
+def _is_known_alias(value: object) -> bool:
+    """Recognize typed aliases wherever they appear, including nested lists."""
+    return isinstance(value, str) and re.fullmatch(
+        r"(?:symbol|portfolio|subject)-[0-9a-f]{8}", value
+    ) is not None
+
+
 def validate_redacted_payload(payload: object) -> ValidationResult:
     errors: list[ReviewErrorMetadata] = []
     if not isinstance(payload, Mapping):
@@ -175,6 +182,16 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                             child_path,
                         )
                     )
+                # A valid pseudonymous identifier is already fully validated
+                # by its typed field rule. Do not re-scan its hash suffix as
+                # free text: an HMAC alias may legitimately contain six
+                # consecutive decimal characters.
+                if (
+                    lowered in SYMBOL_KEYS and _is_alias(value, kind="symbol")
+                ) or (
+                    lowered in PORTFOLIO_KEYS and _is_alias(value, kind="portfolio")
+                ):
+                    continue
                 if (
                     _matches_redaction_key(key_text, EXACT_QUANTITY_KEYS)
                     or _matches_redaction_key(key_text, EXACT_AMOUNT_KEYS)
@@ -217,7 +234,7 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                         path or "payload",
                     )
                 )
-            if SYMBOL_CODE_RE.search(node):
+            if not _is_known_alias(node) and SYMBOL_CODE_RE.search(node):
                 errors.append(
                     _error(
                         ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,

@@ -266,6 +266,22 @@ def test_redaction_validator_accepts_redacted_toy_review_shape() -> None:
     assert result.errors == ()
 
 
+def test_redaction_validator_accepts_numeric_characters_inside_valid_aliases() -> None:
+    validation = _validation()
+
+    result = validation.validate_redacted_payload(
+        {
+            "symbol": "symbol-123456ab",
+            "portfolio_id": "portfolio-a123456b",
+            "watchlist": ["symbol-123456ab"],
+            "review_note": "subject-123456ab",
+        }
+    )
+
+    assert result.ok is True
+    assert result.errors == ()
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_code"),
     [
