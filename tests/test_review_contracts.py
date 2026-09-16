@@ -282,6 +282,35 @@ def test_redaction_validator_accepts_numeric_characters_inside_valid_aliases() -
     assert result.errors == ()
 
 
+def test_redaction_validator_accepts_large_coarsened_bands_in_nested_positions() -> None:
+    validation = _validation()
+
+    result = validation.validate_redacted_payload(
+        {
+            "open_positions": [
+                {
+                    "quantity": "50000-250000",
+                    "lots": [{"remaining": "100000-500000"}],
+                }
+            ]
+        }
+    )
+
+    assert result.ok is True
+    assert result.errors == ()
+
+
+def test_redaction_validator_accepts_known_aliases_inside_local_fill_references() -> None:
+    validation = _validation()
+
+    result = validation.validate_redacted_payload(
+        {"fill_id": "2026-07-24-20:49:27-symbol-4f754775-BUY"}
+    )
+
+    assert result.ok is True
+    assert result.errors == ()
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_code"),
     [

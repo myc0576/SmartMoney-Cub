@@ -113,6 +113,12 @@ def _is_known_alias(value: object) -> bool:
     ) is not None
 
 
+def _contains_unaliased_symbol_code(value: str) -> bool:
+    """Scan free text without mistaking a typed alias suffix for a code."""
+    without_aliases = re.sub(r"(?:symbol|portfolio|subject)-[0-9a-f]{8}", "", value)
+    return SYMBOL_CODE_RE.search(without_aliases) is not None
+
+
 def validate_redacted_payload(payload: object) -> ValidationResult:
     errors: list[ReviewErrorMetadata] = []
     if not isinstance(payload, Mapping):
@@ -192,10 +198,10 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                     lowered in PORTFOLIO_KEYS and _is_alias(value, kind="portfolio")
                 ):
                     continue
-                if (
-                    _matches_redaction_key(key_text, EXACT_QUANTITY_KEYS)
-                    or _matches_redaction_key(key_text, EXACT_AMOUNT_KEYS)
-                ) and not _is_band(value):
+                is_exact_band = _matches_redaction_key(
+                    key_text, EXACT_QUANTITY_KEYS
+                ) or _matches_redaction_key(key_text, EXACT_AMOUNT_KEYS)
+                if is_exact_band and not _is_band(value):
                     errors.append(
                         _error(
                             ReviewErrorCode.REDACTION_EXACT_VALUE,
@@ -203,7 +209,10 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                             child_path,
                         )
                     )
-                if _matches_redaction_key(key_text, EXACT_TIME_KEYS) and not _is_time_bucket(value):
+                if is_exact_band:
+                    continue
+                is_exact_time = _matches_redaction_key(key_text, EXACT_TIME_KEYS)
+                if is_exact_time and not _is_time_bucket(value):
                     errors.append(
                         _error(
                             ReviewErrorCode.REDACTION_EXACT_VALUE,
@@ -211,7 +220,10 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                             child_path,
                         )
                     )
-                if lowered in DATE_KEYS and not _is_date_bucket(value):
+                if is_exact_time:
+                    continue
+                is_exact_date = lowered in DATE_KEYS
+                if is_exact_date and not _is_date_bucket(value):
                     errors.append(
                         _error(
                             ReviewErrorCode.REDACTION_EXACT_VALUE,
@@ -219,6 +231,8 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                             child_path,
                         )
                     )
+                if is_exact_date:
+                    continue
                 walk(value, child_path)
             return
         if isinstance(node, (list, tuple)):
@@ -234,7 +248,7 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                         path or "payload",
                     )
                 )
-            if not _is_known_alias(node) and SYMBOL_CODE_RE.search(node):
+            if not _is_known_alias(node) and _contains_unaliased_symbol_code(node):
                 errors.append(
                     _error(
                         ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,
