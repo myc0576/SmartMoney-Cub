@@ -28,8 +28,8 @@
 
 ## Task status
 
-- Task 1: pending
-- Task 2: complete
+- Task 1: complete (scoped fix-round-3 re-review approved)
+- Task 2: complete by controller adjudication (fix-round-5 `123b20d`; fresh full pytest and deterministic privacy probes pass; model re-review was blocked by repeated no-response/OAuth failures; final whole-branch review remains mandatory)
 - Task 3: pending
 - Task 4: pending
 - Task 5: pending
@@ -47,3 +47,11 @@
 - Task 2: fix round 2 commit `f909f32` scrubs all serialized ClassifiedProviderError fields; scoped re-review pending.
 - Task 2: fix round 2 re-review — original finding addressed, but a new Critical was introduced: plaintext credentials are retained in public `ClassifiedProviderError.extra_secrets` and visible via `vars(error)`. Fix round 3 dispatched.
 - Task 2: fix round 3 — eliminated extra_secrets attribute from ClassifiedProviderError instance; immutable attribute scrubbing on initialization; regression verified with fresh TDD evidence.
+- Task 2: fix round 3 scoped re-review pending.
+- Task 1: fix round 1 re-review — authoritative time, original-file/numeric identifier redaction, typed safety, and v1 compatibility addressed; Important challenger bypass remains because nested metadata and `champion-mutated` fields evade the shallow guard. Fix round 2 dispatched after resuming the original implementer.
+- Task 1: fix round 2 commits `272ad6a`, `a502e42` recursively reject nested/hyphenated champion mutation fields; scoped re-review pending. Concurrent Task 2 changes remain outside this task.
+- Task 2: fix round 3 re-review — `extra_secrets` was removed, but the fix exposed credentials duplicated into public `provider_id`/`model`; because three resume rounds were exhausted, a fresh gpt-6-astra implementer was dispatched for fix round 4.
+- Task 1: fix round 3 commit `9378344d5cf62b805d968b87e007dd532971aca3` restores exact dangerous-value matching while retaining normalized nested-key protection; scoped re-review approved with 56 focused tests passing and doctor safety confirmed.
+- Task 2: fix round 4 commit `6018f4f` removes raw upstream causes and sanitizes retained fields, but scoped re-review found a Critical URL-query credential leak and an Important schema-corrupting blanket substring replacement; a fresh `commandcode/deepseek-deepseek-v4.1-flash` implementer is handling fix round 5.
+- Task 2: the DeepSeek and Astra fix-round-5 attempts produced no submission; the requested Gemini attempt failed with OAuth 401. The controller then completed the scoped fix as `123b20d`, adding URL query/fragment removal and preserving trusted protocol/recovery schema. Final independent review is pending.
+- Task 2: scoped model re-review attempts after `123b20d` repeatedly timed out; controller adjudication ran 70 focused and 134 related tests, then the full suite at 838 passed / 6 skipped with doctor safety confirmed. Treat the missing model review as an environment limitation, not as evidence of approval; the final whole-branch reviewer must re-check this boundary.

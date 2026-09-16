@@ -417,3 +417,94 @@ def test_the_provider_streams_reasoning_only_when_it_was_actually_sent(monkeypat
     plain = _events([_frame({"content": "结论", "finish_reason": "stop"})])
     assert [event["kind"] for event in plain] == ["delta", "done"]
     assert not [event for event in plain if event["kind"] == "reasoning"]
+
+
+def test_assistant_reads_trades_from_trader_service(tmp_path: Path) -> None:
+    from smartmoney_cub_harness.trader.storage import open_store
+    from smartmoney_cub_harness.trader.auth import MODE_LOCAL
+    from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+    from smartmoney_cub_harness.trader.api import TraderService
+
+    store = Store(tmp_path / "review")
+    trader_store = open_store(tmp_path / "trader", mode=MODE_LOCAL)
+    trader_svc = TraderService(trader_store, auth_mode=MODE_LOCAL)
+
+    trader_svc.import_trades(
+        LOCAL_CONTEXT,
+        rows=[
+            {
+                "trade_id": "T1-BUY",
+                "symbol": "600519",
+                "name": "贵州茅台",
+                "side": "BUY",
+                "trade_date": "2026-09-01",
+                "trade_time": "09:30:00",
+                "price": 100.0,
+                "quantity": 100,
+                "fee": 5.0,
+            },
+            {
+                "trade_id": "T1-SELL",
+                "symbol": "600519",
+                "name": "贵州茅台",
+                "side": "SELL",
+                "trade_date": "2026-09-02",
+                "trade_time": "15:00:00",
+                "price": 110.0,
+                "quantity": 100,
+                "fee": 5.0,
+            },
+        ],
+    )
+
+    runtime = ReviewAgentRuntime(store, trader_service=trader_svc)
+    payload = runtime.context_payload({})
+    summary = payload["summary"]
+    assert summary["trade_count"] == 1
+    assert summary["win_count"] == 1
+    assert summary["total_net_pnl"] == 990.0
+
+    tools_summary = runtime.toolbox.analytics_summary()
+    assert tools_summary["summary"]["trade_count"] == 1
+
+    trades = runtime.toolbox.list_trades()
+    assert trades["count"] == 1
+    assert trades["trades"][0]["symbol"] == "600519"
+    assert trades["trades"][0]["net_pnl"] == 990.0
+
+    calendar = runtime.toolbox.calendar_month(2026, 9)
+    assert len(calendar["days"]) >= 1
+
+    journal_dir = tmp_path / "auto_detect"
+    auto_store = Store(journal_dir)
+    auto_trader_store = open_store(journal_dir / "journal", mode=MODE_LOCAL)
+    auto_trader_svc = TraderService(auto_trader_store, auth_mode=MODE_LOCAL)
+    auto_trader_svc.import_trades(
+        LOCAL_CONTEXT,
+        rows=[
+            {
+                "trade_id": "T2-BUY",
+                "symbol": "000001",
+                "side": "BUY",
+                "trade_date": "2026-09-05",
+                "price": 10.0,
+                "quantity": 100,
+            },
+            {
+                "trade_id": "T2-SELL",
+                "symbol": "000001",
+                "side": "SELL",
+                "trade_date": "2026-09-06",
+                "price": 12.0,
+                "quantity": 100,
+            },
+        ],
+    )
+    auto_runtime = ReviewAgentRuntime(auto_store)
+    auto_payload = auto_runtime.context_payload({})
+    assert auto_payload["summary"]["trade_count"] == 1
+
+    store.close()
+    auto_store.close()
+    trader_store.close()
+    auto_trader_store.close()

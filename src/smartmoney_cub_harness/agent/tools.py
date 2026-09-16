@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -35,6 +36,25 @@ def _schema(properties: dict[str, Any], required: list[str] | None = None) -> di
         "required": required or [],
         "additionalProperties": False,
     }
+
+
+def _detect_trader_service(root: Path | str | None) -> Any:
+    if not root:
+        return None
+    root_path = Path(root)
+    for candidate in (root_path / "journal", root_path):
+        db_file = candidate / "trader_store.db"
+        if db_file.is_file():
+            try:
+                from smartmoney_cub_harness.trader.api import TraderService
+                from smartmoney_cub_harness.trader.auth import MODE_LOCAL
+                from smartmoney_cub_harness.trader.storage import open_store
+
+                store = open_store(candidate, mode=MODE_LOCAL)
+                return TraderService(store, auth_mode=MODE_LOCAL)
+            except Exception:
+                pass
+    return None
 
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -140,14 +160,16 @@ TOOL_SPECS: list[dict[str, Any]] = [
 class ToolBox:
     """Executes the assistant's domain tools against the local store."""
 
-    def __init__(self, store: Store, workspace_db: str | None = None) -> None:
+    def __init__(
+        self,
+        store: Store,
+        workspace_db: str | None = None,
+        *,
+        trader_service: Any = None,
+    ) -> None:
         self.store = store
-        # The rule library is derived from the store root, not from the process
-        # working directory. A relative fallback resolved against the CWD, so a
-        # server started with --state-dir elsewhere still wrote rules into
-        # ./state/workspace/review.db: a proposal landed outside the review data
-        # the session was actually reading.
         self.workspace_db = workspace_db or str(store.root / "workspace" / "review.db")
+        self.trader_service = trader_service or _detect_trader_service(store.root)
         self._handlers: dict[str, Callable[..., dict[str, Any]]] = {
             "list_trades": self.list_trades,
             "get_trade": self.get_trade,
@@ -182,9 +204,52 @@ class ToolBox:
 
     # ---- reads ---------------------------------------------------------
 
-    def _analysis(self, portfolio_id: str | None) -> dict[str, Any]:
+    def _analysis(
+        self,
+        portfolio_id: str | None = None,
+        *,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> dict[str, Any]:
+        today = date.today()
+        y = year or today.year
+        m = month or today.month
+
+        if self.trader_service is not None:
+            try:
+                from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+                from smartmoney_cub_harness.trader.api.service import build_tenant_ledger
+
+                trades = self.trader_service._fills(LOCAL_CONTEXT, limit=100000)
+                if trades:
+                    ledger = build_tenant_ledger(trades)
+                    summary = analytics.summarize(ledger)
+                    return {
+                        "status": "ok",
+                        "ledger_status": ledger.get("status"),
+                        "issues": ledger.get("issues") or [],
+                        "blocking_issues": [
+                            issue
+                            for issue in ledger.get("issues") or []
+                            if issue.get("severity") == "error"
+                        ],
+                        "summary": summary,
+                        "round_trips": ledger.get("round_trips") or [],
+                        "open_positions": ledger.get("open_positions") or [],
+                        "calendar": analytics.calendar_days(ledger, year=y, month=m),
+                        "calendar_year": y,
+                        "calendar_month": m,
+                        "breakdown": {
+                            dimension: analytics.group_performance(ledger, dimension=dimension)
+                            for dimension in analytics.DIMENSIONS
+                        },
+                        "safety": SAFETY_DECLARATION,
+                    }
+            except Exception:
+                pass
+
         fills = self.store.list_fills(portfolio_id=portfolio_id or DEFAULT_PORTFOLIO_ID)
-        return analytics.analyze(fills)
+        return analytics.analyze(fills, year=y, month=m)
 
     def list_trades(
         self,
@@ -195,7 +260,9 @@ class ToolBox:
     ) -> dict[str, Any]:
         trips = self._analysis(portfolio_id)["round_trips"]
         if symbol:
-            trips = [trip for trip in trips if trip["symbol"] == symbol]
+            trips = [
+                trip for trip in trips if symbol in trip["symbol"] or symbol in (trip.get("name") or "")
+            ]
         if regime:
             trips = [trip for trip in trips if (trip.get("regime") or "") == regime]
         capped = trips[: max(1, min(int(limit or MAX_ROWS), MAX_ROWS))]
@@ -241,11 +308,7 @@ class ToolBox:
     def calendar_month(
         self, year: int, month: int, portfolio_id: str | None = None
     ) -> dict[str, Any]:
-        analysis = analytics.analyze(
-            self.store.list_fills(portfolio_id=portfolio_id or DEFAULT_PORTFOLIO_ID),
-            year=int(year),
-            month=int(month),
-        )
+        analysis = self._analysis(portfolio_id=portfolio_id, year=int(year), month=int(month))
         return {
             "status": "ok",
             "year": int(year),
