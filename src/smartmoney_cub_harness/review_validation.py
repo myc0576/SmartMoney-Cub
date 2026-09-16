@@ -374,23 +374,51 @@ def validate_challenger_only_mutation(payload: object) -> ValidationResult:
         "target_status",
         "rule_status",
     )
-    for key, value in payload.items():
-        field_name = str(key)
-        normalized = re.sub(r"[^a-z0-9]+", "_", field_name.lower()).strip("_")
-        if normalized in guard_fields:
-            continue
-        if any(fragment in normalized for fragment in mutation_fragments) or (
-            isinstance(value, str) and value.strip().lower() == "champion"
-        ):
-            return _result(
-                [
-                    _error(
-                        ReviewErrorCode.CHALLENGER_ONLY_MUTATION,
-                        "Unsupported promotion or mutation field in challenger proposal.",
-                        field_name,
-                    )
-                ]
-            )
+
+    def has_mutation_indicator(value: str) -> bool:
+        normalized = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+        return any(fragment in normalized for fragment in mutation_fragments)
+
+    def is_validated_guard(key: object, value: object) -> bool:
+        return isinstance(key, str) and (
+            (key == "candidate_role" and value == "challenger")
+            or (key in guard_fields - {"candidate_role"} and value is False)
+        )
+
+    def find_indicator(node: object, path: str, *, top_level: bool = False) -> str | None:
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                field_name = str(key)
+                child_path = f"{path}.{field_name}" if path else field_name
+                if top_level and is_validated_guard(key, value):
+                    continue
+                if has_mutation_indicator(field_name):
+                    return child_path
+                indicator_path = find_indicator(value, child_path)
+                if indicator_path is not None:
+                    return indicator_path
+            return None
+        if isinstance(node, (list, tuple)):
+            for index, item in enumerate(node):
+                indicator_path = find_indicator(item, f"{path}[{index}]")
+                if indicator_path is not None:
+                    return indicator_path
+            return None
+        if isinstance(node, str) and has_mutation_indicator(node):
+            return path
+        return None
+
+    indicator_path = find_indicator(payload, "", top_level=True)
+    if indicator_path is not None:
+        return _result(
+            [
+                _error(
+                    ReviewErrorCode.CHALLENGER_ONLY_MUTATION,
+                    "Unsupported promotion or mutation field in challenger proposal.",
+                    indicator_path,
+                )
+            ]
+        )
     return _result([])
 
 

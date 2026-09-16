@@ -532,6 +532,54 @@ def test_challenger_validation_rejects_hidden_promotion_field() -> None:
     assert checked.errors[0].field == "promote_to"
 
 
+def test_plugin_result_rejects_nested_challenger_promotion_metadata() -> None:
+    contracts = _contracts()
+    validation = _validation()
+    result = contracts.PluginReviewResult(
+        plugin_id="toy.reviewer",
+        status="ok",
+        challenger_proposals=(
+            {
+                "rule_id": "toy-rule-nested",
+                "candidate_role": "challenger",
+                "champion_mutated": False,
+                "core_rules_mutated": False,
+                "metadata": {"promote_to": "champion"},
+            },
+        ),
+    )
+
+    checked = validation.validate_plugin_result(result, decision_time=DECISION_TIME)
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "challenger_only_mutation"
+    assert checked.errors[0].field == "metadata.promote_to"
+
+
+def test_plugin_result_rejects_hyphenated_champion_mutation_key() -> None:
+    contracts = _contracts()
+    validation = _validation()
+    result = contracts.PluginReviewResult(
+        plugin_id="toy.reviewer",
+        status="ok",
+        challenger_proposals=(
+            {
+                "rule_id": "toy-rule-hyphenated",
+                "candidate_role": "challenger",
+                "champion_mutated": False,
+                "core_rules_mutated": False,
+                "champion-mutated": True,
+            },
+        ),
+    )
+
+    checked = validation.validate_plugin_result(result, decision_time=DECISION_TIME)
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "challenger_only_mutation"
+    assert checked.errors[0].field == "champion-mutated"
+
+
 def test_v1_plugin_result_normalizes_aliases_to_current_contract() -> None:
     contracts = _contracts()
     legacy = {

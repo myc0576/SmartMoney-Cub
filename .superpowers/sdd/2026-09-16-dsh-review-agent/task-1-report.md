@@ -369,3 +369,52 @@ exit code 0
 
 Accordingly, the transient out-of-scope provider failure is resolved by its
 own concurrent change. Task 1 has no unresolved issue.
+
+## Task 1 review-fix round 2 addendum
+
+### Review findings addressed
+
+The challenger validator now recursively inspects retained mapping keys and
+sequence values for promotion or mutation indicators. Guard exemptions require
+the exact raw top-level guard field and the exact value already accepted by the
+direct guard validation. Normalized spellings such as `champion-mutated` and
+nested metadata are therefore not exempted.
+
+### Fresh RED evidence
+
+Tests were added first and run before the validator change:
+
+```text
+python -m pytest tests/test_review_contracts.py::test_plugin_result_rejects_nested_challenger_promotion_metadata tests/test_review_contracts.py::test_plugin_result_rejects_hyphenated_champion_mutation_key -q
+2 failed in 0.05s
+exit code 1
+```
+
+Both failures were the expected `assert checked.ok is False` failures: the
+existing shallow validator incorrectly returned `ok=True` for both bypasses.
+
+### Fresh GREEN evidence
+
+After the minimal recursive validator change:
+
+```text
+python -m pytest tests/test_review_contracts.py::test_plugin_result_rejects_nested_challenger_promotion_metadata tests/test_review_contracts.py::test_plugin_result_rejects_hyphenated_champion_mutation_key -q
+2 passed in 0.02s
+exit code 0
+
+python -m pytest tests/test_review_contracts.py -q
+48 passed in 0.04s
+exit code 0
+
+python -m compileall -q src/smartmoney_cub_harness/review_contracts.py src/smartmoney_cub_harness/review_validation.py
+exit code 0
+
+./scripts/verify.sh
+Doctor contract check passed.
+780 passed, 6 skipped in 25.84s
+Safety sanity check passed.
+Verification Loop: ALL GATES PASSED
+exit code 0
+```
+
+The doctor output retained `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
