@@ -32,6 +32,7 @@ class ReviewErrorCode:
     OBSERVATION_MISSING_FIELD = "observation_missing_field"
     INVALID_ACTION_LABEL = "invalid_action_label"
     INVALID_DECISION_TIME = "invalid_decision_time"
+    DECISION_TIME_MISMATCH = "decision_time_mismatch"
     INVALID_AVAILABLE_AT = "invalid_available_at"
     INVALID_DATA_QUALITY = "invalid_data_quality"
     MISSING_DATA_SOURCE = "missing_data_source"
@@ -137,6 +138,9 @@ class ReviewScope:
     schema: str = REVIEW_SCOPE_SCHEMA
     source_schema: str = REVIEW_SCOPE_SCHEMA
 
+    def __post_init__(self) -> None:
+        _safety(self.safety)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": REVIEW_SCOPE_SCHEMA,
@@ -182,6 +186,9 @@ class RedactedReviewEnvelope:
     safety: str = SAFETY_DECLARATION
     schema: str = REDACTED_REVIEW_ENVELOPE_SCHEMA
     source_schema: str = REDACTED_REVIEW_ENVELOPE_SCHEMA
+
+    def __post_init__(self) -> None:
+        _safety(self.safety)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -236,6 +243,9 @@ class ReviewEvidence:
     schema: str = REVIEW_EVIDENCE_SCHEMA
     source_schema: str = REVIEW_EVIDENCE_SCHEMA
 
+    def __post_init__(self) -> None:
+        _safety(self.safety)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": REVIEW_EVIDENCE_SCHEMA,
@@ -288,6 +298,9 @@ class StructuredReviewPackage:
     safety: str = SAFETY_DECLARATION
     schema: str = STRUCTURED_REVIEW_PACKAGE_SCHEMA
     source_schema: str = STRUCTURED_REVIEW_PACKAGE_SCHEMA
+
+    def __post_init__(self) -> None:
+        _safety(self.safety)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -350,6 +363,9 @@ class PluginReviewResult:
     safety: str = SAFETY_DECLARATION
     schema: str = PLUGIN_REVIEW_RESULT_SCHEMA
     source_schema: str = PLUGIN_REVIEW_RESULT_SCHEMA
+
+    def __post_init__(self) -> None:
+        _safety(self.safety)
 
     def to_dict(self) -> dict[str, Any]:
         return {

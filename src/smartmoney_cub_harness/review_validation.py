@@ -90,6 +90,22 @@ def _is_date_bucket(value: object) -> bool:
     )
 
 
+def _is_attachment_field(key: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+    if any(
+        marker in normalized
+        for marker in ("attachment", "screenshot", "image_data", "file_data")
+    ):
+        return True
+    tokens = set(normalized.split("_"))
+    original_file_tokens = {"csv", "file", "document", "image", "pdf"}
+    return "original" in tokens and bool(tokens & original_file_tokens)
+
+
+def _is_alias(value: object, *, kind: str) -> bool:
+    return isinstance(value, str) and re.fullmatch(rf"{kind}-[0-9a-f]{{8}}", value) is not None
+
+
 def validate_redacted_payload(payload: object) -> ValidationResult:
     errors: list[ReviewErrorMetadata] = []
     if not isinstance(payload, Mapping):
@@ -118,8 +134,7 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                 key_text = str(key)
                 child_path = f"{path}.{key_text}" if path else key_text
                 lowered = key_text.lower()
-                attachment_markers = ("attachment", "screenshot", "image_data", "file_data")
-                if any(marker in lowered for marker in attachment_markers):
+                if _is_attachment_field(key_text):
                     errors.append(
                         _error(
                             ReviewErrorCode.REDACTION_ATTACHMENT,
@@ -144,24 +159,22 @@ def validate_redacted_payload(payload: object) -> ValidationResult:
                                 child_path,
                             )
                         )
-                if lowered in SYMBOL_KEYS and isinstance(value, str):
-                    if not value.startswith("symbol-"):
-                        errors.append(
-                            _error(
-                                ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,
-                                "Symbols must use a redacted alias.",
-                                child_path,
-                            )
+                if lowered in SYMBOL_KEYS and not _is_alias(value, kind="symbol"):
+                    errors.append(
+                        _error(
+                            ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,
+                            "Symbols must use a redacted alias.",
+                            child_path,
                         )
-                if lowered in PORTFOLIO_KEYS and isinstance(value, str):
-                    if not value.startswith("portfolio-"):
-                        errors.append(
-                            _error(
-                                ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,
-                                "Portfolio identifiers must use a redacted alias.",
-                                child_path,
-                            )
+                    )
+                if lowered in PORTFOLIO_KEYS and not _is_alias(value, kind="portfolio"):
+                    errors.append(
+                        _error(
+                            ReviewErrorCode.REDACTION_IDENTIFIER_VALUE,
+                            "Portfolio identifiers must use a redacted alias.",
+                            child_path,
                         )
+                    )
                 if (
                     _matches_redaction_key(key_text, EXACT_QUANTITY_KEYS)
                     or _matches_redaction_key(key_text, EXACT_AMOUNT_KEYS)
@@ -351,6 +364,33 @@ def validate_challenger_only_mutation(payload: object) -> ValidationResult:
                 )
             ]
         )
+    guard_fields = {"candidate_role", "champion_mutated", "core_rules_mutated"}
+    mutation_fragments = (
+        "promot",
+        "champion",
+        "mutat",
+        "core_rule",
+        "target_role",
+        "target_status",
+        "rule_status",
+    )
+    for key, value in payload.items():
+        field_name = str(key)
+        normalized = re.sub(r"[^a-z0-9]+", "_", field_name.lower()).strip("_")
+        if normalized in guard_fields:
+            continue
+        if any(fragment in normalized for fragment in mutation_fragments) or (
+            isinstance(value, str) and value.strip().lower() == "champion"
+        ):
+            return _result(
+                [
+                    _error(
+                        ReviewErrorCode.CHALLENGER_ONLY_MUTATION,
+                        "Unsupported promotion or mutation field in challenger proposal.",
+                        field_name,
+                    )
+                ]
+            )
     return _result([])
 
 
@@ -374,6 +414,7 @@ def validate_plugin_result(
             )
 
     errors: list[ReviewErrorMetadata] = []
+    effective_decision_time = decision_time
     if result.safety != SAFETY_DECLARATION:
         errors.append(
             _error(
@@ -398,17 +439,51 @@ def validate_plugin_result(
     challengers = list(result.challenger_proposals)
     if result.review_package is not None:
         package = result.review_package
+        effective_decision_time = package.scope.decision_time
+        scope_dt = _aware_timestamp(package.scope.decision_time)
+        caller_dt = _aware_timestamp(decision_time)
+        envelope_dt = _aware_timestamp(package.envelope.scope.decision_time)
+        if scope_dt is None:
+            errors.append(
+                _error(
+                    ReviewErrorCode.INVALID_DECISION_TIME,
+                    "Review package scope decision_time must be a timezone-aware ISO timestamp.",
+                    "review_package.scope.decision_time",
+                )
+            )
+        else:
+            if caller_dt != scope_dt:
+                errors.append(
+                    _error(
+                        ReviewErrorCode.DECISION_TIME_MISMATCH,
+                        "Caller decision_time must match the review package scope.",
+                        "decision_time",
+                    )
+                )
+            if envelope_dt != scope_dt:
+                errors.append(
+                    _error(
+                        ReviewErrorCode.DECISION_TIME_MISMATCH,
+                        "Envelope scope decision_time must match the review package scope.",
+                        "review_package.envelope.scope.decision_time",
+                    )
+                )
         errors.extend(validate_redacted_payload(package.envelope.payload).errors)
         observations.extend(package.observations)
         evidence.extend(package.evidence)
         challengers.extend(package.challenger_proposals)
 
     for observation in observations:
-        errors.extend(validate_observation(observation, decision_time=decision_time).errors)
+        errors.extend(
+            validate_observation(
+                observation,
+                decision_time=effective_decision_time,
+            ).errors
+        )
     for item in evidence:
         errors.extend(
             validate_source_time(
-                decision_time=decision_time,
+                decision_time=effective_decision_time,
                 data_source=item.data_source,
                 available_at=item.available_at,
                 data_quality_flag=item.data_quality_flag,

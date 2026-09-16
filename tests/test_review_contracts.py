@@ -86,6 +86,25 @@ def _observation() -> dict:
     }
 
 
+def _review_package(
+    *,
+    scope_decision_time: str = DECISION_TIME,
+    envelope_decision_time: str = DECISION_TIME,
+    observations: tuple[dict, ...] = (),
+):
+    contracts = _contracts()
+    scope_payload = _scope_payload()
+    scope_payload["decision_time"] = scope_decision_time
+    envelope_payload = _redacted_envelope_payload()
+    envelope_payload["scope"]["decision_time"] = envelope_decision_time
+    return contracts.StructuredReviewPackage(
+        review_id="toy-review-1",
+        scope=contracts.ReviewScope.from_dict(scope_payload),
+        envelope=contracts.RedactedReviewEnvelope.from_dict(envelope_payload),
+        observations=observations,
+    )
+
+
 def test_current_contracts_round_trip_as_typed_objects() -> None:
     contracts = _contracts()
     scope = contracts.ReviewScope.from_dict(_scope_payload())
@@ -365,3 +384,193 @@ def test_plugin_result_validation_aggregates_contract_errors_with_stable_codes()
         "challenger_only_mutation",
     ]
     assert checked.to_dict()["safety"] == SAFETY
+
+
+def test_plugin_result_uses_package_scope_time_and_rejects_caller_disagreement() -> None:
+    contracts = _contracts()
+    validation = _validation()
+    observation = {
+        **_observation(),
+        "available_at": "2026-09-10T15:30:00+08:00",
+    }
+    result = contracts.PluginReviewResult(
+        plugin_id="toy.reviewer",
+        status="ok",
+        review_package=_review_package(observations=(observation,)),
+    )
+
+    checked = validation.validate_plugin_result(
+        result,
+        decision_time="2026-09-10T16:00:00+08:00",
+    )
+
+    assert [error.code for error in checked.errors] == [
+        "decision_time_mismatch",
+        "future_leakage",
+    ]
+    assert checked.errors[0].field == "decision_time"
+
+
+def test_plugin_result_rejects_envelope_scope_time_disagreement() -> None:
+    contracts = _contracts()
+    validation = _validation()
+    result = contracts.PluginReviewResult(
+        plugin_id="toy.reviewer",
+        status="ok",
+        review_package=_review_package(
+            envelope_decision_time="2026-09-10T16:00:00+08:00"
+        ),
+    )
+
+    checked = validation.validate_plugin_result(result, decision_time=DECISION_TIME)
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "decision_time_mismatch"
+    assert checked.errors[0].field == "review_package.envelope.scope.decision_time"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"symbol": 123456},
+        {"portfolio_id": 42},
+        {"symbol": "symbol-not-hex"},
+        {"portfolio_id": "portfolio-too-short"},
+    ],
+)
+def test_redaction_validator_requires_valid_aliases_regardless_of_value_type(
+    payload: dict,
+) -> None:
+    validation = _validation()
+
+    checked = validation.validate_redacted_payload(payload)
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "redaction_identifier_value"
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["csv_original", "original_csv", "original_file", "source-original-file"],
+)
+def test_redaction_validator_rejects_original_file_fields(field_name: str) -> None:
+    validation = _validation()
+
+    checked = validation.validate_redacted_payload({field_name: "toy-offline-reference"})
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "redaction_attachment"
+    assert checked.errors[0].field == field_name
+
+
+@pytest.mark.parametrize(
+    "contract_name",
+    ["scope", "envelope", "evidence", "package", "plugin_result"],
+)
+def test_typed_contract_construction_rejects_tampered_safety(contract_name: str) -> None:
+    contracts = _contracts()
+    scope = contracts.ReviewScope.from_dict(_scope_payload())
+    envelope = contracts.RedactedReviewEnvelope.from_dict(_redacted_envelope_payload())
+    evidence = contracts.ReviewEvidence.from_dict(_evidence_payload())
+    factories = {
+        "scope": lambda: contracts.ReviewScope(
+            review_id="toy-review-unsafe",
+            decision_time=DECISION_TIME,
+            horizons=("d1",),
+            safety="tampered",
+        ),
+        "envelope": lambda: contracts.RedactedReviewEnvelope(
+            scope=scope,
+            payload={},
+            payload_sha256="a" * 64,
+            redaction_policy="redaction.v1",
+            sent_keys=(),
+            safety="tampered",
+        ),
+        "evidence": lambda: contracts.ReviewEvidence(
+            evidence_id="toy-evidence-unsafe",
+            kind="review_observation",
+            summary="Toy unsafe metadata fixture.",
+            data_source="toy_offline_fixture",
+            available_at=AVAILABLE_AT,
+            data_quality_flag="ok",
+            safety="tampered",
+        ),
+        "package": lambda: contracts.StructuredReviewPackage(
+            review_id="toy-review-unsafe",
+            scope=scope,
+            envelope=envelope,
+            evidence=(evidence,),
+            safety="tampered",
+        ),
+        "plugin_result": lambda: contracts.PluginReviewResult(
+            plugin_id="toy.reviewer",
+            status="ok",
+            safety="tampered",
+        ),
+    }
+
+    with pytest.raises(contracts.ContractDecodeError, match="invalid_safety"):
+        factories[contract_name]()
+
+
+def test_challenger_validation_rejects_hidden_promotion_field() -> None:
+    validation = _validation()
+
+    checked = validation.validate_challenger_only_mutation(
+        {
+            "rule_id": "toy-rule-v3",
+            "candidate_role": "challenger",
+            "promote_to": "champion",
+            "champion_mutated": False,
+            "core_rules_mutated": False,
+        }
+    )
+
+    assert checked.ok is False
+    assert checked.errors[0].code == "challenger_only_mutation"
+    assert checked.errors[0].field == "promote_to"
+
+
+def test_v1_plugin_result_normalizes_aliases_to_current_contract() -> None:
+    contracts = _contracts()
+    legacy = {
+        "schema": contracts.LEGACY_PLUGIN_REVIEW_RESULT_SCHEMA,
+        "plugin_id": "toy.legacy-reviewer",
+        "status": "ok",
+        "package": None,
+        "review_observations": [_observation()],
+        "items": [
+            {
+                "schema": contracts.LEGACY_REVIEW_EVIDENCE_SCHEMA,
+                "id": "toy-evidence-v1",
+                "type": "review_observation",
+                "text": "Legacy toy plugin evidence.",
+                "source": "toy_offline_fixture",
+                "available_time": AVAILABLE_AT,
+                "quality": "ok",
+                "safety": SAFETY,
+            }
+        ],
+        "challengers": [
+            {
+                "rule_id": "toy-rule-v1",
+                "candidate_role": "challenger",
+                "champion_mutated": False,
+                "core_rules_mutated": False,
+            }
+        ],
+        "error": None,
+        "champion_mutated": False,
+        "core_rules_mutated": False,
+        "safety": SAFETY,
+    }
+
+    result = contracts.PluginReviewResult.from_dict(legacy)
+
+    assert result.source_schema == contracts.LEGACY_PLUGIN_REVIEW_RESULT_SCHEMA
+    assert result.schema == contracts.PLUGIN_REVIEW_RESULT_SCHEMA
+    assert result.observations[0]["action_label"] == "WATCH"
+    assert result.evidence[0].summary == "Legacy toy plugin evidence."
+    assert result.challenger_proposals[0]["candidate_role"] == "challenger"
+    assert result.to_dict()["schema"] == contracts.PLUGIN_REVIEW_RESULT_SCHEMA
