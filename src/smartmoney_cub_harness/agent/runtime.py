@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import date
+import threading
+from datetime import date, datetime, timezone
 from typing import Any, Iterator
 
 from smartmoney_cub_harness import analytics
@@ -20,6 +22,15 @@ from smartmoney_cub_harness.agent.providers import (
 from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trader_service
 from smartmoney_cub_harness.redaction import prepare_outbound
 from smartmoney_cub_harness.redaction import redact_payload
+from smartmoney_cub_harness.review_contracts import (
+    REDACTED_REVIEW_ENVELOPE_SCHEMA,
+    RedactedReviewEnvelope,
+    ReviewScope,
+)
+from smartmoney_cub_harness.review_validation import (
+    validate_challenger_only_mutation,
+    validate_redacted_payload,
+)
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 
@@ -32,6 +43,11 @@ from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 # The outbound path is fixed: build a payload, redact it, audit it, send it.
 
 MAX_TOOL_ROUNDS = 6
+REVIEW_PHASES = ("scope_preview", "scope_confirmed", "evidence", "synthesis", "challenger", "completed")
+
+
+class ReviewLifecycleError(ValueError):
+    """A safe lifecycle contract error that can be returned to the Workbench."""
 
 # Fallback key when a provider event carries no field name of its own. The
 # provider only ever emits the reasoning event for a field it really sent, so
@@ -64,6 +80,7 @@ class ReviewAgentRuntime:
         credentials_root: str | None = None,
         workspace_db: str | None = None,
         trader_service: Any = None,
+        dsh_bridge: Any = None,
     ) -> None:
         self.store = store
         self.credentials_root = credentials_root or str(store.root)
@@ -76,6 +93,9 @@ class ReviewAgentRuntime:
             store, workspace_db, trader_service=self.trader_service
         )
         self.workspace_db = self.toolbox.workspace_db
+        self.dsh_bridge = dsh_bridge
+        self._cancel_lock = threading.RLock()
+        self._cancel_events: dict[str, threading.Event] = {}
 
     # ---- session helpers ----------------------------------------------
 
@@ -130,11 +150,21 @@ class ReviewAgentRuntime:
         are persisted, so replaying a session does not depend on the browser.
         """
         session = self.store.get_session(session_id)
+        cancel_event = self._cancel_events.setdefault(session_id, threading.Event())
+        # A previous cancelled run leaves its event set until the next explicit
+        # turn/resume. Clearing here makes cancellation one-turn scoped.
+        cancel_event.clear()
         self.store.append_event(
             session_id, kind="user_message", role="user", payload={"text": user_text}
         )
         if not dry_run:
             self.store.update_session(session_id, status="running")
+            self.store.append_event(
+                session_id,
+                kind="turn_started",
+                role="system",
+                payload={"phase": "evidence", "safety": SAFETY_DECLARATION},
+            )
 
         messages = self._build_messages(session, user_text)
         context = self.context_payload(session.get("context"))
@@ -154,11 +184,17 @@ class ReviewAgentRuntime:
         resolved = self.resolve_session_provider(session)
         if resolved["provider_id"] == OFFLINE_PROVIDER_ID:
             for event in self._offline_turn(session_id, session, context):
+                if cancel_event.is_set():
+                    yield from self._cancelled_events(session_id)
+                    return
                 yield event
             return
 
         try:
             for event in self._provider_turn(session_id, session, resolved, messages, context):
+                if cancel_event.is_set():
+                    yield from self._cancelled_events(session_id)
+                    return
                 yield event
         except ProviderError as error:
             if isinstance(error, ClassifiedProviderError):
@@ -174,6 +210,163 @@ class ReviewAgentRuntime:
                 yield {"kind": "error", "error": str(error), "safety": SAFETY_DECLARATION}
             self.store.append_event(session_id, kind="error", payload=payload)
             self.store.update_session(session_id, status="error")
+
+    def cancel_turn(self, session_id: str) -> dict[str, Any]:
+        """Request cancellation of a running model turn without touching markets."""
+        session = self.store.get_session(session_id)
+        if session.get("status") not in {"running", "cancel_requested"}:
+            return {
+                "status": "not_running",
+                "session": session,
+                "safety": SAFETY_DECLARATION,
+            }
+        event = self._cancel_events.setdefault(session_id, threading.Event())
+        event.set()
+        self.store.append_event(
+            session_id,
+            kind="turn_cancel_requested",
+            role="system",
+            payload={"status": "cancel_requested", "safety": SAFETY_DECLARATION},
+        )
+        session = self.store.update_session(session_id, status="cancel_requested")
+        return {"status": "cancel_requested", "session": session, "safety": SAFETY_DECLARATION}
+
+    def resume_turn(self, session_id: str, user_text: str = "") -> Iterator[dict[str, Any]]:
+        """Resume the last incomplete user turn using the durable local transcript."""
+        session = self.store.get_session(session_id)
+        if session.get("status") not in {"interrupted", "cancelled", "error", "cancel_requested"}:
+            raise ReviewLifecycleError("session_is_not_resumable")
+        text = user_text.strip()
+        if not text:
+            events = self.store.list_events(session_id)
+            text = next(
+                (
+                    str(event["payload"].get("text") or "").strip()
+                    for event in reversed(events)
+                    if event["kind"] == "user_message"
+                ),
+                "",
+            )
+        if not text:
+            raise ReviewLifecycleError("no_user_turn_to_resume")
+        self.store.append_event(
+            session_id,
+            kind="turn_resumed",
+            role="system",
+            payload={"resume_from": session.get("status"), "safety": SAFETY_DECLARATION},
+        )
+        yield from self.run_turn(session_id, text)
+
+    def _cancelled_events(self, session_id: str) -> Iterator[dict[str, Any]]:
+        self.store.append_event(
+            session_id,
+            kind="turn_cancelled",
+            role="system",
+            payload={"status": "cancelled", "resume_available": True, "safety": SAFETY_DECLARATION},
+        )
+        self.store.update_session(session_id, status="cancelled")
+        yield {"kind": "cancelled", "resume_available": True, "safety": SAFETY_DECLARATION}
+        yield {"kind": "done", "cancelled": True, "safety": SAFETY_DECLARATION}
+
+    def build_review_envelope(self, session_id: str) -> RedactedReviewEnvelope:
+        """Build the only payload allowed to cross into the DSH sidecar."""
+        session = self.store.get_session(session_id)
+        context = self.context_payload(session.get("context"))
+        redacted, _ = redact_payload(context, salt=self._salt())
+        decision_time = str(
+            session.get("context", {}).get("decision_time")
+            or session.get("created_at")
+            or datetime.now(timezone.utc).isoformat()
+        )
+        scope = ReviewScope(
+            review_id=session_id,
+            decision_time=decision_time,
+            horizons=tuple(session.get("context", {}).get("horizons") or ("session",)),
+            case_ids=tuple(session.get("context", {}).get("case_ids") or ()),
+        )
+        envelope_payload = {
+            "portfolio_id": redacted.get("portfolio", {}).get("portfolio_id", "REDACTED"),
+            "summary": redacted.get("summary", {}),
+            "open_positions": redacted.get("open_positions", []),
+            "ledger_status": redacted.get("ledger_status", ""),
+            "blocking_issues": redacted.get("blocking_issues", []),
+            "calendar": redacted.get("calendar", []),
+        }
+        validation = validate_redacted_payload(envelope_payload)
+        if not validation.ok:
+            raise ReviewLifecycleError("review_envelope_failed_redaction")
+        return RedactedReviewEnvelope(
+            scope=scope,
+            payload=envelope_payload,
+            payload_sha256=hashlib.sha256(
+                json.dumps(envelope_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            redaction_policy="redaction.v1",
+            sent_keys=("context",),
+        )
+
+    def review_scope_preview(self, session_id: str) -> dict[str, Any]:
+        envelope = self.build_review_envelope(session_id)
+        self.store.append_event(
+            session_id,
+            kind="review_scope_preview",
+            role="system",
+            payload={"phase": "scope_preview", "envelope": envelope.to_dict(), "safety": SAFETY_DECLARATION},
+        )
+        return {
+            "status": "ok",
+            "phase": "scope_preview",
+            "confirmed": bool(self.store.get_session(session_id).get("context", {}).get("scope_confirmed")),
+            "envelope": envelope.to_dict(),
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def confirm_review_scope(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        envelope = self.build_review_envelope(session_id)
+        if payload.get("review_id") and payload["review_id"] != session_id:
+            raise ReviewLifecycleError("review_id_mismatch")
+        context = dict(self.store.get_session(session_id).get("context") or {})
+        context["scope_confirmed"] = True
+        context["review_phase"] = "scope_confirmed"
+        session = self.store.update_session(session_id, context=context)
+        self.store.append_event(
+            session_id,
+            kind="review_scope_confirmed",
+            role="system",
+            payload={"phase": "scope_confirmed", "review_id": session_id, "safety": SAFETY_DECLARATION},
+        )
+        dsh = None
+        if self.dsh_bridge is not None:
+            try:
+                dsh = self.dsh_bridge.handshake(envelope)
+                self.dsh_bridge.subscribe()
+            except Exception:
+                self.store.append_event(
+                    session_id,
+                    kind="terminal",
+                    role="system",
+                    payload={"status": "dsh_handshake_failed", "safety": SAFETY_DECLARATION},
+                )
+                raise ReviewLifecycleError("dsh_handshake_failed") from None
+            self.store.append_event(
+                session_id,
+                kind="sidecar_connected",
+                role="system",
+                payload={"profile": "smartmoney-review", "safety": SAFETY_DECLARATION},
+            )
+        return {"status": "ok", "phase": "scope_confirmed", "session": session, "envelope": envelope.to_dict(), "dsh": dsh, "safety": SAFETY_DECLARATION}
+
+    def record_challenger_proposal(self, session_id: str, proposal: dict[str, Any]) -> dict[str, Any]:
+        validation = validate_challenger_only_mutation(proposal)
+        if not validation.ok:
+            raise ReviewLifecycleError("challenger_validation_failed")
+        self.store.append_event(
+            session_id,
+            kind="challenger_proposal",
+            role="plugin",
+            payload={"proposal": proposal, "champion_mutated": False, "safety": SAFETY_DECLARATION},
+        )
+        return {"status": "ok", "proposal": proposal, "champion_mutated": False, "safety": SAFETY_DECLARATION}
 
     # ---- provider path -------------------------------------------------
 
@@ -311,6 +504,18 @@ class ReviewAgentRuntime:
             tool_calls: list[dict[str, Any]] = []
             turn_text = ""
             round_reasoning: dict[str, str] = {}
+            self.store.append_event(
+                session_id,
+                kind="provider_attempt",
+                role="system",
+                payload={
+                    "attempt": rounds,
+                    "provider_id": provider.get("provider_id", ""),
+                    "model": model,
+                    "phase": "pre_stream",
+                    "safety": SAFETY_DECLARATION,
+                },
+            )
             for event in stream_chat(
                 provider, model=model, messages=request_messages, tools=TOOL_SPECS, effort=effort
             ):
@@ -403,7 +608,19 @@ class ReviewAgentRuntime:
             self.store.append_event(
                 session_id, kind="assistant_message", role="assistant", payload={"text": assistant_text}
             )
+            self.store.append_event(
+                session_id,
+                kind="turn_completed",
+                role="system",
+                payload={"phase": "synthesis", "safety": SAFETY_DECLARATION},
+            )
         self.store.update_session(session_id, status="idle")
+        self.store.append_event(
+            session_id,
+            kind="terminal",
+            role="system",
+            payload={"status": "idle", "safety": SAFETY_DECLARATION},
+        )
         yield {"kind": "done", "safety": SAFETY_DECLARATION}
 
     # ---- offline path --------------------------------------------------
@@ -417,7 +634,19 @@ class ReviewAgentRuntime:
         self.store.append_event(
             session_id, kind="assistant_message", role="assistant", payload={"text": text}
         )
+        self.store.append_event(
+            session_id,
+            kind="turn_completed",
+            role="system",
+            payload={"phase": "completed", "safety": SAFETY_DECLARATION},
+        )
         self.store.update_session(session_id, status="idle")
+        self.store.append_event(
+            session_id,
+            kind="terminal",
+            role="system",
+            payload={"status": "idle", "safety": SAFETY_DECLARATION},
+        )
         yield {"kind": "done", "safety": SAFETY_DECLARATION}
 
 

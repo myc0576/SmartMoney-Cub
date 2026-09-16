@@ -23,6 +23,7 @@ from smartmoney_cub_harness.agent.providers import (
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.workbench.server import WorkbenchHandler, WorkbenchService
+from smartmoney_cub_harness.store import Store
 from smartmoney_cub_harness.workspace import Workspace
 
 # ---- the rule library: where it lives, and the one write it accepts -------
@@ -450,6 +451,56 @@ def test_http_get_endpoints_and_unknown_routes(tmp_path) -> None:
         service.close()
 
 
+def test_workbench_service_integrates_trader_service(tmp_path: Path) -> None:
+    from smartmoney_cub_harness.trader.storage import open_store
+    from smartmoney_cub_harness.trader.auth import MODE_LOCAL
+    from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+    from smartmoney_cub_harness.trader.api import TraderService
+
+    trader_store = open_store(tmp_path / "journal", mode=MODE_LOCAL)
+    trader_svc = TraderService(trader_store, auth_mode=MODE_LOCAL)
+    trader_svc.import_trades(
+        LOCAL_CONTEXT,
+        rows=[
+            {
+                "trade_id": "T-BUY",
+                "symbol": "600519",
+                "side": "BUY",
+                "trade_date": "2026-09-01",
+                "price": 100.0,
+                "quantity": 10,
+            },
+            {
+                "trade_id": "T-SELL",
+                "symbol": "600519",
+                "side": "SELL",
+                "trade_date": "2026-09-02",
+                "price": 110.0,
+                "quantity": 10,
+            },
+        ],
+    )
+
+    service = WorkbenchService(tmp_path, trader_service=trader_svc)
+    try:
+        overview = service.overview({})
+        assert overview["summary"]["trade_count"] == 1
+        assert overview["fill_count"] == 2
+
+        trades_res = service.trades({})
+        assert trades_res["count"] == 1
+        assert len(trades_res["fills"]) == 2
+
+        report = service.analytics_report({})
+        assert report["summary"]["trade_count"] == 1
+
+        runtime_ctx = service.runtime.context_payload({})
+        assert runtime_ctx["summary"]["trade_count"] == 1
+    finally:
+        service.close()
+        trader_store.close()
+
+
 def test_http_requires_the_token_when_one_is_configured(tmp_path) -> None:
     service = _service(tmp_path)
     handler = type(
@@ -532,3 +583,128 @@ def test_every_json_error_response_carries_the_safety_declaration(tmp_path) -> N
         server.shutdown()
         server.server_close()
         service.close()
+
+
+def test_plugin_endpoints_lifecycle_and_catalog(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        catalog = service.plugin_catalog()
+        assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v1"
+        assert len(catalog["entries"]) > 0
+        assert catalog["safety"] == SAFETY_DECLARATION
+
+        detail = service.plugin_detail("toy.review-tagger")
+        assert detail["status"] == "ok"
+        assert detail["plugin_id"] == "toy.review-tagger"
+        assert detail["safety"] == SAFETY_DECLARATION
+
+        conf_res = service.plugin_configure("toy.review-tagger", {"foo": "bar"})
+        assert conf_res["status"] == "ok"
+        assert conf_res["config"] == {"foo": "bar"}
+
+        en_res = service.plugin_enable("toy.review-tagger")
+        assert en_res["status"] == "ok"
+        assert en_res["plugin"]["state"] == "ACTIVE"
+
+        dis_res = service.plugin_disable("toy.review-tagger")
+        assert dis_res["status"] == "ok"
+        assert dis_res["plugin"]["state"] == "DISABLED"
+
+        reload_res = service.plugin_reload()
+        assert reload_res["status"] == "ok"
+    finally:
+        service.close()
+
+
+def test_agent_presets_and_open_config_file(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        settings = service.settings()
+        assert "agent_presets" in settings
+        assert settings["agent_presets"]["default_effort"] in ["off", "low", "medium", "high", "max"]
+
+        updated = service.update_settings({
+            "agent_presets": {
+                "system_prompt": "Always be concise.",
+                "default_effort": "high",
+                "context_strategy": "summary_compact",
+            }
+        })
+        refreshed = service.settings()
+        assert refreshed["agent_presets"]["system_prompt"] == "Always be concise."
+        assert refreshed["agent_presets"]["default_effort"] == "high"
+
+        res = service.open_config_file()
+        assert res["status"] == "ok"
+        assert Path(res["path"]).is_file()
+        assert res["safety"] == SAFETY_DECLARATION
+    finally:
+        service.close()
+
+
+def test_review_scope_is_redacted_confirmable_and_challenger_only(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        session = service.create_session({
+            "title": "结构化复盘",
+            "context": {
+                "portfolio_id": "PORT-DEFAULT",
+                "decision_time": "2026-09-10T15:00:00+08:00",
+                "horizons": ["next_session"],
+                "case_ids": ["toy-case-1"],
+            },
+        })["session"]
+        session_id = session["session_id"]
+        preview = service.review_scope(session_id)
+        assert preview["phase"] == "scope_preview"
+        assert preview["envelope"]["scope"]["decision_time"] == "2026-09-10T15:00:00+08:00"
+        assert "PORT-DEFAULT" not in json.dumps(preview)
+
+        confirmed = service.confirm_review_scope(session_id, {"review_id": session_id})
+        assert confirmed["phase"] == "scope_confirmed"
+        assert confirmed["session"]["context"]["scope_confirmed"] is True
+
+        proposal = {
+            "candidate_role": "challenger",
+            "rule_id": "TOY-CHALLENGER-1",
+            "rationale": "只作为待验证候选。",
+            "champion_mutated": False,
+            "core_rules_mutated": False,
+        }
+        saved = service.record_challenger(session_id, {"proposal": proposal})
+        assert saved["champion_mutated"] is False
+        assert service.store.list_events(session_id)[-1]["kind"] == "challenger_proposal"
+    finally:
+        service.close()
+
+
+def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
+    service = _service(tmp_path)
+    session = service.create_session({"title": "可恢复复盘"})["session"]
+    session_id = session["session_id"]
+    service.store.update_session(session_id, status="running")
+    try:
+        cancelled = service.cancel_turn(session_id)
+        assert cancelled["status"] == "cancel_requested"
+        assert service.store.get_session(session_id)["status"] == "cancel_requested"
+        resumed = list(service.resume_turn(session_id, {"text": "继续本地复盘"}))
+        assert resumed[-1]["kind"] == "done"
+        assert service.store.get_session(session_id)["status"] == "idle"
+        kinds = [event["kind"] for event in service.store.list_events(session_id)]
+        assert "turn_cancel_requested" in kinds
+        assert "turn_resumed" in kinds
+    finally:
+        service.close()
+
+    raw = Store(tmp_path / "recovery")
+    orphan = raw.create_session(title="中断会话")
+    raw.update_session(orphan["session_id"], status="running")
+    raw.close()
+    recovered_service = _service(tmp_path / "recovery")
+    try:
+        assert recovered_service.recovered_sessions[0]["status"] == "interrupted"
+        detail = recovered_service.session_detail(orphan["session_id"], {})
+        assert detail["session"]["status"] == "interrupted"
+        assert detail["events"][-1]["kind"] == "runtime_recovered"
+    finally:
+        recovered_service.close()

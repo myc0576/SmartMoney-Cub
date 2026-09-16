@@ -647,6 +647,40 @@ class Store:
         return self.get_session(session_id)
 
     @_synchronized
+    def recover_interrupted_sessions(self) -> list[dict[str, Any]]:
+        """Move orphaned in-flight turns to an explicit recoverable state.
+
+        A process restart cannot know whether a provider stream is still alive.
+        Marking the old turn interrupted preserves its event log and gives the
+        UI a deterministic resume path instead of pretending it completed.
+        """
+        rows = self._db.execute(
+            "SELECT session_id FROM agent_session WHERE status IN ('running', 'cancel_requested')"
+        ).fetchall()
+        recovered: list[dict[str, Any]] = []
+        for row in rows:
+            session_id = row["session_id"]
+            self._db.execute(
+                "UPDATE agent_session SET status = 'interrupted', updated_at = ? WHERE session_id = ?",
+                (_now_iso(), session_id),
+            )
+            self.append_event(
+                session_id,
+                kind="runtime_recovered",
+                role="system",
+                payload={
+                    "from_status": "running",
+                    "status": "interrupted",
+                    "resume_available": True,
+                    "safety": SAFETY_DECLARATION,
+                },
+            )
+            recovered.append(self.get_session(session_id))
+        if rows:
+            self._db.commit()
+        return recovered
+
+    @_synchronized
     def fork_session(self, session_id: str, *, title: str | None = None) -> dict[str, Any]:
         source = self.get_session(session_id)
         events = self.list_events(session_id)
