@@ -186,3 +186,82 @@ python3 -m smartmoney_cub_harness.cli doctor
 }
 ```
 
+
+
+---
+
+## Task 2 Re-Review Fix Report (Round 2)
+
+### Critical Finding Resolved
+- **Full Serialization Boundary Scrub in `ClassifiedProviderError.to_dict()`**:
+  - Previously, `portal_url`, `recovery_suggestions`, and `action_suggestion` were stored directly without scrubbing against `extra_secrets`, and `to_dict()` did not apply a final scrub across all dictionary fields.
+  - Updated `ClassifiedProviderError.__init__()` in `provider_errors.py` to retain `self.extra_secrets` and scrub `portal_url`, `action_suggestion`, and `recovery_suggestions` using `_redact_all()`.
+  - Updated `ClassifiedProviderError.to_dict()` to apply `_redact_all()` over the entire serialized dictionary, guaranteeing that every string in every serialized field (including URLs, query strings, action descriptions, recovery targets, and nested diagnostic payloads) is scrubbed against the complete known provider secret set.
+  - Added regression test `test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery` in `tests/test_provider_route_chain.py`.
+
+### Fresh TDD Verification Evidence
+
+#### RED Output
+```
+tests/test_provider_route_chain.py::test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery FAILED [100%]
+
+=================================== FAILURES ===================================
+_ test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery _
+AssertionError: assert 'opaque_secret_in_portal_and_recovery_887766' not in 'https://portal.example.com/login?token=opaque_secret_in_portal_and_recovery_887766'
+======================= 1 failed, 18 deselected in 0.07s =======================
+```
+
+#### GREEN Output (Route Chain Suite: 19 Tests Passing)
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py -v
+```
+**Output**:
+```
+tests/test_provider_route_chain.py::test_error_classification_quota_403 PASSED [  5%]
+tests/test_provider_route_chain.py::test_error_classification_rate_limit_429 PASSED [ 10%]
+tests/test_provider_route_chain.py::test_error_classification_server_error_5xx PASSED [ 15%]
+tests/test_provider_route_chain.py::test_error_classification_timeout PASSED [ 21%]
+tests/test_provider_route_chain.py::test_error_classification_auth_401 PASSED [ 26%]
+tests/test_provider_route_chain.py::test_error_classification_invalid_request_400 PASSED [ 31%]
+tests/test_provider_route_chain.py::test_403_quota_actionable_result PASSED [ 36%]
+tests/test_provider_route_chain.py::test_pre_stream_vs_mid_stream PASSED [ 42%]
+tests/test_provider_route_chain.py::test_route_chain_retries_cooldown_and_fallback PASSED [ 47%]
+tests/test_provider_route_chain.py::test_safe_diagnostics_redacts_credentials PASSED [ 52%]
+tests/test_provider_route_chain.py::test_opaque_token_redacted_from_diagnostics_and_candidate_repr PASSED [ 57%]
+tests/test_provider_route_chain.py::test_resolve_provider_preserves_portal_url PASSED [ 63%]
+tests/test_provider_route_chain.py::test_runtime_emits_structured_classified_error PASSED [ 68%]
+tests/test_provider_route_chain.py::test_open_socket_timeout_classified_through_stream_chat PASSED [ 73%]
+tests/test_provider_route_chain.py::test_http_504_and_408_classified_as_timeout PASSED [ 78%]
+tests/test_provider_route_chain.py::test_cooldown_excludes_candidate_and_returns_retry_after PASSED [ 84%]
+tests/test_provider_route_chain.py::test_auth_and_invalid_request_fallback_to_next_candidate PASSED [ 89%]
+tests/test_provider_route_chain.py::test_http_status_parsed_from_provider_error_message PASSED [ 94%]
+tests/test_provider_route_chain.py::test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery PASSED [100%]
+============================== 19 passed in 2.60s ==============================
+```
+
+#### Regressions Suite Check (83 Tests Passing)
+**Command**:
+```bash
+python3 -m pytest tests/test_provider_route_chain.py tests/test_model_providers.py tests/test_agent_tool_rounds.py tests/test_workbench_service.py -q
+```
+**Output**:
+```
+83 passed in 7.08s
+```
+
+#### Doctor Verification
+**Command**:
+```bash
+python3 -m smartmoney_cub_harness.cli doctor
+```
+**Output**:
+```json
+{
+  "status": "ok",
+  "package": "smartmoney-cub-harness",
+  "version": "1.0.0",
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}
+```
+

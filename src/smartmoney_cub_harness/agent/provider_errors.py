@@ -120,25 +120,26 @@ class ClassifiedProviderError(ProviderError):
         safe_diagnostics: dict[str, Any] | None = None,
         extra_secrets: set[str] | None = None,
     ) -> None:
-        clean_msg = _redact_all(redact_string(message), extra_secrets)
+        self.extra_secrets = set(extra_secrets or [])
+        clean_msg = _redact_all(redact_string(message), self.extra_secrets)
         super().__init__(clean_msg)
         self.code = code
         self.message = clean_msg
-        self.raw_message = _redact_all(redact_string(raw_message or message), extra_secrets)
+        self.raw_message = _redact_all(redact_string(raw_message or message), self.extra_secrets)
         self.http_status = http_status
         self.phase = phase
         self.provider_id = provider_id
         self.model = model
         self.retryable_same_target = retryable_same_target
         self.fallbackable = fallbackable
-        self.portal_url = portal_url
-        self.action_suggestion = action_suggestion
-        self.recovery_suggestions = recovery_suggestions or []
-        self.safe_diagnostics = _redact_all(safe_diagnostics or {}, extra_secrets)
+        self.portal_url = _redact_all(portal_url, self.extra_secrets)
+        self.action_suggestion = _redact_all(action_suggestion, self.extra_secrets)
+        self.recovery_suggestions = _redact_all(recovery_suggestions or [], self.extra_secrets)
+        self.safe_diagnostics = _redact_all(safe_diagnostics or {}, self.extra_secrets)
         self.safety = SAFETY_DECLARATION
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        raw_dict = {
             "error_code": self.code,
             "message": self.message,
             "raw_message": self.raw_message,
@@ -154,6 +155,7 @@ class ClassifiedProviderError(ProviderError):
             "safe_diagnostics": self.safe_diagnostics,
             "safety": self.safety,
         }
+        return _redact_all(raw_dict, self.extra_secrets)
 
 
 def _extract_http_status_and_body(error: Exception, detail: str = "") -> tuple[int | None, str]:
@@ -445,4 +447,3 @@ def classify_provider_error(
         safe_diagnostics=safe_diagnostics,
         extra_secrets=extra_secrets,
     )
-

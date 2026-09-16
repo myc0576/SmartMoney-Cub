@@ -523,3 +523,53 @@ def test_http_status_parsed_from_provider_error_message() -> None:
     classified = classify_provider_error(base_err)
     assert classified.http_status == 502
     assert classified.code == ProviderErrorCode.SERVER_ERROR
+
+
+def test_opaque_token_scrubbed_from_all_serialized_fields_including_portal_and_recovery() -> None:
+    opaque_secret = "opaque_secret_in_portal_and_recovery_887766"
+    provider = {
+        "provider_id": "custom-opaque-portal",
+        "api_key": opaque_secret,
+        "portal_url": f"https://portal.example.com/login?token={opaque_secret}",
+    }
+    raw_error = urllib.error.HTTPError("https://api.example/v1", 403, "Forbidden", {}, None)
+    classified = classify_provider_error(
+        raw_error,
+        provider=provider,
+        model="m1",
+        phase=FailurePhase.PRE_STREAM,
+        detail=f"insufficient_quota: access denied for token {opaque_secret}",
+    )
+    # Check object fields directly
+    assert opaque_secret not in classified.portal_url
+    assert opaque_secret not in classified.action_suggestion
+    assert opaque_secret not in json.dumps(classified.recovery_suggestions)
+
+    # Check serialization boundary
+    data = classified.to_dict()
+    serialized = json.dumps(data)
+    assert opaque_secret not in serialized
+    assert opaque_secret not in data["portal_url"]
+    assert opaque_secret not in data["action_suggestion"]
+    assert opaque_secret not in json.dumps(data["recovery_suggestions"])
+    assert opaque_secret not in json.dumps(data["safe_diagnostics"])
+
+    # Test direct ClassifiedProviderError initialization with embedded secrets in all fields
+    direct_err = ClassifiedProviderError(
+        code=ProviderErrorCode.INSUFFICIENT_QUOTA,
+        message=f"msg with {opaque_secret}",
+        raw_message=f"raw with {opaque_secret}",
+        portal_url=f"https://topup.example?key={opaque_secret}",
+        action_suggestion=f"Use token {opaque_secret}",
+        recovery_suggestions=[{"action": "recharge", "url": f"https://pay.example?k={opaque_secret}"}],
+        safe_diagnostics={"token_detail": f"info {opaque_secret}"},
+        extra_secrets={opaque_secret},
+    )
+    direct_dict = direct_err.to_dict()
+    direct_serialized = json.dumps(direct_dict)
+    assert opaque_secret not in direct_serialized
+    assert opaque_secret not in direct_dict["portal_url"]
+    assert opaque_secret not in direct_dict["action_suggestion"]
+    assert opaque_secret not in json.dumps(direct_dict["recovery_suggestions"])
+    assert opaque_secret not in json.dumps(direct_dict["safe_diagnostics"])
+
