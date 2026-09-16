@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { PluginCatalogEntry, PluginCatalogResponse, PluginDetailResponse, PluginItem } from '../types';
+import type { CuratedFinancePlugin, PluginCatalogEntry, PluginCatalogResponse, PluginDetailResponse, PluginItem } from '../types';
 import { Badge, Empty, Panel } from '../components/common';
 
 type PluginTab = 'inventory' | 'config' | 'catalog';
@@ -384,6 +384,33 @@ export function PluginsView() {
               </div>
             ))}
           </div>
+          {catalogData?.curated_finance?.plugins?.length ? (
+            <div style={{ marginTop: 18 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>SmartMoney 受限 Cordis 适配器</div>
+              <div className="grid" style={{ gap: 10 }}>
+                {catalogData.curated_finance.plugins.map((item: CuratedFinancePlugin) => (
+                  <div className="provider-card" key={item.id}>
+                    <div className="provider-head">
+                      <div>
+                        <span className="provider-title">{item.name}</span>
+                        <span className="provider-id">{item.id} · v{item.version}</span>
+                      </div>
+                      <Badge kind={item.enabled ? 'ok' : 'warn'}>{item.enabled ? '已启用' : '待确认'}</Badge>
+                    </div>
+                    <div className="provider-meta">
+                      来源：{item.source} · commit：{item.commit} · 网络：{item.declared_network ? '声明需要' : '不需要'} · 上游执行：否
+                    </div>
+                    <div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                      {item.capabilities.map((cap) => <span className="dsh-cap-tag" key={cap}>{cap}</span>)}
+                    </div>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                      权限：{item.permissions.join('、')} · profile reload：显式边界 · {item.license}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </Panel>
       ) : null}
 

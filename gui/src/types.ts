@@ -744,6 +744,29 @@ export interface PluginCatalogResponse extends SafetyEnvelope {
   by_level: Record<string, PluginCatalogEntry[]>;
   counts: Record<string, number>;
   policy: string;
+  curated_finance?: {
+    schema: string;
+    plugins: CuratedFinancePlugin[];
+    safety: string;
+  };
+}
+
+export interface CuratedFinancePlugin {
+  id: string;
+  name: string;
+  version: string;
+  source: string;
+  commit: string;
+  license: string;
+  declared_network: boolean;
+  capabilities: string[];
+  permissions: string[];
+  installed: boolean;
+  enabled: boolean;
+  update: Record<string, any>;
+  health: Record<string, any>;
+  profile_reload: Record<string, any>;
+  safety: string;
 }
 
 export interface AgentPresets {

@@ -12,6 +12,10 @@ cancellation, and has typed API support for replay/resume and fork.
 Credentials remain write-only in the settings flow. The GUI displays safety and
 status metadata, not raw provider diagnostics or secret values.
 
+The catalog tab also renders the curated SmartMoney Cordis adapters with their
+source/commit, license, declared network, permissions, upstream-execution
+status, and explicit profile-reload boundary.
+
 ## Files
 
 - `gui/src/types.ts`

@@ -217,6 +217,11 @@ export const api = {
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/confirm',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
+  recordReviewPackage: (id: string, payload: Record<string, unknown>) =>
+    request<Record<string, any>>(
+      '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/package',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
   cancelTurn: (id: string) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',
