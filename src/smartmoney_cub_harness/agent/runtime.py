@@ -26,10 +26,13 @@ from smartmoney_cub_harness.review_contracts import (
     REDACTED_REVIEW_ENVELOPE_SCHEMA,
     RedactedReviewEnvelope,
     ReviewScope,
+    StructuredReviewPackage,
 )
 from smartmoney_cub_harness.review_validation import (
     validate_challenger_only_mutation,
+    validate_observation,
     validate_redacted_payload,
+    validate_source_time,
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
@@ -367,6 +370,49 @@ class ReviewAgentRuntime:
             payload={"proposal": proposal, "champion_mutated": False, "safety": SAFETY_DECLARATION},
         )
         return {"status": "ok", "proposal": proposal, "champion_mutated": False, "safety": SAFETY_DECLARATION}
+
+    def record_review_package(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            package = StructuredReviewPackage.from_dict(payload)
+        except Exception:
+            raise ReviewLifecycleError("review_package_decode_failed") from None
+        if package.review_id != session_id or package.scope.review_id != session_id:
+            raise ReviewLifecycleError("review_package_id_mismatch")
+        errors = list(validate_redacted_payload(package.envelope.payload).errors)
+        decision_time = package.scope.decision_time
+        errors.extend(
+            error
+            for observation in package.observations
+            for error in validate_observation(observation, decision_time=decision_time).errors
+        )
+        errors.extend(
+            error
+            for evidence in package.evidence
+            for error in validate_source_time(
+                decision_time=decision_time,
+                data_source=evidence.data_source,
+                available_at=evidence.available_at,
+                data_quality_flag=evidence.data_quality_flag,
+            ).errors
+        )
+        errors.extend(
+            error
+            for proposal in package.challenger_proposals
+            for error in validate_challenger_only_mutation(proposal).errors
+        )
+        if errors:
+            raise ReviewLifecycleError("review_package_validation_failed")
+        stored = package.to_dict()
+        self.store.append_event(
+            session_id,
+            kind="review_package",
+            role="plugin",
+            payload=stored,
+        )
+        context = dict(self.store.get_session(session_id).get("context") or {})
+        context["review_phase"] = "completed"
+        self.store.update_session(session_id, context=context)
+        return {"status": "ok", "package": stored, "phase": "completed", "safety": SAFETY_DECLARATION}
 
     # ---- provider path -------------------------------------------------
 

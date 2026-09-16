@@ -40,6 +40,9 @@ review-turn-only, resume reads the durable transcript, and restart recovery is
 asserted against SQLite. All lifecycle payloads carry
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
 
+Structured review packages are validated and persisted as `review_package`
+events, including observation time semantics and challenger-only proposals.
+
 ## Residual risk
 
 The DSH bridge is injectable but not automatically spawned; deployment wiring

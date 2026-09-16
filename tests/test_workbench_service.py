@@ -9,6 +9,8 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_BASE_URL,
     ALPHATECH_PROVIDER_ID,
@@ -674,6 +676,49 @@ def test_review_scope_is_redacted_confirmable_and_challenger_only(tmp_path) -> N
         saved = service.record_challenger(session_id, {"proposal": proposal})
         assert saved["champion_mutated"] is False
         assert service.store.list_events(session_id)[-1]["kind"] == "challenger_proposal"
+    finally:
+        service.close()
+
+
+def test_structured_review_package_is_validated_and_persisted(tmp_path) -> None:
+    from smartmoney_cub_harness.agent.runtime import ReviewLifecycleError
+    from smartmoney_cub_harness.review_contracts import StructuredReviewPackage
+
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session({"title": "结构化结果"})["session"]["session_id"]
+        envelope = service.runtime.build_review_envelope(session_id)
+        package = StructuredReviewPackage(
+            review_id=session_id,
+            scope=envelope.scope,
+            envelope=envelope,
+            observations=({
+                "action_label": "WATCH",
+                "invalidation_price": "unknown",
+                "time_stop": "next session close",
+                "give_up_conditions": ["toy evidence incomplete"],
+                "data_source": "toy_fixture",
+                "available_at": envelope.scope.decision_time,
+                "data_quality_flag": "ok",
+            },),
+            challenger_proposals=({
+                "candidate_role": "challenger",
+                "rule_id": "TOY-1",
+                "rationale": "待验证",
+                "champion_mutated": False,
+                "core_rules_mutated": False,
+            },),
+        )
+        saved = service.record_review_package(session_id, package.to_dict())
+        assert saved["phase"] == "completed"
+        event = service.store.list_events(session_id)[-1]
+        assert event["kind"] == "review_package"
+        assert event["payload"]["safety"] == SAFETY_DECLARATION
+
+        future = package.to_dict()
+        future["observations"][0]["available_at"] = "2999-01-01T00:00:00+00:00"
+        with pytest.raises(ReviewLifecycleError):
+            service.record_review_package(session_id, future)
     finally:
         service.close()
 

@@ -631,6 +631,14 @@ class WorkbenchService:
         except ReviewLifecycleError as error:
             raise ApiError(str(error), status=400, code="challenger_error") from None
 
+    def record_review_package(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.runtime.record_review_package(
+                session_id, payload.get("review_package") or payload
+            )
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="review_package_error") from None
+
     # ---- settings ------------------------------------------------------
 
     def provider_views(
@@ -1343,6 +1351,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
                 if action == "review/challenger":
                     self._json(self.service.record_challenger(session_id, self._read_json()))
+                    return
+                if action == "review/package":
+                    self._json(self.service.record_review_package(session_id, self._read_json()))
                     return
                 if action == "preview":
                     self._json(self.service.session_preview(session_id))
