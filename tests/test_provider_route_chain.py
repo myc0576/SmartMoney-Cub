@@ -607,3 +607,169 @@ def test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr() -
     assert opaque_secret not in data["portal_url"]
     assert "[REDACTED]" in data["portal_url"]
 
+
+def _assert_no_credential_on_error(error: ClassifiedProviderError, secret: str) -> None:
+    surfaces = {
+        name: getattr(error, name)
+        for name in dir(error)
+        if not name.startswith("_") and not callable(getattr(error, name))
+    }
+    surfaces.update({
+        "vars": vars(error),
+        "repr": repr(error),
+        "str": str(error),
+        "serialized": error.to_dict(),
+        "cause": error.__cause__,
+        "context": error.__context__,
+    })
+    leaked_surfaces = [
+        name for name, value in surfaces.items()
+        if secret in repr(value) or secret in str(value)
+    ]
+    assert leaked_surfaces == []
+    assert secret not in json.dumps(error.to_dict())
+
+
+@pytest.mark.parametrize("construction", ["classifier", "constructor"])
+def test_opaque_credential_absent_from_all_exception_surfaces(construction: str) -> None:
+    secret = "J7vQ9mR2xN6pL4wZ8cT5"
+    provider = {
+        "provider_id": f"gateway-{secret}",
+        "api_key": secret,
+        "portal_url": f"https://portal.example/renew/{secret}?ref={secret}",
+    }
+    model = f"model-{secret}"
+    detail = f"insufficient_quota: rejected {secret}"
+    if construction == "classifier":
+        error = classify_provider_error(
+            ProviderError(f"provider returned HTTP 403: {detail}"),
+            provider=provider,
+            model=model,
+            detail=detail,
+        )
+    else:
+        error = ClassifiedProviderError(
+            code=ProviderErrorCode.INSUFFICIENT_QUOTA,
+            message=detail,
+            raw_message=detail,
+            http_status=403,
+            provider_id=provider["provider_id"],
+            model=model,
+            fallbackable=True,
+            portal_url=provider["portal_url"],
+            action_suggestion=f"Recharge {secret}",
+            recovery_suggestions=[{"action": "recharge", "url": provider["portal_url"]}],
+            safe_diagnostics={"detail": detail},
+            extra_secrets={secret},
+        )
+
+    _assert_no_credential_on_error(error, secret)
+    data = error.to_dict()
+    assert error.provider_id == data["provider_id"] == "gateway-[REDACTED]"
+    assert error.model == data["model"] == "model-[REDACTED]"
+    assert error.code == data["error_code"] == ProviderErrorCode.INSUFFICIENT_QUOTA
+    assert error.http_status == data["http_status"] == 403
+    assert error.phase == data["phase"] == FailurePhase.PRE_STREAM
+    assert error.retryable_same_target is False
+    assert error.fallbackable is True
+    assert error.portal_url == "https://portal.example/renew/[REDACTED]?ref=[REDACTED]"
+    assert error.recovery_suggestions[0]["url"] == error.portal_url
+    assert error.safe_diagnostics["detail"] == "insufficient_quota: rejected [REDACTED]"
+    assert error.args == (error.message,)
+    assert error.safety == data["safety"] == SAFETY_DECLARATION
+
+
+def test_opaque_credential_scrubbed_from_complete_constructor_payload() -> None:
+    secret = "J7vQ9mR2xN6pL4wZ8cT5"
+    diagnostics = {
+        f"upstream-{secret}": {"echo": secret},
+        "attempts": [(secret, {"detail": f"rejected {secret}"})],
+        "reason": RuntimeError(f"upstream rejected {secret}"),
+        "retry_after": 7,
+    }
+    error = ClassifiedProviderError(
+        code=f"upstream-{secret}",
+        phase=f"phase-{secret}",
+        message=f"rejected {secret}",
+        recovery_suggestions=[{f"link-{secret}": f"https://portal.example/{secret}"}],
+        safe_diagnostics=diagnostics,
+        extra_secrets={secret},
+    )
+
+    _assert_no_credential_on_error(error, secret)
+    assert error.code == "upstream-[REDACTED]"
+    assert error.phase == "phase-[REDACTED]"
+    assert error.safe_diagnostics["upstream-[REDACTED]"] == {"echo": "[REDACTED]"}
+    assert error.safe_diagnostics["attempts"][0] == (
+        "[REDACTED]", {"detail": "rejected [REDACTED]"},
+    )
+    assert error.safe_diagnostics["reason"] == "upstream rejected [REDACTED]"
+    assert error.safe_diagnostics["retry_after"] == 7
+    assert diagnostics["attempts"][0][0] == secret
+    diagnostics["attempts"].append(secret)
+    _assert_no_credential_on_error(error, secret)
+
+
+@pytest.mark.parametrize(
+    ("failure_site", "expected_code"),
+    [
+        ("http_open", ProviderErrorCode.INSUFFICIENT_QUOTA),
+        ("url_open", ProviderErrorCode.NETWORK_UNREACHABLE),
+        ("timeout_open", ProviderErrorCode.TIMEOUT),
+        ("unexpected_open", ProviderErrorCode.UNKNOWN),
+        ("stream_read", ProviderErrorCode.STREAM_INTERRUPTION),
+    ],
+)
+def test_opaque_credential_not_retained_in_upstream_exception_chain(
+    monkeypatch, failure_site: str, expected_code: str,
+) -> None:
+    secret = "J7vQ9mR2xN6pL4wZ8cT5"
+    failures = {
+        "http_open": urllib.error.HTTPError(
+            "https://provider.example/v1", 403, f"insufficient_quota {secret}", {}, None,
+        ),
+        "url_open": urllib.error.URLError(f"unreachable {secret}"),
+        "timeout_open": TimeoutError(f"timed out {secret}"),
+        "unexpected_open": RuntimeError(f"upstream rejected {secret}"),
+    }
+
+    class BrokenStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def __iter__(self):
+            yield b'data: {"choices": [{"delta": {"content": "partial response"}}]}\n\n'
+            raise RuntimeError(f"stream disconnected {secret}")
+
+    def fail_upstream(*args, **kwargs):
+        if failure_site == "stream_read":
+            return BrokenStream()
+        raise failures[failure_site]
+
+    monkeypatch.setattr("urllib.request.urlopen", fail_upstream)
+    provider = {
+        "provider_id": "gateway",
+        "base_url": "https://provider.example/v1",
+        "api_key": secret,
+    }
+    events = []
+    with pytest.raises(ClassifiedProviderError) as caught:
+        events.extend(stream_chat(provider, model="model", messages=[]))
+
+    error = caught.value
+    _assert_no_credential_on_error(error, secret)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert error.code == expected_code
+    assert "[REDACTED]" in error.raw_message
+    if failure_site == "stream_read":
+        assert events == [{"kind": "delta", "text": "partial response"}]
+        assert error.phase == FailurePhase.MID_STREAM
+        assert error.retryable_same_target is False
+        assert error.fallbackable is False
+    else:
+        assert events == []
+        assert error.phase == FailurePhase.PRE_STREAM

@@ -346,3 +346,244 @@ python3 -m smartmoney_cub_harness.cli doctor
 }
 ```
 
+
+
+---
+
+## Task 2 Re-Review Fix Report (Round 4)
+
+### Scope and frozen acceptance criteria
+
+Goal: remove plaintext provider credentials from retained classified-error data at construction, including duplicated identifiers, while preserving useful diagnostics and route behavior. Maximum: five implementation/verification iterations; this round used two.
+
+- [x] Reproduce the leak across exception attributes and serialization using an opaque offline fixture (focused RED below).
+- [x] Sanitize the complete exception payload before storage without retaining the secret set; preserve safe diagnostics and routing semantics (focused assertions and related suite below).
+- [x] Pass the focused regression, related provider tests, full test suite, and safety doctor (fresh command outputs below).
+- [x] Append fresh RED/GREEN evidence to this report; limit the change set to Task 2 provider modules, tests, and this report.
+
+Excluded: review contracts, DSH bridge, Workbench server, GUI, and unrelated existing worktree edits. All new credentials are toy offline fixtures. Safety contract: `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
+
+### Root cause and final design
+
+The round-3 constructor scrubbed selected fields individually but retained `provider_id`, `model`, `code`, and `phase` verbatim. Removing the retained secret set also removed the serialization fallback. Thus an opaque credential copied into metadata survived both object inspection and `to_dict()`. Nested diagnostic keys and tuples also bypassed known-secret scrubbing, and arbitrary diagnostic objects could retain raw upstream errors.
+
+The constructor now assembles the complete declared payload, sanitizes every value before assigning any instance state, and initializes `RuntimeError.args` from the sanitized message. Known secrets remain construction-only inputs. Fixed attribute names remain intact; untrusted nested keys are scrubbed. Redaction copies dictionaries/lists/tuples, sanitizes unknown diagnostic objects to text, and retains safe scalar diagnostics. `to_dict()` uses this sanitized state without a stored secret set.
+
+Provider opening and stream-read handlers also previously chained the raw upstream exception through `__cause__` and `__context__`. They now construct the classified error inside the handler and raise it after leaving the handler, retaining sanitized diagnostic text without attaching the raw exception. The new opening-error tests exposed a missing `socket` import, which is restored so timeout classification works.
+
+### Files changed
+
+- `src/smartmoney_cub_harness/agent/provider_errors.py`: complete construction-time sanitization, nested key/tuple coverage, safe diagnostic-object normalization.
+- `src/smartmoney_cub_harness/agent/providers.py`: prevent retention of raw upstream exception chains; restore the socket import.
+- `tests/test_provider_route_chain.py`: eight focused cases covering direct construction, classification, every public non-callable attribute (including `args`), `vars`, `repr`, `str`, dictionary/JSON serialization, nested diagnostics, input aliasing, and upstream exception chains.
+- This Task 2 report.
+
+### RED — before production changes
+
+Command:
+```bash
+PYTHONPATH=src python3 -m pytest tests/test_provider_route_chain.py -q -k opaque_credential --tb=short
+```
+
+Exit code: 1. Captured output below, with trailing terminal whitespace omitted:
+```text
+FFFFFFFF                                                                 [100%]
+=================================== FAILURES ===================================
+____ test_opaque_credential_absent_from_all_exception_surfaces[classifier] _____
+tests/test_provider_route_chain.py:666: in test_opaque_credential_absent_from_all_exception_surfaces
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['model', 'pr... 'serialized'] == []
+E
+E     Left contains 4 more items, first extra item: 'model'
+E     Use -v to get more diff
+____ test_opaque_credential_absent_from_all_exception_surfaces[constructor] ____
+tests/test_provider_route_chain.py:666: in test_opaque_credential_absent_from_all_exception_surfaces
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['model', 'pr... 'serialized'] == []
+E
+E     Left contains 4 more items, first extra item: 'model'
+E     Use -v to get more diff
+______ test_opaque_credential_scrubbed_from_complete_constructor_payload _______
+tests/test_provider_route_chain.py:699: in test_opaque_credential_scrubbed_from_complete_constructor_payload
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['code', 'pha... 'serialized'] == []
+E
+E     Left contains 6 more items, first extra item: 'code'
+E     Use -v to get more diff
+_ test_opaque_credential_not_retained_in_upstream_exception_chain[http_open-insufficient_quota] _
+tests/test_provider_route_chain.py:763: in test_opaque_credential_not_retained_in_upstream_exception_chain
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['cause', 'context'] == []
+E
+E     Left contains 2 more items, first extra item: 'cause'
+E     Use -v to get more diff
+_ test_opaque_credential_not_retained_in_upstream_exception_chain[url_open-network_unreachable] _
+tests/test_provider_route_chain.py:763: in test_opaque_credential_not_retained_in_upstream_exception_chain
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['cause', 'context'] == []
+E
+E     Left contains 2 more items, first extra item: 'cause'
+E     Use -v to get more diff
+_ test_opaque_credential_not_retained_in_upstream_exception_chain[timeout_open-timeout] _
+tests/test_provider_route_chain.py:764: in test_opaque_credential_not_retained_in_upstream_exception_chain
+    assert error.__cause__ is None
+E   assert NameError("name 'socket' is not defined") is None
+E    +  where NameError("name 'socket' is not defined") = ClassifiedProviderError("模型服务调用失败: name 'socket' is not defined").__cause__
+_ test_opaque_credential_not_retained_in_upstream_exception_chain[unexpected_open-unknown_error] _
+tests/test_provider_route_chain.py:764: in test_opaque_credential_not_retained_in_upstream_exception_chain
+    assert error.__cause__ is None
+E   assert NameError("name 'socket' is not defined") is None
+E    +  where NameError("name 'socket' is not defined") = ClassifiedProviderError("模型服务调用失败: name 'socket' is not defined").__cause__
+_ test_opaque_credential_not_retained_in_upstream_exception_chain[stream_read-stream_interruption] _
+tests/test_provider_route_chain.py:763: in test_opaque_credential_not_retained_in_upstream_exception_chain
+    _assert_no_credential_on_error(error, secret)
+tests/test_provider_route_chain.py:629: in _assert_no_credential_on_error
+    assert leaked_surfaces == []
+E   AssertionError: assert ['cause', 'context'] == []
+E
+E     Left contains 2 more items, first extra item: 'cause'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_absent_from_all_exception_surfaces[classifier]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_absent_from_all_exception_surfaces[constructor]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_scrubbed_from_complete_constructor_payload
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_not_retained_in_upstream_exception_chain[http_open-insufficient_quota]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_not_retained_in_upstream_exception_chain[url_open-network_unreachable]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_not_retained_in_upstream_exception_chain[timeout_open-timeout]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_not_retained_in_upstream_exception_chain[unexpected_open-unknown_error]
+FAILED tests/test_provider_route_chain.py::test_opaque_credential_not_retained_in_upstream_exception_chain[stream_read-stream_interruption]
+8 failed, 20 deselected in 0.13s
+```
+
+The identifier cases fail on leaked metadata, the complete-payload case fails on other retained strings/nested diagnostics, and the upstream cases expose raw exception chaining. Timeout and unexpected opening failures also expose the missing socket import.
+
+### Intermediate verification finding and correction
+
+After the first implementation, all eight focused cases passed, but the related suite caught an additional route regression. Passing the entire attribute dictionary through key redaction allowed the existing one-character toy credential to alter the fixed `fallbackable` attribute name. The correction preserves trusted schema names and sanitizes every attribute value, while continuing to scrub upstream diagnostic keys. No existing tests or assertions were relaxed.
+
+Command:
+```bash
+PYTHONPATH=src python3 -m pytest tests/test_provider_route_chain.py tests/test_model_providers.py tests/test_agent_tool_rounds.py tests/test_workbench_service.py -q
+```
+
+Exit code: 1. Exact failure excerpt and result:
+```text
+E               AttributeError: 'ClassifiedProviderError' object has no attribute 'fallbackable'
+
+src/smartmoney_cub_harness/agent/route_chain.py:235: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_provider_route_chain.py::test_cooldown_excludes_candidate_and_returns_retry_after
+1 failed, 91 passed in 7.13s
+```
+
+### GREEN — final focused regression
+
+Command:
+```bash
+PYTHONPATH=src python3 -m pytest tests/test_provider_route_chain.py -q -k opaque_credential --tb=short
+```
+
+Exit code: 0. Exact output:
+```text
+........                                                                 [100%]
+8 passed, 20 deselected in 0.03s
+```
+
+### GREEN — related providers, route chain, runtime, and Workbench regression tests
+
+Command:
+```bash
+PYTHONPATH=src python3 -m pytest tests/test_provider_route_chain.py tests/test_model_providers.py tests/test_agent_tool_rounds.py tests/test_workbench_service.py -q --tb=short
+```
+
+Exit code: 0. Exact output:
+```text
+........................................................................ [ 78%]
+....................                                                     [100%]
+92 passed in 7.12s
+```
+
+The tests retain actionable quota recovery and portal redaction, stable classification, bounded retries, cooldown exclusion, offline fallback, and pre-stream versus mid-stream behavior. The new interrupted-stream case verifies partial output is delivered once and the classified interruption remains non-retryable and non-fallbackable.
+
+### Full verification gate
+
+Used the repository-authorized doctor plus full pytest alternative to `scripts/verify.sh`. `PYTHONPATH=src` ensures this checkout's code is tested.
+
+Syntax/compilation:
+```bash
+PYTHONPATH=src python3 -m compileall -q src/smartmoney_cub_harness/agent/provider_errors.py src/smartmoney_cub_harness/agent/providers.py tests/test_provider_route_chain.py
+```
+Exit code: 0; no output.
+
+Doctor:
+```bash
+PYTHONPATH=src python3 -m smartmoney_cub_harness.cli doctor
+```
+Exit code: 0. Exact output:
+```json
+{
+  "status": "ok",
+  "package": "smartmoney-cub-harness",
+  "version": "1.0.0",
+  "python": "3.12.14",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "cwd": "[REDACTED]",
+  "network_required": false,
+  "telemetry": false,
+  "upload": false,
+  "credentials_required": false,
+  "github_auth_required": false,
+  "external_api_required": false,
+  "broker_api_required": false,
+  "execution_integrations": "disabled",
+  "default_data_mode": "offline_json_fixtures",
+  "market_data_mode": "offline",
+  "tenant_mode": "local_single_user",
+  "launcher": {
+    "launcher_found": false,
+    "launcher_count": 0,
+    "multiple_launchers": false,
+    "resolved_to_current_environment": false
+  },
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}
+```
+
+Full test suite:
+```bash
+PYTHONPATH=src python3 -m pytest tests/ -q --tb=short
+```
+Exit code: 0. Exact output:
+```text
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 45%]
+........................................................................ [ 54%]
+........................................................................ [ 63%]
+........................................................................ [ 72%]
+........................................................................ [ 81%]
+............................................ssss........................ [ 90%]
+...........ss........................................................... [ 99%]
+..                                                                       [100%]
+788 passed, 6 skipped in 25.94s
+```
+
+The six skipped tests are reported explicitly; there were no test failures or errors. The full suite ran against the shared checkout, including its pre-existing unrelated edits.
+
+Task-scoped whitespace check:
+```bash
+git diff --check -- src/smartmoney_cub_harness/agent/provider_errors.py src/smartmoney_cub_harness/agent/providers.py tests/test_provider_route_chain.py .superpowers/sdd/2026-09-16-dsh-review-agent/task-2-report.md
+```
+Exit code: 0; no output.

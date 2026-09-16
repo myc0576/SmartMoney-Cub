@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import os
+import socket
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -845,17 +846,20 @@ def _open(
             detail = error.read().decode("utf-8", errors="replace")[:400]
         except Exception:  # pragma: no cover - the body may already be consumed
             detail = ""
-        raise classify_provider_error(
+        classified = classify_provider_error(
             error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM, detail=detail
-        ) from error
+        )
     except urllib.error.URLError as error:
-        raise classify_provider_error(
+        classified = classify_provider_error(
             error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
-        ) from error
+        )
     except (socket.timeout, TimeoutError) as error:
-        raise classify_provider_error(
+        classified = classify_provider_error(
             error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
-        ) from error
+        )
+    # Raise after leaving the handler so neither __cause__ nor __context__ keeps
+    # the upstream exception, which may contain an echoed credential.
+    raise classified
 
 
 def list_models(provider: dict[str, Any]) -> dict[str, Any]:
@@ -1092,6 +1096,7 @@ def stream_chat(
         yield {"kind": "done", "finish_reason": "stop"}
         return
 
+    opening_failure: ClassifiedProviderError | None = None
     try:
         response = _open(
             provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
@@ -1099,12 +1104,15 @@ def stream_chat(
     except ClassifiedProviderError:
         raise
     except Exception as error:
-        raise classify_provider_error(
+        opening_failure = classify_provider_error(
             error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
-        ) from error
+        )
+    if opening_failure is not None:
+        raise opening_failure
     pending: dict[int, dict[str, Any]] = {}
     emitted_any = False
     completed = False
+    stream_failure: ClassifiedProviderError | None = None
     try:
         with response:
             for raw_line in response:
@@ -1159,9 +1167,11 @@ def stream_chat(
         raise
     except Exception as error:
         phase = FailurePhase.MID_STREAM if emitted_any else FailurePhase.PRE_STREAM
-        raise classify_provider_error(
+        stream_failure = classify_provider_error(
             error, provider=provider, model=model, phase=phase
-        ) from error
+        )
+    if stream_failure is not None:
+        raise stream_failure
     for index in sorted(pending):
         yield {"kind": "tool_call", "call": dict(pending[index])}
     yield {"kind": "done", "finish_reason": "stop"}

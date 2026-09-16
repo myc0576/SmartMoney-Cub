@@ -6,7 +6,7 @@ import socket
 import urllib.error
 from typing import Any
 
-from smartmoney_cub_harness.safety import looks_sensitive_key, redact, redact_string
+from smartmoney_cub_harness.safety import REDACTED, looks_sensitive_key, redact_string
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 
@@ -84,18 +84,24 @@ def _collect_provider_secrets(provider: dict[str, Any] | None) -> set[str]:
 
 
 def _redact_all(value: Any, extra_secrets: set[str] | None = None) -> Any:
-    redacted = redact(value)
-    if not extra_secrets:
-        return redacted
-    if isinstance(redacted, str):
-        for sec in extra_secrets:
-            if sec and sec in redacted:
-                redacted = redacted.replace(sec, "[REDACTED]")
-        return redacted
-    if isinstance(redacted, dict):
-        return {k: _redact_all(v, extra_secrets) for k, v in redacted.items()}
-    if isinstance(redacted, list):
-        return [_redact_all(item, extra_secrets) for item in redacted]
+    """Copy diagnostic data, scrubbing keys and values without retaining objects."""
+    if isinstance(value, dict):
+        return {
+            _redact_all(str(key), extra_secrets): (
+                REDACTED if looks_sensitive_key(str(key)) else _redact_all(nested, extra_secrets)
+            )
+            for key, nested in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_all(item, extra_secrets) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_all(item, extra_secrets) for item in value)
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    redacted = redact_string(str(value))
+    for secret in sorted(extra_secrets or (), key=len, reverse=True):
+        if secret:
+            redacted = redacted.replace(secret, REDACTED)
     return redacted
 
 
@@ -120,23 +126,30 @@ class ClassifiedProviderError(ProviderError):
         safe_diagnostics: dict[str, Any] | None = None,
         extra_secrets: set[str] | None = None,
     ) -> None:
-        secrets = set(extra_secrets or [])
-        clean_msg = _redact_all(redact_string(message), secrets)
-        super().__init__(clean_msg)
-        self.code = code
-        self.message = clean_msg
-        self.raw_message = _redact_all(redact_string(raw_message or message), secrets)
-        self.http_status = http_status
-        self.phase = phase
-        self.provider_id = provider_id
-        self.model = model
-        self.retryable_same_target = retryable_same_target
-        self.fallbackable = fallbackable
-        self.portal_url = _redact_all(portal_url, secrets)
-        self.action_suggestion = _redact_all(action_suggestion, secrets)
-        self.recovery_suggestions = _redact_all(recovery_suggestions or [], secrets)
-        self.safe_diagnostics = _redact_all(safe_diagnostics or {}, secrets)
-        self.safety = SAFETY_DECLARATION
+        # This is the only storage boundary: sanitize the complete payload before
+        # assigning any attributes (including RuntimeError.args). The secret set
+        # is construction-only and must never become part of the exception state.
+        fields = {
+            "code": code,
+            "message": message,
+            "raw_message": raw_message or message,
+            "http_status": http_status,
+            "phase": phase,
+            "provider_id": provider_id,
+            "model": model,
+            "retryable_same_target": retryable_same_target,
+            "fallbackable": fallbackable,
+            "portal_url": portal_url,
+            "action_suggestion": action_suggestion,
+            "recovery_suggestions": recovery_suggestions or [],
+            "safe_diagnostics": safe_diagnostics or {},
+            "safety": SAFETY_DECLARATION,
+        }
+        # Attribute names belong to our schema, not the upstream payload. Only
+        # nested diagnostic keys are untrusted and should themselves be scrubbed.
+        safe_fields = {name: _redact_all(value, extra_secrets) for name, value in fields.items()}
+        super().__init__(safe_fields["message"])
+        self.__dict__.update(safe_fields)
 
     def to_dict(self) -> dict[str, Any]:
         return {
