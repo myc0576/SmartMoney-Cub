@@ -4,6 +4,7 @@ import json
 import re
 import socket
 import urllib.error
+import urllib.parse
 from typing import Any
 
 from smartmoney_cub_harness.safety import REDACTED, looks_sensitive_key, redact_string
@@ -25,6 +26,100 @@ class ProviderErrorCode:
 class FailurePhase:
     PRE_STREAM = "pre_stream"
     MID_STREAM = "mid_stream"
+
+
+_ERROR_CODES = frozenset(
+    value for name, value in vars(ProviderErrorCode).items() if name.isupper()
+)
+_PHASES = frozenset((FailurePhase.PRE_STREAM, FailurePhase.MID_STREAM))
+_RECOVERY_LABELS = {
+    "retry_turn": {"重新发起当前复盘轮次"},
+    "recharge": {"前往服务商充值"},
+    "switch_model": {"切换备用模型", "切换其他模型"},
+    "offline_mode": {"使用离线规则", "切换离线模式"},
+    "wait_retry": {"稍后自动重试"},
+    "fallback": {"切换备用路线", "切换候选路线"},
+    "check_key": {"检查并更新 API Key"},
+    "retry": {"重试请求"},
+    "check_settings": {"检查模型名称与参数"},
+    "check_network": {"检查网络连接"},
+}
+_URL_RE = re.compile(r"https?://[^\s<>\"'，。；）)]+", re.IGNORECASE)
+_QUERY_VALUE_RE = re.compile(r"(^|[&;])([^=&;]+)=([^&;]*)")
+
+
+def _collect_url_secrets(value: Any) -> set[str]:
+    """Discover URL values before redaction so separate echoes are scrubbed too."""
+    secrets: set[str] = set()
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            secrets.update(_collect_url_secrets(key))
+            secrets.update(_collect_url_secrets(nested))
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            secrets.update(_collect_url_secrets(nested))
+    elif value is not None:
+        for match in _URL_RE.finditer(str(value)):
+            try:
+                url = urllib.parse.urlsplit(match.group())
+            except ValueError:
+                continue
+            for query in (url.query, url.fragment):
+                for parameter in _QUERY_VALUE_RE.finditer(query):
+                    if parameter[3]:
+                        secrets.update((parameter[3], urllib.parse.unquote_plus(parameter[3])))
+            if url.fragment and "=" not in url.fragment:
+                secrets.add(urllib.parse.unquote(url.fragment))
+            if url.username:
+                secrets.add(urllib.parse.unquote(url.username))
+            if url.password:
+                secrets.add(urllib.parse.unquote(url.password))
+    secrets.discard(REDACTED)
+    return secrets
+
+
+def _replace_secrets(text: str, secrets: set[str], *, url: bool = False) -> str:
+    for secret in sorted(secrets, key=len, reverse=True):
+        if not secret:
+            continue
+        # A one-letter key is not every occurrence of that letter in a hostname.
+        # Match short URL credentials as tokens; explicit credential query values
+        # are always removed, regardless of their length.
+        if url and len(secret) < 8:
+            text = re.sub(r"(?<!\w)" + re.escape(secret) + r"(?!\w)", lambda _: REDACTED, text)
+        else:
+            text = text.replace(secret, REDACTED)
+    return text
+
+
+def _sanitize_url(text: str, secrets: set[str]) -> str:
+    try:
+        url = urllib.parse.urlsplit(text)
+    except ValueError:
+        return REDACTED
+
+    # A provider-specific parameter cannot be classified reliably from its key.
+    # Drop the complete query/fragment at the public boundary; the origin/path
+    # remains an actionable navigation target without exposing any query value.
+    safe_url = urllib.parse.urlunsplit((
+        url.scheme, url.netloc.rsplit("@", 1)[-1], url.path,
+        "",
+        "",
+    ))
+    return _replace_secrets(safe_url, secrets, url=True)
+
+
+def _redact_text(text: str, secrets: set[str]) -> str:
+    # Keep URL structure separate from free text (generic assignment redaction
+    # otherwise consumes the rest of a query, including safe navigation fields).
+    parts: list[str] = []
+    start = 0
+    for match in _URL_RE.finditer(text):
+        parts.append(_replace_secrets(redact_string(text[start:match.start()]), secrets))
+        parts.append(_sanitize_url(match.group(), secrets))
+        start = match.end()
+    parts.append(_replace_secrets(redact_string(text[start:]), secrets))
+    return "".join(parts)
 
 
 QUOTA_KEYWORDS = (
@@ -73,7 +168,7 @@ class ProviderError(RuntimeError):
 
 
 def _collect_provider_secrets(provider: dict[str, Any] | None) -> set[str]:
-    secrets: set[str] = set()
+    secrets = _collect_url_secrets(provider)
     if not provider:
         return secrets
     for k, v in provider.items():
@@ -98,11 +193,23 @@ def _redact_all(value: Any, extra_secrets: set[str] | None = None) -> Any:
         return tuple(_redact_all(item, extra_secrets) for item in value)
     if value is None or isinstance(value, (bool, int, float)):
         return value
-    redacted = redact_string(str(value))
-    for secret in sorted(extra_secrets or (), key=len, reverse=True):
-        if secret:
-            redacted = redacted.replace(secret, REDACTED)
-    return redacted
+    return _redact_text(str(value), extra_secrets or set())
+
+
+def _redact_recovery(items: list[dict[str, str]], secrets: set[str]) -> list[dict[str, str]]:
+    result = []
+    for item in items:
+        action = item.get("action", "")
+        safe_item = {}
+        for key, value in item.items():
+            safe_key = key if key in {"action", "label", "url"} else _redact_all(key, secrets)
+            trusted = (
+                key == "action" and value in _RECOVERY_LABELS
+                or key == "label" and value in _RECOVERY_LABELS.get(action, set())
+            )
+            safe_item[safe_key] = value if trusted else _redact_all(value, secrets)
+        result.append(safe_item)
+    return result
 
 
 class ClassifiedProviderError(ProviderError):
@@ -145,9 +252,30 @@ class ClassifiedProviderError(ProviderError):
             "safe_diagnostics": safe_diagnostics or {},
             "safety": SAFETY_DECLARATION,
         }
-        # Attribute names belong to our schema, not the upstream payload. Only
-        # nested diagnostic keys are untrusted and should themselves be scrubbed.
-        safe_fields = {name: _redact_all(value, extra_secrets) for name, value in fields.items()}
+        secrets = set(extra_secrets or ()) | _collect_url_secrets(fields)
+        # Only validated protocol values are trusted. Arbitrary constructor input
+        # and provider-controlled strings still go through the storage boundary.
+        trusted_fields = {"http_status", "retryable_same_target", "fallbackable", "safety"}
+        if code in _ERROR_CODES:
+            trusted_fields.add("code")
+        if phase in _PHASES:
+            trusted_fields.add("phase")
+        safe_fields = {
+            name: value if name in trusted_fields else _redact_all(value, secrets)
+            for name, value in fields.items()
+            if name not in {"recovery_suggestions", "safe_diagnostics"}
+        }
+        safe_fields["recovery_suggestions"] = _redact_recovery(recovery_suggestions or [], secrets)
+        diagnostics = {}
+        for key, value in (safe_diagnostics or {}).items():
+            safe_key = key if key in {
+                "provider_id", "model", "phase", "http_status", "error_type", "detail", "retry_after",
+            } else _redact_all(key, secrets)
+            diagnostics[safe_key] = (
+                value if key == "phase" and isinstance(value, str) and value in _PHASES
+                else _redact_all({key: value}, secrets).get(_redact_all(key, secrets))
+            )
+        safe_fields["safe_diagnostics"] = diagnostics
         super().__init__(safe_fields["message"])
         self.__dict__.update(safe_fields)
 
@@ -204,10 +332,11 @@ def classify_provider_error(
     extra_secrets = _collect_provider_secrets(provider)
 
     http_status, body = _extract_http_status_and_body(error, detail=detail)
+    extra_secrets.update(_collect_url_secrets((str(error), body, model, getattr(error, "url", ""))))
 
     combined_text = f"{error} {body}".lower()
-    sanitized_body = _redact_all(redact_string(body), extra_secrets)
-    raw_message = _redact_all(redact_string(str(error)), extra_secrets)
+    sanitized_body = _redact_all(body, extra_secrets)
+    raw_message = _redact_all(str(error), extra_secrets)
 
     # Base diagnostic information
     safe_diagnostics: dict[str, Any] = {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import socket
 import urllib.error
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 from typing import Any
@@ -605,7 +606,8 @@ def test_exception_instance_does_not_store_plaintext_secrets_in_vars_or_repr() -
     data = classified.to_dict()
     assert opaque_secret not in json.dumps(data)
     assert opaque_secret not in data["portal_url"]
-    assert "[REDACTED]" in data["portal_url"]
+    assert urllib.parse.urlsplit(data["portal_url"]).query == ""
+    assert urllib.parse.urlsplit(data["portal_url"]).fragment == ""
 
 
 def _assert_no_credential_on_error(error: ClassifiedProviderError, secret: str) -> None:
@@ -628,6 +630,97 @@ def _assert_no_credential_on_error(error: ClassifiedProviderError, secret: str) 
     ]
     assert leaked_surfaces == []
     assert secret not in json.dumps(error.to_dict())
+
+
+@pytest.mark.parametrize("construction", ["classifier", "constructor", "stream"])
+@pytest.mark.parametrize("parameter", [
+    "access_token", "token", "api_key", "key", "access_key", "secret",
+    "password", "authorization", "signature", "X-Vendor-Credential",
+    "ACCESS%5FTOKEN", "opaqueVendorProof",
+])
+def test_independent_url_query_credentials_are_private(
+    monkeypatch, construction: str, parameter: str,
+) -> None:
+    secret = "toyOpaqueQueryCredential/987+654"
+    encoded = urllib.parse.quote(secret, safe="")
+    portal = f"https://portal.example/recover?{parameter}={encoded}&plan=pro"
+    detail = f"insufficient_quota: recover at {portal}; rejected {secret}"
+    provider = {
+        "provider_id": "gateway", "base_url": "https://provider.example/v1",
+        "portal_url": portal, "api_key": "unrelatedToyCredential",
+    }
+    if construction == "constructor":
+        error = ClassifiedProviderError(
+            code=ProviderErrorCode.INSUFFICIENT_QUOTA, message=detail,
+            raw_message=detail, portal_url=portal,
+            recovery_suggestions=[{"action": "recharge", "label": "前往服务商充值", "url": portal}],
+            safe_diagnostics={f"echo-{secret}": {"detail": detail}},
+        )
+    elif construction == "classifier":
+        error = classify_provider_error(
+            ProviderError(f"provider returned HTTP 403: {detail}"), provider=provider,
+        )
+    else:
+        def fail_open(*args, **kwargs):
+            raise urllib.error.HTTPError(portal, 403, detail, {}, None)
+
+        monkeypatch.setattr("urllib.request.urlopen", fail_open)
+        with pytest.raises(ClassifiedProviderError) as caught:
+            list(stream_chat(provider, model="model", messages=[]))
+        error = caught.value
+
+    _assert_no_credential_on_error(error, secret)
+    _assert_no_credential_on_error(error, encoded)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    target = urllib.parse.urlsplit(error.portal_url)
+    assert (target.scheme, target.netloc, target.path) == (
+        "https", "portal.example", "/recover",
+    )
+    assert error.recovery_suggestions[0]["url"] == error.portal_url
+    assert error.recovery_suggestions[0]["action"] == "recharge"
+
+
+@pytest.mark.parametrize("secret", ["quota", "pre_stream", "a", "action", "READ", "前往"])
+def test_short_credentials_preserve_protocol_and_quota_cooldown(monkeypatch, secret: str) -> None:
+    provider = {"provider_id": "gateway", "api_key": secret, "portal_url": "https://portal.example/recover"}
+    error = classify_provider_error(
+        ProviderError("provider returned HTTP 403: insufficient_quota"), provider=provider,
+    )
+    payload = error.to_dict()
+    assert payload["error_code"] == "insufficient_quota"
+    assert payload["phase"] == "pre_stream"
+    assert payload["safety"] == SAFETY_DECLARATION
+    assert payload["http_status"] == 403
+    assert payload["retryable_same_target"] is False
+    assert payload["fallbackable"] is True
+    assert payload["safe_diagnostics"]["phase"] == "pre_stream"
+    assert payload["recovery_suggestions"] == [
+        {"action": "recharge", "label": "前往服务商充值", "url": "https://portal.example/recover"},
+        {"action": "switch_model", "label": "切换备用模型"},
+        {"action": "offline_mode", "label": "使用离线规则"},
+    ]
+    tracker = CooldownTracker()
+    assert tracker.mark_failure("gateway", "model", error, now=100) == 300
+    assert tracker.remaining_cooldown("gateway", "model", now=399) == 1
+    assert not tracker.is_cooling_down("gateway", "model", now=400)
+
+    calls = []
+    def fail_open(*args, **kwargs):
+        calls.append(True)
+        raise urllib.error.HTTPError("https://provider.example/v1", 403, "insufficient_quota", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fail_open)
+    monkeypatch.setattr("smartmoney_cub_harness.agent.route_chain.time.time", lambda: 100)
+    policy = RouteChainPolicy(max_same_target_retries=2, initial_backoff_seconds=0)
+    events = list(stream_chat_with_route_chain([
+        RouteCandidate(provider_id="gateway", model="model", api_key=secret, base_url="https://provider.example/v1"),
+        RouteCandidate(provider_id=OFFLINE_PROVIDER_ID, model="offline", protocol="offline"),
+    ], messages=[], policy=policy))
+    assert len(calls) == 1  # Quota must not retry the failed target.
+    assert events[-1] == {"kind": "done", "finish_reason": "stop"}
+    assert "本地离线复盘" in events[0]["text"]
+    assert policy.cooldown_tracker.remaining_cooldown("gateway", "model", now=100) == 300
 
 
 @pytest.mark.parametrize("construction", ["classifier", "constructor"])
@@ -672,7 +765,7 @@ def test_opaque_credential_absent_from_all_exception_surfaces(construction: str)
     assert error.phase == data["phase"] == FailurePhase.PRE_STREAM
     assert error.retryable_same_target is False
     assert error.fallbackable is True
-    assert error.portal_url == "https://portal.example/renew/[REDACTED]?ref=[REDACTED]"
+    assert error.portal_url == "https://portal.example/renew/[REDACTED]"
     assert error.recovery_suggestions[0]["url"] == error.portal_url
     assert error.safe_diagnostics["detail"] == "insufficient_quota: rejected [REDACTED]"
     assert error.args == (error.message,)
