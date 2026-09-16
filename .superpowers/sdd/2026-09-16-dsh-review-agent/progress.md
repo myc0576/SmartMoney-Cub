@@ -34,3 +34,16 @@
 - Task 4: pending
 - Task 5: pending
 - Task 6: pending
+
+## Task 2 review
+
+- Task 2: review failed — Critical: known opaque credentials can leak through provider diagnostics; Important: production quota remediation is flattened into a string, opening timeout classification is incomplete, 504 is classified as generic server error, cooldown candidates are still attempted, and authentication/invalid-request errors block explicit fallback candidates. Reviewer also noted the HTTP status regex minor issue. Fix round 1 dispatched to the original implementer; no controller-side fix.
+
+## Task 1 review
+
+- Task 1: review failed — Important: plugin-result validation trusts caller decision time, redaction misses CSV originals and non-string identifiers, typed nested objects bypass safety validation, and challenger dictionaries allow extra champion-mutation fields. Fix round 1 dispatched to the original implementer; no controller-side fix.
+
+- Task 2: fix round 1 re-review — 6 findings addressed, 1 Critical remains open: `ClassifiedProviderError.to_dict()` still serializes `portal_url` and `recovery_suggestions` without final known-secret redaction. Fix round 2 dispatched to the original implementer.
+- Task 2: fix round 2 commit `f909f32` scrubs all serialized ClassifiedProviderError fields; scoped re-review pending.
+- Task 2: fix round 2 re-review — original finding addressed, but a new Critical was introduced: plaintext credentials are retained in public `ClassifiedProviderError.extra_secrets` and visible via `vars(error)`. Fix round 3 dispatched.
+- Task 2: fix round 3 — eliminated extra_secrets attribute from ClassifiedProviderError instance; immutable attribute scrubbing on initialization; regression verified with fresh TDD evidence.
