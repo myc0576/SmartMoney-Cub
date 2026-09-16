@@ -13,7 +13,7 @@ export function PluginsView() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
-  
+
   // Drawer / modal for plugin inspection & events
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PluginDetailResponse | null>(null);

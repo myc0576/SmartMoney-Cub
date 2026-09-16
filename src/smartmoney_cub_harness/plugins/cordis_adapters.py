@@ -268,4 +268,3 @@ def request_challenger_promotion(
         "next_step": "core_governance_human_mutation" if explicit_confirmation else "human_confirmation_required",
         "safety": SAFETY_DECLARATION,
     }
-

@@ -17,7 +17,11 @@ from smartmoney_cub_harness.agent.providers import (
     load_credentials,
     load_settings,
     resolve_provider,
-    stream_chat,
+)
+from smartmoney_cub_harness.agent.route_chain import (
+    RouteCandidate,
+    RouteChainPolicy,
+    stream_chat_with_route_chain,
 )
 from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trader_service
 from smartmoney_cub_harness.redaction import prepare_outbound
@@ -98,6 +102,7 @@ class ReviewAgentRuntime:
         self.dsh_bridge = dsh_bridge
         self._cancel_lock = threading.RLock()
         self._cancel_events: dict[str, threading.Event] = {}
+        self._route_policy = RouteChainPolicy()
 
     # ---- session helpers ----------------------------------------------
 
@@ -532,6 +537,7 @@ class ReviewAgentRuntime:
         working = list(messages)
         assistant_text = ""
         rounds = 0
+        route_candidates = self._route_candidates(session, provider)
         while rounds < MAX_TOOL_ROUNDS:
             rounds += 1
             prepared = self._prepare(working, session=session, context=context)
@@ -560,11 +566,18 @@ class ReviewAgentRuntime:
                     "provider_id": provider.get("provider_id", ""),
                     "model": model,
                     "phase": "pre_stream",
+                    "route_chain": [
+                        {"provider_id": candidate.provider_id, "model": candidate.model}
+                        for candidate in route_candidates
+                    ],
                     "safety": SAFETY_DECLARATION,
                 },
             )
-            for event in stream_chat(
-                provider, model=model, messages=request_messages, tools=TOOL_SPECS, effort=effort
+            for event in stream_chat_with_route_chain(
+                route_candidates,
+                request_messages,
+                tools=TOOL_SPECS,
+                policy=self._route_policy,
             ):
                 if event["kind"] == "delta":
                     turn_text += event["text"]
@@ -669,6 +682,108 @@ class ReviewAgentRuntime:
             payload={"status": "idle", "safety": SAFETY_DECLARATION},
         )
         yield {"kind": "done", "safety": SAFETY_DECLARATION}
+
+    def _route_candidates(
+        self, session: dict[str, Any], primary_provider: dict[str, Any]
+    ) -> list[RouteCandidate]:
+        """Resolve a session's explicit provider chain from local settings only.
+
+        The session may choose route order and model names, but it cannot inject
+        endpoints or credentials. Those values are resolved from the local
+        provider store, and the offline route is always available as the final
+        candidate.
+        """
+        settings = load_settings(self.credentials_root)
+        credentials = load_credentials(self.credentials_root)
+        context = session.get("context") or {}
+        configured = context.get("route_chain")
+        entries: list[Any] = configured if isinstance(configured, list) else []
+        primary_id = str(primary_provider.get("provider_id") or session.get("provider_id") or "")
+        primary_model = str(session.get("model") or primary_provider.get("default_model") or "")
+
+        if not entries:
+            entries = [{"provider_id": primary_id, "model": primary_model}]
+        else:
+            primary_seen = any(
+                (item.get("provider_id") if isinstance(item, dict) else item) == primary_id
+                for item in entries
+            )
+            first_id = (
+                entries[0].get("provider_id")
+                if isinstance(entries[0], dict)
+                else entries[0]
+                if isinstance(entries[0], str)
+                else ""
+            )
+            if not primary_seen or first_id != primary_id:
+                entries.insert(0, {"provider_id": primary_id, "model": primary_model})
+
+        candidates: list[RouteCandidate] = []
+        seen: set[tuple[str, str]] = set()
+
+        for item in entries:
+            if isinstance(item, str):
+                provider_id = item.strip()
+                requested_model = ""
+                requested_effort = ""
+            elif isinstance(item, dict):
+                provider_id = str(item.get("provider_id") or "").strip()
+                requested_model = str(item.get("model") or "").strip()
+                requested_effort = str(item.get("reasoning") or item.get("effort") or "").strip()
+            else:
+                continue
+            if not provider_id:
+                continue
+
+            if provider_id == primary_id:
+                resolved = dict(primary_provider)
+            else:
+                try:
+                    resolved = resolve_provider(
+                        provider_id, credentials=credentials, settings=settings
+                    )
+                except ProviderError:
+                    continue
+            if resolved.get("protocol") != "offline" and not resolved.get("has_key"):
+                continue
+
+            model = requested_model
+            if not model:
+                model = primary_model if provider_id == primary_id else str(resolved.get("default_model") or "")
+            if not model and resolved.get("models"):
+                model = str(resolved["models"][0].get("id") or "")
+            effort = requested_effort or (str(session.get("reasoning") or "off") if provider_id == primary_id else "off")
+            key = (provider_id, model)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                RouteCandidate(
+                    provider_id=provider_id,
+                    model=model,
+                    effort=effort,
+                    label=str(resolved.get("label") or provider_id),
+                    base_url=str(resolved.get("base_url") or ""),
+                    protocol=str(resolved.get("protocol") or "openai-chat"),
+                    api_key=str(resolved.get("api_key") or ""),
+                    portal_url=str(resolved.get("portal_url") or ""),
+                )
+            )
+
+        if not any(candidate.provider_id == OFFLINE_PROVIDER_ID for candidate in candidates):
+            offline = resolve_provider(
+                OFFLINE_PROVIDER_ID, credentials=credentials, settings=settings
+            )
+            candidates.append(
+                RouteCandidate(
+                    provider_id=OFFLINE_PROVIDER_ID,
+                    model=str(offline.get("default_model") or "local-template"),
+                    effort="off",
+                    label=str(offline.get("label") or OFFLINE_PROVIDER_ID),
+                    protocol="offline",
+                )
+            )
+        return candidates
 
     # ---- offline path --------------------------------------------------
 

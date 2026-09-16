@@ -24,7 +24,7 @@ from smartmoney_cub_harness.agent.providers import (
     save_credentials,
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
-from smartmoney_cub_harness.workbench.server import WorkbenchHandler, WorkbenchService
+from smartmoney_cub_harness.workbench.server import ApiError, WorkbenchHandler, WorkbenchService
 from smartmoney_cub_harness.store import Store
 from smartmoney_cub_harness.workspace import Workspace
 
@@ -681,7 +681,6 @@ def test_review_scope_is_redacted_confirmable_and_challenger_only(tmp_path) -> N
 
 
 def test_structured_review_package_is_validated_and_persisted(tmp_path) -> None:
-    from smartmoney_cub_harness.agent.runtime import ReviewLifecycleError
     from smartmoney_cub_harness.review_contracts import StructuredReviewPackage
 
     service = _service(tmp_path)
@@ -717,8 +716,73 @@ def test_structured_review_package_is_validated_and_persisted(tmp_path) -> None:
 
         future = package.to_dict()
         future["observations"][0]["available_at"] = "2999-01-01T00:00:00+00:00"
-        with pytest.raises(ReviewLifecycleError):
+        with pytest.raises(ApiError, match="review_package_validation_failed") as error:
             service.record_review_package(session_id, future)
+        assert error.value.code == "review_package_error"
+    finally:
+        service.close()
+
+
+def test_runtime_uses_explicit_route_chain_for_review_turns(tmp_path, monkeypatch) -> None:
+    import smartmoney_cub_harness.agent.route_chain as route_chain_module
+    from smartmoney_cub_harness.agent.provider_errors import (
+        ClassifiedProviderError,
+        FailurePhase,
+        ProviderErrorCode,
+    )
+
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session(
+            {
+                "title": "路线链",
+                "provider_id": "primary",
+                "model": "primary-model",
+                "context": {
+                    "portfolio_id": "PORT-DEFAULT",
+                    "route_chain": [
+                        {"provider_id": "primary", "model": "primary-model"},
+                        {"provider_id": "offline", "model": "local-template", "protocol": "offline"},
+                    ],
+                },
+            }
+        )["session"]["session_id"]
+        monkeypatch.setattr(
+            service.runtime,
+            "resolve_session_provider",
+            lambda _session: {
+                "provider_id": "primary",
+                "model": "primary-model",
+                "label": "Primary",
+                "protocol": "openai-chat",
+                "base_url": "https://example.invalid/v1",
+                "api_key": "toy-key",
+                "has_key": True,
+            },
+        )
+        calls: list[str] = []
+
+        def fake_provider_stream(provider, *, model, messages, tools=None, effort="off"):
+            calls.append(provider["provider_id"])
+            if provider["provider_id"] == "primary":
+                raise ClassifiedProviderError(
+                    code=ProviderErrorCode.INSUFFICIENT_QUOTA,
+                    message="toy quota exhausted",
+                    phase=FailurePhase.PRE_STREAM,
+                    fallbackable=True,
+                )
+            return iter(
+                [
+                    {"kind": "delta", "text": "route-chain response"},
+                    {"kind": "done", "finish_reason": "stop"},
+                ]
+            )
+
+        monkeypatch.setattr(route_chain_module, "stream_chat", fake_provider_stream)
+        events = list(service.runtime.run_turn(session_id, "请复盘"))
+
+        assert calls == ["primary"]
+        assert any(event.get("text", "").startswith("【本地离线复盘】") for event in events)
     finally:
         service.close()
 

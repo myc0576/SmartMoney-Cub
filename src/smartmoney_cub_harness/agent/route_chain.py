@@ -239,4 +239,3 @@ def stream_chat_with_route_chain(
 
     if last_error:
         raise last_error
-

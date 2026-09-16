@@ -425,7 +425,7 @@ def test_resolve_provider_preserves_portal_url(tmp_path) -> None:
     assert resolved.get("portal_url") == "https://alphatech.net.cn"
 
 
-def test_runtime_emits_structured_classified_error(tmp_path) -> None:
+def test_runtime_emits_structured_classified_error(tmp_path, monkeypatch) -> None:
     from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime
     from smartmoney_cub_harness.store import Store
     from smartmoney_cub_harness.agent.providers import save_credentials
@@ -436,8 +436,10 @@ def test_runtime_emits_structured_classified_error(tmp_path) -> None:
     session = store.create_session(title="复盘", provider_id=ALPHATECH_PROVIDER_ID, model="gpt-5.6-sol")
     session_id = session["session_id"]
 
-    # Mock stream_chat to raise a 403 quota ClassifiedProviderError
-    def mock_stream_chat_fail(*args, **kwargs):
+    # Mock the route chain after its candidates are exhausted. The runtime now
+    # delegates provider attempts to the route-chain boundary rather than
+    # calling one provider stream directly.
+    def mock_route_chain_fail(*args, **kwargs):
         raise classify_provider_error(
             urllib.error.HTTPError("https://api.example/v1", 403, "Forbidden", {}, None),
             provider={"provider_id": ALPHATECH_PROVIDER_ID, "portal_url": "https://alphatech.net.cn"},
@@ -447,17 +449,14 @@ def test_runtime_emits_structured_classified_error(tmp_path) -> None:
         )
 
     import smartmoney_cub_harness.agent.runtime as runtime_mod
-    runtime_mod.stream_chat = mock_stream_chat_fail
-    try:
-        events = list(runtime.run_turn(session_id, "复盘此交易"))
-        error_events = [e for e in events if e.get("kind") == "error"]
-        assert len(error_events) == 1
-        err_evt = error_events[0]
-        assert "classified" in err_evt
-        assert err_evt["classified"]["error_code"] == "insufficient_quota"
-        assert err_evt["classified"]["portal_url"] == "https://alphatech.net.cn"
-    finally:
-        runtime_mod.stream_chat = stream_chat
+    monkeypatch.setattr(runtime_mod, "stream_chat_with_route_chain", mock_route_chain_fail)
+    events = list(runtime.run_turn(session_id, "复盘此交易"))
+    error_events = [e for e in events if e.get("kind") == "error"]
+    assert len(error_events) == 1
+    err_evt = error_events[0]
+    assert "classified" in err_evt
+    assert err_evt["classified"]["error_code"] == "insufficient_quota"
+    assert err_evt["classified"]["portal_url"] == "https://alphatech.net.cn"
 
 
 def test_open_socket_timeout_classified_through_stream_chat(monkeypatch) -> None:

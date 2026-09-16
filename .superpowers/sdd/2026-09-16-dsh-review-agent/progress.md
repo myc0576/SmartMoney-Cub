@@ -30,10 +30,10 @@
 
 - Task 1: complete (scoped fix-round-3 re-review approved)
 - Task 2: complete by controller adjudication (fix-round-5 `123b20d`; fresh full pytest and deterministic privacy probes pass; model re-review was blocked by repeated no-response/OAuth failures; final whole-branch review remains mandatory)
-- Task 3: pending
-- Task 4: pending
-- Task 5: pending
-- Task 6: pending
+- Task 3: complete by controller implementation/tests; final whole-branch review pending
+- Task 4: complete by controller implementation/tests; final whole-branch review pending
+- Task 5: complete by controller implementation/tests; final whole-branch review pending
+- Task 6: complete by controller implementation/build; final whole-branch review pending
 
 ## Task 2 review
 
@@ -55,3 +55,8 @@
 - Task 2: fix round 4 commit `6018f4f` removes raw upstream causes and sanitizes retained fields, but scoped re-review found a Critical URL-query credential leak and an Important schema-corrupting blanket substring replacement; a fresh `commandcode/deepseek-deepseek-v4.1-flash` implementer is handling fix round 5.
 - Task 2: the DeepSeek and Astra fix-round-5 attempts produced no submission; the requested Gemini attempt failed with OAuth 401. The controller then completed the scoped fix as `123b20d`, adding URL query/fragment removal and preserving trusted protocol/recovery schema. Final independent review is pending.
 - Task 2: scoped model re-review attempts after `123b20d` repeatedly timed out; controller adjudication ran 70 focused and 134 related tests, then the full suite at 838 passed / 6 skipped with doctor safety confirmed. Treat the missing model review as an environment limitation, not as evidence of approval; the final whole-branch reviewer must re-check this boundary.
+- Task 3: controller implemented `8757047` and `7f18eb7` with a fail-closed stdio JSON-RPC bridge, fixed `smartmoney-review` allowlist, envelope redaction/integrity checks, lifecycle calls, deterministic transport stub, and bootstrap metadata.
+- Task 4: controller implemented `28a1d3d`, `b344b93`, and `574c5ca` with SQLite restart recovery, typed lifecycle events, scope confirmation, envelope/package persistence, cooperative cancel/resume, replay cursor compatibility, and optional bridge injection.
+- Task 5: controller packaged the existing curated catalog/adapters as `1b88133`, including manifest validation, metadata-only state transitions, two toy Cordis adapters, explicit profile reload, and plugin exports.
+- Task 6: controller packaged `03e68bb` and `cc03391`, adding scope confirmation/cancel API consumption and curated adapter marketplace rendering; frontend typecheck/build passed.
+- Model independent reviews for Tasks 3–6 were unavailable because the delegated implementation agents returned no output; final review must be performed against the complete branch before any completion claim.

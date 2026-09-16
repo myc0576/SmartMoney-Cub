@@ -485,4 +485,3 @@ CURATED_FINANCE_PLUGINS: tuple[CuratedFinancePluginDescriptor, ...] = (
 
 def curated_catalog_payload() -> dict[str, Any]:
     return CuratedFinancePluginCatalog(CURATED_FINANCE_PLUGINS).payload()
-
