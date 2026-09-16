@@ -22,6 +22,16 @@ from smartmoney_cub_harness.agent.route_chain import (
 )
 from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime
 from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox
+from smartmoney_cub_harness.agent.dsh_bridge import (
+    ALLOWED_CAPABILITIES,
+    DSH_PROFILE,
+    DSH_PROTOCOL,
+    DshBridgeError,
+    DshProfile,
+    DshSidecarBridge,
+    InMemoryDshTransport,
+    dsh_source_bootstrap,
+)
 
 __all__ = [
     "BUILTIN_PROVIDERS",
@@ -37,6 +47,14 @@ __all__ = [
     "ReviewAgentRuntime",
     "TOOL_SPECS",
     "ToolBox",
+    "ALLOWED_CAPABILITIES",
+    "DSH_PROFILE",
+    "DSH_PROTOCOL",
+    "DshBridgeError",
+    "DshProfile",
+    "DshSidecarBridge",
+    "InMemoryDshTransport",
+    "dsh_source_bootstrap",
     "load_credentials",
     "public_provider_view",
     "resolve_provider",
