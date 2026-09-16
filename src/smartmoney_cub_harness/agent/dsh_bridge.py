@@ -9,6 +9,7 @@ third-party project.
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, TextIO
 
@@ -197,6 +198,11 @@ class DshSidecarBridge:
         validation = validate_redacted_payload(normalized.payload)
         if not validation.ok:
             raise DshBridgeError("invalid_review_envelope", "Review envelope failed the redaction boundary.")
+        digest = hashlib.sha256(
+            json.dumps(normalized.payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        if normalized.payload_sha256 != digest:
+            raise DshBridgeError("invalid_review_envelope", "Review envelope integrity check failed.")
         response = self._call(
             "handshake",
             {"protocol": DSH_PROTOCOL, "profile": self.profile.to_dict(), "envelope": normalized.to_dict()},
@@ -280,4 +286,3 @@ class InMemoryDshTransport:
 
     def close(self) -> None:
         self.closed = True
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 
 import pytest
@@ -30,16 +31,20 @@ def _envelope() -> RedactedReviewEnvelope:
         horizons=("next_session",),
         case_ids=("case-toy-1",),
     )
+    payload = {
+        "portfolio_id": "portfolio-12345678",
+        "symbol": "symbol-12345678",
+        "quantity": "0-100",
+        "price": "10-20",
+        "trade_time": "09:00-10:00",
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     return RedactedReviewEnvelope(
         scope=scope,
-        payload={
-            "portfolio_id": "portfolio-12345678",
-            "symbol": "symbol-12345678",
-            "quantity": "0-100",
-            "price": "10-20",
-            "trade_time": "09:00-10:00",
-        },
-        payload_sha256="a" * 64,
+        payload=payload,
+        payload_sha256=digest,
         redaction_policy="redaction.v1",
         sent_keys=("portfolio_id", "symbol"),
     )
@@ -108,4 +113,3 @@ def test_bridge_does_not_accept_model_facing_methods() -> None:
     with pytest.raises(DshBridgeError) as error:
         bridge._call("shell", {})
     assert error.value.code == "method_not_allowed"
-
