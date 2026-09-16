@@ -418,3 +418,32 @@ exit code 0
 ```
 
 The doctor output retained `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
+
+### Post-commit shared-worktree note
+
+The post-commit Task 1 regression run remained green:
+
+```text
+python -m pytest tests/test_review_contracts.py -q
+48 passed in 0.04s
+exit code 0
+
+python -m smartmoney_cub_harness.cli doctor
+status: ok
+safety: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
+exit code 0
+```
+
+A concurrent shared-baseline change then caused the latest repository-wide run
+to fail only in the out-of-scope provider-route tests:
+
+```text
+python -m pytest tests/ -q --tb=short
+8 failed, 780 passed, 6 skipped in 25.78s
+exit code 1
+```
+
+The failures are confined to `tests/test_provider_route_chain.py` and its
+provider implementation, neither of which was edited or committed by Task 1.
+The Task 1 contract suite and safety doctor remain green; no Task 1 issue is
+introduced by this shared-worktree failure.
