@@ -260,7 +260,23 @@ function serverModels(provider: ProviderView): Record<string, unknown>[] {
   });
 }
 
-export function SettingsView({ meta, onMetaChange }: { meta: Meta | null; onMetaChange: () => void }) {
+export function SettingsView({
+  meta,
+  onMetaChange,
+  scheme,
+  theme,
+  onToggleScheme,
+  onToggleTheme,
+  onGoToPlugins,
+}: {
+  meta: Meta | null;
+  onMetaChange: () => void;
+  scheme?: 'cn' | 'intl';
+  theme?: 'light' | 'dark';
+  onToggleScheme?: () => void;
+  onToggleTheme?: () => void;
+  onGoToPlugins?: () => void;
+}) {
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [protocols, setProtocols] = useState<ProtocolOption[]>([]);
@@ -277,6 +293,13 @@ export function SettingsView({ meta, onMetaChange }: { meta: Meta | null; onMeta
   const [drafts, setDrafts] = useState<Record<string, ProviderDraft>>({});
   const [catalogKey, setCatalogKey] = useState('');
   const [custom, setCustom] = useState<CustomDraft>(blankCustomDraft);
+  const [activeSection, setActiveSection] = useState<'general' | 'models' | 'plugins' | 'agent' | 'privacy'>('models');
+  const [agentPresets, setAgentPresets] = useState<{ system_prompt: string; default_effort: string; context_strategy: string }>({
+    system_prompt: '',
+    default_effort: 'medium',
+    context_strategy: 'summary_compact',
+  });
+  const [openingFile, setOpeningFile] = useState(false);
 
   const load = async (): Promise<ProviderView[]> => {
     const settings = await api.settings();
@@ -285,6 +308,13 @@ export function SettingsView({ meta, onMetaChange }: { meta: Meta | null; onMeta
     setCatalog((settings.catalog as CatalogEntry[]) || []);
     setProtocols((settings.protocols as ProtocolOption[]) || []);
     setDefaults(settings.defaults || { provider_id: '', model: '', reasoning: 'off' });
+    if (settings.agent_presets) {
+      setAgentPresets({
+        system_prompt: settings.agent_presets.system_prompt || '',
+        default_effort: settings.agent_presets.default_effort || 'medium',
+        context_strategy: settings.agent_presets.context_strategy || 'summary_compact',
+      });
+    }
     setAudits((await api.audit()).audits);
     setDoctor(await api.doctor());
     return next;
@@ -393,144 +423,405 @@ export function SettingsView({ meta, onMetaChange }: { meta: Meta | null; onMeta
     } catch (caught) { fail(caught); }
   };
 
-  return (
-    <div className="grid" style={{ gap: 14 }}>
-      <Panel title="隐私与脱敏">
-        <div className="grid" style={{ gap: 8 }}>
-          <div>外发策略：<strong>{meta?.redaction_policy || 'redaction.v1'}</strong></div>
-          <div className="muted">
-            发送给模型的字段在离开本机前会被替换：账号与姓名变成别名，证券代码与组合名变成设备内稳定的哈希别名，
-            精确数量与金额变成区间，精确时间变成 15 分钟时段。截图、PDF、CSV 原文永远不进入请求。
-          </div>
-          <div className="muted">每次外发都会在本地写入一条审计记录，只记录「发送了哪些字段」和脱敏统计，不记录密钥。</div>
-          <div className="row">
-            <span>本地识别引擎：</span>
-            {meta?.engine?.rapidocr ? <Badge kind="ok">已安装</Badge> : <Badge kind="warn">未安装</Badge>}
-            <span className="muted">截图与扫描 PDF 需要它，安装命令：pip install "smartmoney-cub-harness[ocr]"</span>
-          </div>
-        </div>
-      </Panel>
+  const handleOpenFile = async () => {
+    setOpeningFile(true);
+    try {
+      const res = await api.openConfigFile();
+      if (res.status === 'ok') {
+        notice('已在默认文本编辑器中打开配置文件：' + (res.path || ''));
+      } else {
+        fail(res.error || '无法打开配置文件');
+      }
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      setOpeningFile(false);
+    }
+  };
 
-      <Panel title={'模型 Providers（' + providers.length + '）'}>
-        <div className="grid" style={{ gap: 10 }}>
-          {providers.map((provider) => (
-            openProvider === provider.provider_id ? (
-              <ProviderEditCard
-                key={provider.provider_id}
-                provider={provider}
-                draft={drafts[provider.provider_id] || draftOf(provider)}
-                defaults={defaults}
-                protocols={protocols}
-                isDefault={defaults.provider_id === provider.provider_id}
-                onPatch={(patch) => patchDraft(provider, patch)}
-                onClose={() => setOpenProvider(null)}
-                onDelete={() => void removeProvider(provider)}
-                onSaved={(message) => saved(provider.provider_id, message)}
-                onSetDefault={setDefault}
-                onFail={fail}
-                onNotice={notice}
-              />
-            ) : (
-              <ProviderRow
-                key={provider.provider_id}
-                provider={provider}
-                isDefault={defaults.provider_id === provider.provider_id}
-                onEdit={() => openEditor(provider)}
-                onDelete={() => void removeProvider(provider)}
-              />
-            )
-          ))}
-          {providers.length === 0 ? (
-            <div className="muted">还没有配置任何 Provider。用下面的按钮从内置目录添加，或手工声明一个自定义路由。</div>
+  const saveAgentPresets = async () => {
+    try {
+      await api.updateSettings({ agent_presets: agentPresets });
+      notice('Agent 预设已保存');
+      await refresh();
+    } catch (caught) {
+      fail(caught);
+    }
+  };
+
+  return (
+    <div className="dsh-settings-container">
+      {/* Top action header: aligned with DSH Settings modal header */}
+      <div className="dsh-settings-topbar">
+        <div>
+          <h2 className="dsh-settings-heading">设置</h2>
+          <span className="muted" style={{ fontSize: 12 }}>
+            配置模型提供方、Agent 预设、外观与系统选项
+          </span>
+        </div>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <button
+            className="dsh-open-config-btn"
+            onClick={() => void handleOpenFile()}
+            disabled={openingFile}
+            title="学习 DSH 交互：在本地文本编辑器中直接打开配置文件"
+          >
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginRight: 6 }}>
+              <path d="M2 4a1 1 0 0 1 1-1h4l2 2h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z" />
+            </svg>
+            {openingFile ? '正在打开...' : '打开配置文件'}
+          </button>
+          <span className="muted" style={{ fontSize: 10 }}>仅打开本机配置；不会上传或执行文件内容。</span>
+        </div>
+      </div>
+
+      {status ? <div className="notice" role="status" style={{ borderLeftColor: 'var(--color-accent)', marginBottom: 12 }}>{status}</div> : null}
+      {error ? <div className="notice" role="alert" style={{ borderLeftColor: 'var(--neg)', marginBottom: 12 }}>{error}</div> : null}
+
+      <div className="dsh-settings-layout">
+        {/* Left Vertical Sub-Navigation: DSH Architecture */}
+        <nav className="dsh-settings-sidebar">
+          <button
+            className={'dsh-nav-tab' + (activeSection === 'general' ? ' active' : '')}
+            onClick={() => { setActiveSection('general'); setError(''); }}
+          >
+            <span>通用设置</span>
+          </button>
+
+          <button
+            className={'dsh-nav-tab' + (activeSection === 'models' ? ' active' : '')}
+            onClick={() => { setActiveSection('models'); setError(''); }}
+          >
+            <span>模型</span>
+            <span className="dsh-tab-badge">{providers.length}</span>
+          </button>
+
+          <button
+            className={'dsh-nav-tab' + (activeSection === 'plugins' ? ' active' : '')}
+            onClick={() => { setActiveSection('plugins'); setError(''); }}
+          >
+            <span>插件</span>
+          </button>
+
+          <button
+            className={'dsh-nav-tab' + (activeSection === 'agent' ? ' active' : '')}
+            onClick={() => { setActiveSection('agent'); setError(''); }}
+          >
+            <span>Agent 预设</span>
+          </button>
+
+          <button
+            className={'dsh-nav-tab' + (activeSection === 'privacy' ? ' active' : '')}
+            onClick={() => { setActiveSection('privacy'); setError(''); }}
+          >
+            <span>隐私与诊断</span>
+          </button>
+        </nav>
+
+        {/* Right Content Panel */}
+        <div className="dsh-settings-content">
+          {/* 1. 通用设置 */}
+          {activeSection === 'general' ? (
+            <Panel title="通用设置">
+              <div className="grid" style={{ gap: 16 }}>
+                <div className="provider-form">
+                  <div className="field">
+                    <label>涨跌配色显示</label>
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <button
+                        className={scheme === 'cn' ? 'primary' : 'ghost'}
+                        onClick={onToggleScheme}
+                      >
+                        红涨绿跌（国内惯例）
+                      </button>
+                      <button
+                        className={scheme === 'intl' ? 'primary' : 'ghost'}
+                        onClick={onToggleScheme}
+                      >
+                        绿涨红跌（国际惯例）
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>界面色彩主题</label>
+                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <button
+                        className={theme === 'dark' ? 'primary' : 'ghost'}
+                        onClick={onToggleTheme}
+                      >
+                        深色模式 (Dark)
+                      </button>
+                      <button
+                        className={theme === 'light' ? 'primary' : 'ghost'}
+                        onClick={onToggleTheme}
+                      >
+                        浅色模式 (Light)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="stage-row" style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 500, marginBottom: 6 }}>单账本与离线持久化机制</div>
+                  <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    SmartMoney-Cub 遵循单人本地优先原则，所有交易记录、回放行情与复盘会话均离线存储在本地 SQLite 数据库中，不向任何中心化服务器回传明细。
+                  </div>
+                  <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                    安全合约声明：<code>READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</code>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
+
+          {/* 2. 模型设置 */}
+          {activeSection === 'models' ? (
+            <Panel title={'模型提供方（' + providers.length + '）'}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                填入各提供方的 API 密钥即可使用其模型。密钥只写入本机凭据文件，界面绝不回显。
+              </div>
+
+              <div className="grid" style={{ gap: 10 }}>
+                {providers.map((provider) => (
+                  openProvider === provider.provider_id ? (
+                    <ProviderEditCard
+                      key={provider.provider_id}
+                      provider={provider}
+                      draft={drafts[provider.provider_id] || draftOf(provider)}
+                      defaults={defaults}
+                      protocols={protocols}
+                      isDefault={defaults.provider_id === provider.provider_id}
+                      onPatch={(patch) => patchDraft(provider, patch)}
+                      onClose={() => setOpenProvider(null)}
+                      onDelete={() => void removeProvider(provider)}
+                      onSaved={(msg) => saved(provider.provider_id, msg)}
+                      onSetDefault={setDefault}
+                      onFail={fail}
+                      onNotice={notice}
+                    />
+                  ) : (
+                    <ProviderRow
+                      key={provider.provider_id}
+                      provider={provider}
+                      isDefault={defaults.provider_id === provider.provider_id}
+                      onEdit={() => openEditor(provider)}
+                      onDelete={() => void removeProvider(provider)}
+                    />
+                  )
+                ))}
+                {providers.length === 0 ? (
+                  <div className="muted">还没有配置任何 Provider。用下面的按钮从内置目录添加，或手工声明自定义路由。</div>
+                ) : null}
+              </div>
+
+              {addMode === 'catalog' ? (
+                <div style={{ marginTop: 10 }}>
+                  <CatalogAddCard
+                    catalog={catalog}
+                    installed={providers.map((p) => p.provider_id)}
+                    apiKey={catalogKey}
+                    onApiKey={setCatalogKey}
+                    onClose={() => setAddMode(null)}
+                    onAdd={(entry) => void addFromCatalog(entry)}
+                  />
+                </div>
+              ) : null}
+
+              {addMode === 'custom' ? (
+                <div style={{ marginTop: 10 }}>
+                  <CustomAddCard
+                    providers={providers}
+                    protocols={protocols}
+                    draft={custom}
+                    onChange={(patch) => setCustom((prev) => ({ ...prev, ...patch }))}
+                    onClose={() => setAddMode(null)}
+                    onCreate={(payload, label) => void createCustom(payload, label)}
+                    onFail={fail}
+                  />
+                </div>
+              ) : null}
+
+              {addMode === null ? (
+                <div className="add-row" style={{ marginTop: 12 }}>
+                  <button className="add-card" onClick={() => { setAddMode('catalog'); setError(''); }}>+ 添加提供方</button>
+                  <button className="add-card" onClick={() => { setAddMode('custom'); setError(''); }}>+ 添加自定义提供方</button>
+                </div>
+              ) : null}
+            </Panel>
+          ) : null}
+
+          {/* 3. 插件设置 */}
+          {activeSection === 'plugins' ? (
+            <Panel title="插件系统全局策略">
+              <div className="grid" style={{ gap: 14 }}>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  插件只能读取外部数据并作为复盘证据使用。它们不能下单、不能改账户，也不能绕过脱敏。
+                  任何 <code>available_at</code> 晚于决策时间的证据都会判定为未来数据并拒绝。
+                </div>
+
+                <div className="stage-row">
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>只读沙箱与隔离机制</div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    所有第三方插件默认运行在独立子进程（subprocess）环境中，对外网络访问必须在清单中显式声明。
+                  </div>
+                </div>
+
+                {onGoToPlugins ? (
+                  <div style={{ marginTop: 8 }}>
+                    <button className="primary" onClick={onGoToPlugins}>
+                      前往完整插件中心（管理与配置插件） →
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </Panel>
+          ) : null}
+
+          {/* 4. Agent 预设 */}
+          {activeSection === 'agent' ? (
+            <Panel title="复盘助手 Agent 预设">
+              <div className="grid" style={{ gap: 16 }}>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  自定义复盘助手的思考偏好与系统指令。此处的设定会在创建新复盘会话时自动注入。
+                </div>
+
+                <div className="provider-form">
+                  <div className="field">
+                    <label>默认推理思考强度</label>
+                    <select
+                      value={agentPresets.default_effort}
+                      onChange={(e) => setAgentPresets((prev) => ({ ...prev, default_effort: e.target.value }))}
+                    >
+                      <option value="off">不思考（直接作答）</option>
+                      <option value="low">低推理（轻量推理）</option>
+                      <option value="medium">中等推理（均衡主力）</option>
+                      <option value="high">高推理（深入归因）</option>
+                      <option value="max">最大推理（极限推理）</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>上下文压缩策略</label>
+                    <select
+                      value={agentPresets.context_strategy}
+                      onChange={(e) => setAgentPresets((prev) => ({ ...prev, context_strategy: e.target.value }))}
+                    >
+                      <option value="summary_compact">结构化摘要压缩 (默认)</option>
+                      <option value="full_recent">仅保留最近轮次全文</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>系统提示词定制要求 (Agent Prompt)</label>
+                  <textarea
+                    style={{ minHeight: 120, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5 }}
+                    placeholder="在此输入您期望复盘助手始终遵守的分析风格或特定要求（例如：注重盈亏比分析，严格指出执行计划外交易的错误...）"
+                    value={agentPresets.system_prompt}
+                    onChange={(e) => setAgentPresets((prev) => ({ ...prev, system_prompt: e.target.value }))}
+                  />
+                  <div className="row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      字符数：{agentPresets.system_prompt.length}
+                    </span>
+                    <button
+                      className="ghost"
+                      style={{ fontSize: 11 }}
+                      onClick={() => setAgentPresets((prev) => ({ ...prev, system_prompt: '' }))}
+                    >
+                      清空定制要求
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <button className="primary" onClick={() => void saveAgentPresets()}>
+                    保存 Agent 预设
+                  </button>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
+
+          {/* 5. 隐私与诊断 */}
+          {activeSection === 'privacy' ? (
+            <div className="grid" style={{ gap: 14 }}>
+              <Panel title="隐私与脱敏">
+                <div className="grid" style={{ gap: 8 }}>
+                  <div>外发策略：<strong>{meta?.redaction_policy || 'redaction.v1'}</strong></div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    发送给模型的字段在离开本机前会被替换：账号与姓名变成别名，证券代码与组合名变成设备内稳定的哈希别名，
+                    精确数量与金额变成区间，精确时间变成 15 分钟时段。截图、PDF、CSV 原文永远不进入网络请求。
+                  </div>
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <span>本地识别引擎：</span>
+                    {meta?.engine?.rapidocr ? <Badge kind="ok">已安装</Badge> : <Badge kind="warn">未安装</Badge>}
+                    <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                      截图与扫描 PDF 需要它：pip install "smartmoney-cub-harness[ocr]"
+                    </span>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel title={'外发审计（最近 ' + audits.length + ' 条）'}>
+                {audits.length === 0 ? (
+                  <div className="muted">还没有向外部模型发送过请求。本地离线复盘不会产生外发记录。</div>
+                ) : (
+                  <div className="scroll-x">
+                    <table>
+                      <thead><tr><th>时间</th><th>Provider</th><th>模型</th><th>字段数</th><th>脱敏</th><th>结果</th></tr></thead>
+                      <tbody>
+                        {audits.map((audit) => (
+                          <tr key={audit.audit_id}>
+                            <td className="muted">{audit.created_at}</td>
+                            <td>{audit.provider_id}</td>
+                            <td className="muted">{audit.model || '—'}</td>
+                            <td className="num">{audit.sent_keys.length}</td>
+                            <td className="muted">{String(audit.redaction_summary?.total ?? 0)} 处替换</td>
+                            <td>{audit.blocked ? <Badge kind="error">已阻断</Badge> : <Badge kind="ok">已发送</Badge>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Panel>
+
+              <Panel title="本地系统诊断">
+                {doctor ? (
+                  <table>
+                    <thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead>
+                    <tbody>
+                      {((doctor.checks as { name: string; status: string; detail: string }[] | undefined) || []).map((check) => (
+                        <tr key={check.name}>
+                          <td>{check.name}</td>
+                          <td>
+                            {check.status === 'ok' ? (
+                              <Badge kind="ok">正常</Badge>
+                            ) : check.status === 'warn' ? (
+                              <Badge kind="warn">提示</Badge>
+                            ) : (
+                              <Badge kind="error">异常</Badge>
+                            )}
+                          </td>
+                          <td className="muted">{check.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="muted">未能读取诊断信息。</div>
+                )}
+              </Panel>
+            </div>
           ) : null}
         </div>
-
-        {addMode === 'catalog' ? (
-          <div style={{ marginTop: 10 }}>
-            <CatalogAddCard
-              catalog={catalog}
-              installed={providers.map((provider) => provider.provider_id)}
-              apiKey={catalogKey}
-              onApiKey={setCatalogKey}
-              onClose={() => setAddMode(null)}
-              onAdd={(entry) => void addFromCatalog(entry)}
-            />
-          </div>
-        ) : null}
-        {addMode === 'custom' ? (
-          <div style={{ marginTop: 10 }}>
-            <CustomAddCard
-              providers={providers}
-              protocols={protocols}
-              draft={custom}
-              onChange={(patch) => setCustom((prev) => ({ ...prev, ...patch }))}
-              onClose={() => setAddMode(null)}
-              onCreate={(payload, label) => void createCustom(payload, label)}
-              onFail={fail}
-            />
-          </div>
-        ) : null}
-        {addMode === null ? (
-          <div className="add-row" style={{ marginTop: 10 }}>
-            <button className="add-card" onClick={() => { setAddMode('catalog'); setError(''); }}>+ 添加提供方</button>
-            <button className="add-card" onClick={() => { setAddMode('custom'); setError(''); }}>+ 添加自定义提供方</button>
-          </div>
-        ) : null}
-
-        {/* Present even while empty, so a screen reader announces the change
-            rather than being handed a new live region with the text already in
-            it. */}
-        <div className="muted" role="status" aria-live="polite" style={{ marginTop: 10, minHeight: 16 }}>{status}</div>
-        {error ? <div className="notice" role="alert" style={{ marginTop: 8 }}>{error}</div> : null}
-      </Panel>
-
-      <Panel title={'外发审计（最近 ' + audits.length + ' 条）'}>
-        {audits.length === 0 ? (
-          <div className="muted">还没有向外部模型发送过请求。本地离线复盘不会产生外发记录。</div>
-        ) : (
-          <div className="scroll-x">
-            <table>
-              <thead><tr><th>时间</th><th>Provider</th><th>模型</th><th>字段数</th><th>脱敏</th><th>结果</th></tr></thead>
-              <tbody>
-                {audits.map((audit) => (
-                  <tr key={audit.audit_id}>
-                    <td className="muted">{audit.created_at}</td>
-                    <td>{audit.provider_id}</td>
-                    <td className="muted">{audit.model || '—'}</td>
-                    <td className="num">{audit.sent_keys.length}</td>
-                    <td className="muted">{String(audit.redaction_summary?.total ?? 0)} 处替换</td>
-                    <td>{audit.blocked ? <Badge kind="error">已阻断</Badge> : <Badge kind="ok">已发送</Badge>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
-
-      <Panel title="本地诊断">
-        {/* A doctor payload that lacks 'checks' is still a successful read; the
-            section renders an empty state rather than throwing on the map. */}
-        {doctor ? (
-          <table>
-            <thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead>
-            <tbody>
-              {((doctor.checks as { name: string; status: string; detail: string }[] | undefined) || []).map((check) => (
-                <tr key={check.name}>
-                  <td>{check.name}</td>
-                  <td>{check.status === 'ok' ? <Badge kind="ok">正常</Badge> : <Badge kind="warn">{check.status}</Badge>}</td>
-                  <td className="muted" style={{ whiteSpace: 'normal' }}>{check.detail}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <div className="muted">加载中…</div>}
-      </Panel>
+      </div>
     </div>
   );
 }
 
-/** One compact line: name, key dot, qualifier tags, and the row's two actions. */
 function ProviderRow({ provider, isDefault, onEdit, onDelete }: {
   provider: ProviderView;
   isDefault: boolean;
@@ -705,7 +996,24 @@ function ProviderEditCard({
           />
         </div>
         <div className="field">
-          <label>API 密钥（只写，不会回显）</label>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <label style={{ margin: 0 }}>API 密钥（只写，不会回显）</label>
+            {(provider.portal_url || provider.provider_id === 'alphatech') ? (
+              <a
+                href={provider.portal_url || 'https://alphatech.net.cn'}
+                target="_blank"
+                rel="noreferrer"
+                className="dsh-get-key-link"
+                title="打开官方控制台注册并创建 API 密钥"
+              >
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginRight: 4 }}>
+                  <circle cx="5" cy="11" r="3" />
+                  <path d="M7 9l7-7M12 2l2 2M10 4l2 2" />
+                </svg>
+                获取 {provider.label} 密钥 ↗
+              </a>
+            ) : null}
+          </div>
           <input
             type="password"
             autoComplete="off"
@@ -1159,9 +1467,21 @@ function CatalogAddCard({ catalog, installed, apiKey, onApiKey, onClose, onAdd }
         {catalog.map((entry) => (
           <div className="checklist-row" key={entry.provider_id}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="row" style={{ gap: 6 }}>
+              <div className="row" style={{ gap: 6, alignItems: 'center' }}>
                 <span>{entry.label}</span>
                 <span className="muted" style={{ fontSize: 11 }}>{entry.provider_id}</span>
+                {(entry.portal_url || entry.provider_id === 'alphatech') ? (
+                  <a
+                    href={entry.portal_url || 'https://alphatech.net.cn'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="dsh-get-key-link"
+                    style={{ fontSize: 11, padding: '1px 6px' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    获取密钥 ↗
+                  </a>
+                ) : null}
                 {entry.has_env_key ? <span className="tag">已检测到启动环境里的密钥</span> : null}
               </div>
               <div className="muted" style={{ fontSize: 11 }}>

@@ -9,6 +9,8 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
+
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_BASE_URL,
     ALPHATECH_PROVIDER_ID,
@@ -22,7 +24,8 @@ from smartmoney_cub_harness.agent.providers import (
     save_credentials,
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
-from smartmoney_cub_harness.workbench.server import WorkbenchHandler, WorkbenchService
+from smartmoney_cub_harness.workbench.server import ApiError, WorkbenchHandler, WorkbenchService
+from smartmoney_cub_harness.store import Store
 from smartmoney_cub_harness.workspace import Workspace
 
 # ---- the rule library: where it lives, and the one write it accepts -------
@@ -450,6 +453,89 @@ def test_http_get_endpoints_and_unknown_routes(tmp_path) -> None:
         service.close()
 
 
+def test_http_resume_stream_uses_the_resume_generator(tmp_path) -> None:
+    service = _service(tmp_path)
+    session_id = service.create_session({"title": "HTTP 恢复"})["session"]["session_id"]
+    service.store.append_event(session_id, kind="user_message", role="user", payload={"text": "继续本地复盘"})
+    service.store.update_session(session_id, status="interrupted")
+    handler = type(
+        "TestHandler",
+        (WorkbenchHandler,),
+        {"service": service, "asset_dir": None, "access_token": None},
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    import urllib.request
+
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/api/assistant/sessions/{session_id}/resume",
+            data=json.dumps({}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = response.read().decode("utf-8")
+        assert response.status == 200
+        assert "本地离线复盘" in body
+        assert '"kind": "done"' in body
+        assert service.store.get_session(session_id)["status"] == "idle"
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.close()
+
+
+def test_workbench_service_integrates_trader_service(tmp_path: Path) -> None:
+    from smartmoney_cub_harness.trader.storage import open_store
+    from smartmoney_cub_harness.trader.auth import MODE_LOCAL
+    from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+    from smartmoney_cub_harness.trader.api import TraderService
+
+    trader_store = open_store(tmp_path / "journal", mode=MODE_LOCAL)
+    trader_svc = TraderService(trader_store, auth_mode=MODE_LOCAL)
+    trader_svc.import_trades(
+        LOCAL_CONTEXT,
+        rows=[
+            {
+                "trade_id": "T-BUY",
+                "symbol": "600519",
+                "side": "BUY",
+                "trade_date": "2026-09-01",
+                "price": 100.0,
+                "quantity": 10,
+            },
+            {
+                "trade_id": "T-SELL",
+                "symbol": "600519",
+                "side": "SELL",
+                "trade_date": "2026-09-02",
+                "price": 110.0,
+                "quantity": 10,
+            },
+        ],
+    )
+
+    service = WorkbenchService(tmp_path, trader_service=trader_svc)
+    try:
+        overview = service.overview({})
+        assert overview["summary"]["trade_count"] == 1
+        assert overview["fill_count"] == 2
+
+        trades_res = service.trades({})
+        assert trades_res["count"] == 1
+        assert len(trades_res["fills"]) == 2
+
+        report = service.analytics_report({})
+        assert report["summary"]["trade_count"] == 1
+
+        runtime_ctx = service.runtime.context_payload({})
+        assert runtime_ctx["summary"]["trade_count"] == 1
+    finally:
+        service.close()
+        trader_store.close()
+
+
 def test_http_requires_the_token_when_one_is_configured(tmp_path) -> None:
     service = _service(tmp_path)
     handler = type(
@@ -532,3 +618,285 @@ def test_every_json_error_response_carries_the_safety_declaration(tmp_path) -> N
         server.shutdown()
         server.server_close()
         service.close()
+
+
+def test_plugin_endpoints_lifecycle_and_catalog(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        catalog = service.plugin_catalog()
+        assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v1"
+        assert len(catalog["entries"]) > 0
+        assert catalog["safety"] == SAFETY_DECLARATION
+
+        detail = service.plugin_detail("toy.review-tagger")
+        assert detail["status"] == "ok"
+        assert detail["plugin_id"] == "toy.review-tagger"
+        assert detail["safety"] == SAFETY_DECLARATION
+
+        conf_res = service.plugin_configure("toy.review-tagger", {"foo": "bar"})
+        assert conf_res["status"] == "ok"
+        assert conf_res["config"] == {"foo": "bar"}
+
+        en_res = service.plugin_enable("toy.review-tagger")
+        assert en_res["status"] == "ok"
+        assert en_res["plugin"]["state"] == "ACTIVE"
+
+        dis_res = service.plugin_disable("toy.review-tagger")
+        assert dis_res["status"] == "ok"
+        assert dis_res["plugin"]["state"] == "DISABLED"
+
+        reload_res = service.plugin_reload()
+        assert reload_res["status"] == "ok"
+    finally:
+        service.close()
+
+
+def test_agent_presets_and_open_config_file(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        settings = service.settings()
+        assert "agent_presets" in settings
+        assert settings["agent_presets"]["default_effort"] in ["off", "low", "medium", "high", "max"]
+
+        updated = service.update_settings({
+            "agent_presets": {
+                "system_prompt": "Always be concise.",
+                "default_effort": "high",
+                "context_strategy": "summary_compact",
+            }
+        })
+        refreshed = service.settings()
+        assert refreshed["agent_presets"]["system_prompt"] == "Always be concise."
+        assert refreshed["agent_presets"]["default_effort"] == "high"
+
+        res = service.open_config_file()
+        assert res["status"] == "ok"
+        assert Path(res["path"]).is_file()
+        assert res["safety"] == SAFETY_DECLARATION
+    finally:
+        service.close()
+
+
+def test_review_scope_is_redacted_confirmable_and_challenger_only(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        session = service.create_session({
+            "title": "结构化复盘",
+            "context": {
+                "portfolio_id": "PORT-DEFAULT",
+                "decision_time": "2026-09-10T15:00:00+08:00",
+                "horizons": ["next_session"],
+                "case_ids": ["toy-case-1"],
+            },
+        })["session"]
+        session_id = session["session_id"]
+        preview = service.review_scope(session_id)
+        assert preview["phase"] == "scope_preview"
+        assert preview["envelope"]["scope"]["decision_time"] == "2026-09-10T15:00:00+08:00"
+        assert "PORT-DEFAULT" not in json.dumps(preview)
+
+        confirmed = service.confirm_review_scope(session_id, {"review_id": session_id})
+        assert confirmed["phase"] == "scope_confirmed"
+        assert confirmed["session"]["context"]["scope_confirmed"] is True
+
+        proposal = {
+            "candidate_role": "challenger",
+            "rule_id": "TOY-CHALLENGER-1",
+            "rationale": "只作为待验证候选。",
+            "champion_mutated": False,
+            "core_rules_mutated": False,
+        }
+        saved = service.record_challenger(session_id, {"proposal": proposal})
+        assert saved["champion_mutated"] is False
+        assert service.store.list_events(session_id)[-1]["kind"] == "challenger_proposal"
+    finally:
+        service.close()
+
+
+def test_structured_review_package_is_validated_and_persisted(tmp_path) -> None:
+    from smartmoney_cub_harness.review_contracts import StructuredReviewPackage
+
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session({"title": "结构化结果"})["session"]["session_id"]
+        envelope = service.runtime.build_review_envelope(session_id)
+        package = StructuredReviewPackage(
+            review_id=session_id,
+            scope=envelope.scope,
+            envelope=envelope,
+            observations=({
+                "action_label": "WATCH",
+                "invalidation_price": "unknown",
+                "time_stop": "next session close",
+                "give_up_conditions": ["toy evidence incomplete"],
+                "data_source": "toy_fixture",
+                "available_at": envelope.scope.decision_time,
+                "data_quality_flag": "ok",
+            },),
+            challenger_proposals=({
+                "candidate_role": "challenger",
+                "rule_id": "TOY-1",
+                "rationale": "待验证",
+                "champion_mutated": False,
+                "core_rules_mutated": False,
+            },),
+        )
+        saved = service.record_review_package(session_id, package.to_dict())
+        assert saved["phase"] == "completed"
+        event = service.store.list_events(session_id)[-1]
+        assert event["kind"] == "review_package"
+        assert event["payload"]["safety"] == SAFETY_DECLARATION
+
+        future = package.to_dict()
+        future["observations"][0]["available_at"] = "2999-01-01T00:00:00+00:00"
+        with pytest.raises(ApiError, match="review_package_validation_failed") as error:
+            service.record_review_package(session_id, future)
+        assert error.value.code == "review_package_error"
+    finally:
+        service.close()
+
+
+def test_runtime_uses_explicit_route_chain_for_review_turns(tmp_path, monkeypatch) -> None:
+    import smartmoney_cub_harness.agent.route_chain as route_chain_module
+    from smartmoney_cub_harness.agent.provider_errors import (
+        ClassifiedProviderError,
+        FailurePhase,
+        ProviderErrorCode,
+    )
+
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session(
+            {
+                "title": "路线链",
+                "provider_id": "primary",
+                "model": "primary-model",
+                "context": {
+                    "portfolio_id": "PORT-DEFAULT",
+                    "route_chain": [
+                        {"provider_id": "primary", "model": "primary-model"},
+                        {"provider_id": "offline", "model": "local-template", "protocol": "offline"},
+                    ],
+                },
+            }
+        )["session"]["session_id"]
+        monkeypatch.setattr(
+            service.runtime,
+            "resolve_session_provider",
+            lambda _session: {
+                "provider_id": "primary",
+                "model": "primary-model",
+                "label": "Primary",
+                "protocol": "openai-chat",
+                "base_url": "https://example.invalid/v1",
+                "api_key": "toy-key",
+                "has_key": True,
+            },
+        )
+        calls: list[str] = []
+
+        def fake_provider_stream(provider, *, model, messages, tools=None, effort="off"):
+            calls.append(provider["provider_id"])
+            if provider["provider_id"] == "primary":
+                raise ClassifiedProviderError(
+                    code=ProviderErrorCode.INSUFFICIENT_QUOTA,
+                    message="toy quota exhausted",
+                    phase=FailurePhase.PRE_STREAM,
+                    fallbackable=True,
+                )
+            return iter(
+                [
+                    {"kind": "delta", "text": "route-chain response"},
+                    {"kind": "done", "finish_reason": "stop"},
+                ]
+            )
+
+        monkeypatch.setattr(route_chain_module, "stream_chat", fake_provider_stream)
+        events = list(service.runtime.run_turn(session_id, "请复盘"))
+
+        assert calls == ["primary"]
+        assert any(event.get("text", "").startswith("【本地离线复盘】") for event in events)
+    finally:
+        service.close()
+
+
+def test_runtime_does_not_mutate_explicit_route_chain_context(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        route_chain = [{"provider_id": "offline", "model": "local-template"}]
+        session_id = service.create_session(
+            {
+                "title": "路线链复制",
+                "provider_id": "primary",
+                "model": "primary-model",
+                "context": {"route_chain": route_chain},
+            }
+        )["session"]["session_id"]
+        primary = {
+            "provider_id": "primary",
+            "model": "primary-model",
+            "label": "Primary",
+            "protocol": "offline",
+            "has_key": True,
+        }
+
+        service.runtime._route_candidates(service.store.get_session(session_id), primary)
+
+        assert route_chain == [{"provider_id": "offline", "model": "local-template"}]
+        assert service.store.get_session(session_id)["context"]["route_chain"] == route_chain
+    finally:
+        service.close()
+
+
+def test_review_envelope_uses_a_valid_portfolio_alias_when_context_is_sparse(tmp_path) -> None:
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session({"title": "稀疏范围"})["session"]["session_id"]
+        service.runtime.context_payload = lambda _context: {"summary": {"trade_count": 0}}
+
+        envelope = service.runtime.build_review_envelope(session_id)
+
+        assert envelope.payload["portfolio_id"].startswith("portfolio-")
+        assert len(envelope.payload["portfolio_id"]) == len("portfolio-") + 8
+        assert service.runtime.build_review_envelope(session_id).payload["portfolio_id"] == envelope.payload["portfolio_id"]
+    finally:
+        service.close()
+
+
+def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
+    service = _service(tmp_path)
+    session = service.create_session({"title": "可恢复复盘"})["session"]
+    session_id = session["session_id"]
+    service.store.update_session(session_id, status="running")
+    try:
+        cancelled = service.cancel_turn(session_id)
+        assert cancelled["status"] == "cancel_requested"
+        assert service.store.get_session(session_id)["status"] == "cancel_requested"
+        resumed = list(service.resume_turn(session_id, {"text": "继续本地复盘"}))
+        assert resumed[-1]["kind"] == "done"
+        assert service.store.get_session(session_id)["status"] == "idle"
+        kinds = [event["kind"] for event in service.store.list_events(session_id)]
+        assert "turn_cancel_requested" in kinds
+        assert "turn_resumed" in kinds
+
+        service.store.append_event(session_id, kind="user_message", role="user", payload={"text": "恢复时复用这条"})
+        service.store.update_session(session_id, status="interrupted")
+        before = [event for event in service.store.list_events(session_id) if event["kind"] == "user_message"]
+        list(service.resume_turn(session_id, {}))
+        after = [event for event in service.store.list_events(session_id) if event["kind"] == "user_message"]
+        assert len(after) == len(before)
+    finally:
+        service.close()
+
+    raw = Store(tmp_path / "recovery")
+    orphan = raw.create_session(title="中断会话")
+    raw.update_session(orphan["session_id"], status="running")
+    raw.close()
+    recovered_service = _service(tmp_path / "recovery")
+    try:
+        assert recovered_service.recovered_sessions[0]["status"] == "interrupted"
+        detail = recovered_service.session_detail(orphan["session_id"], {})
+        assert detail["session"]["status"] == "interrupted"
+        assert detail["events"][-1]["kind"] == "runtime_recovered"
+    finally:
+        recovered_service.close()

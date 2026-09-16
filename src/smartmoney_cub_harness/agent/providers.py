@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import os
+import socket
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -10,6 +11,13 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
+from smartmoney_cub_harness.agent.provider_errors import (
+    ClassifiedProviderError,
+    FailurePhase,
+    ProviderError,
+    ProviderErrorCode,
+    classify_provider_error,
+)
 
 # Model providers for the review assistant.
 #
@@ -40,10 +48,6 @@ def iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 PROVIDER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
-
-
-class ProviderError(RuntimeError):
-    """Raised when a provider request cannot be completed."""
 
 
 # Every protocol a provider can speak. A provider speaks exactly one, so a
@@ -129,14 +133,15 @@ def _model(
 PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
     ALPHATECH_PROVIDER_ID: {
         "provider_id": ALPHATECH_PROVIDER_ID,
-        "label": "公司中转站 (AlphaTech)",
+        "label": "AlphaTech API",
+        "portal_url": "https://alphatech.net.cn",
         "base_url": ALPHATECH_BASE_URL,
         "protocol": "openai-chat",
         "env_key": "ALPHATECH_API_KEY",
         "requires_key": True,
         "installable": True,
         "removable": False,
-        "description": "预置的公司中转站，OpenAI 兼容协议。只接收脱敏后的结构化复盘字段。",
+        "description": "AlphaTech 商业 API 接口，OpenAI 兼容协议。只接收脱敏后的结构化复盘字段。",
         # These three ids were confirmed against the live /v1/models listing.
         # The previous list named deepseek-v3, deepseek-r1, and deepseek-v4-pro,
         # none of which the endpoint serves: the selector offered three models
@@ -281,6 +286,7 @@ def _installed_default(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "provider_id": entry["provider_id"],
         "label": entry["label"],
+        "portal_url": entry.get("portal_url", ""),
         "base_url": entry["base_url"],
         "protocol": entry["protocol"],
         "env_key": entry["env_key"],
@@ -410,6 +416,7 @@ def resolve_provider(
     resolved = {
         "provider_id": provider_id,
         "label": entry.get("label", provider_id),
+        "portal_url": entry.get("portal_url", "") or PROVIDER_CATALOG.get(provider_id, {}).get("portal_url", ""),
         "base_url": effective_base_url.rstrip("/"),
         "protocol": entry.get("protocol", "openai-chat"),
         "env_key": entry.get("env_key", ""),
@@ -463,6 +470,7 @@ def public_provider_view(
     return {
         "provider_id": resolved["provider_id"],
         "label": resolved["label"],
+        "portal_url": entry.get("portal_url", "") or PROVIDER_CATALOG.get(provider_id, {}).get("portal_url", ""),
         "base_url": resolved["base_url"],
         "protocol": resolved["protocol"],
         "protocol_label": PROVIDER_PROTOCOLS.get(resolved["protocol"], resolved["protocol"]),
@@ -502,6 +510,7 @@ def catalog_view(settings: dict[str, Any] | None = None, *, credentials: dict[st
             {
                 "provider_id": provider_id,
                 "label": entry["label"],
+                "portal_url": entry.get("portal_url", ""),
                 "base_url": entry["base_url"],
                 "protocol": entry["protocol"],
                 "protocol_label": PROVIDER_PROTOCOLS.get(entry["protocol"], entry["protocol"]),
@@ -837,9 +846,20 @@ def _open(
             detail = error.read().decode("utf-8", errors="replace")[:400]
         except Exception:  # pragma: no cover - the body may already be consumed
             detail = ""
-        raise ProviderError("provider returned HTTP " + str(error.code) + ": " + detail) from error
+        classified = classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM, detail=detail
+        )
     except urllib.error.URLError as error:
-        raise ProviderError("provider is unreachable: " + str(error.reason)) from error
+        classified = classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
+        )
+    except (socket.timeout, TimeoutError) as error:
+        classified = classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
+        )
+    # Raise after leaving the handler so neither __cause__ nor __context__ keeps
+    # the upstream exception, which may contain an echoed credential.
+    raise classified
 
 
 def list_models(provider: dict[str, Any]) -> dict[str, Any]:
@@ -1071,47 +1091,87 @@ def stream_chat(
     when the field was present: inventing an empty reasoning field would make
     the request shape wrong for the models that never emit one.
     """
-    response = _open(
-        provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
-    )
+    if provider.get("protocol") == "offline" or provider.get("provider_id") == OFFLINE_PROVIDER_ID:
+        yield {"kind": "delta", "text": "【本地离线复盘】使用本地确定性启发式规则评估交易执行偏差与风控表现。"}
+        yield {"kind": "done", "finish_reason": "stop"}
+        return
+
+    opening_failure: ClassifiedProviderError | None = None
+    try:
+        response = _open(
+            provider, model=model, messages=messages, tools=tools, stream=True, effort=effort
+        )
+    except ClassifiedProviderError:
+        raise
+    except Exception as error:
+        opening_failure = classify_provider_error(
+            error, provider=provider, model=model, phase=FailurePhase.PRE_STREAM
+        )
+    if opening_failure is not None:
+        raise opening_failure
     pending: dict[int, dict[str, Any]] = {}
-    with response:
-        for raw_line in response:
-            parsed = parse_stream_line(raw_line.decode("utf-8", errors="replace"))
-            if parsed is None:
-                continue
-            if parsed["kind"] == "end":
-                break
-            chunk = parsed["chunk"]
-            for choice in chunk.get("choices") or []:
-                delta = choice.get("delta") or {}
-                # Reasoning travels under the alias names seen in the wild; the
-                # alias determines the key the transcript uses on the way back,
-                # so it is carried with the event rather than flattened.
-                for alias in REASONING_ALIASES:
-                    if isinstance(delta.get(alias), str) and delta[alias]:
-                        yield {"kind": "reasoning", "field": alias, "text": delta[alias]}
-                        break
-                content = delta.get("content")
-                if content:
-                    yield {"kind": "delta", "text": content}
-                for call in delta.get("tool_calls") or []:
-                    index = int(call.get("index") or 0)
-                    slot = pending.setdefault(index, {"call_id": "", "name": "", "arguments": ""})
-                    if call.get("id"):
-                        slot["call_id"] = call["id"]
-                    function = call.get("function") or {}
-                    if function.get("name"):
-                        slot["name"] = function["name"]
-                    if function.get("arguments"):
-                        slot["arguments"] += function["arguments"]
-                finish = choice.get("finish_reason")
-                if finish in {"tool_calls", "stop", "length"}:
-                    for index in sorted(pending):
-                        yield {"kind": "tool_call", "call": dict(pending[index])}
-                    pending.clear()
-                    yield {"kind": "done", "finish_reason": finish}
-                    return
+    emitted_any = False
+    completed = False
+    stream_failure: ClassifiedProviderError | None = None
+    try:
+        with response:
+            for raw_line in response:
+                parsed = parse_stream_line(raw_line.decode("utf-8", errors="replace"))
+                if parsed is None:
+                    continue
+                if parsed["kind"] == "end":
+                    completed = True
+                    break
+                chunk = parsed["chunk"]
+                for choice in chunk.get("choices") or []:
+                    delta = choice.get("delta") or {}
+                    # Reasoning travels under the alias names seen in the wild; the
+                    # alias determines the key the transcript uses on the way back,
+                    # so it is carried with the event rather than flattened.
+                    for alias in REASONING_ALIASES:
+                        if isinstance(delta.get(alias), str) and delta[alias]:
+                            emitted_any = True
+                            yield {"kind": "reasoning", "field": alias, "text": delta[alias]}
+                            break
+                    content = delta.get("content")
+                    if content:
+                        emitted_any = True
+                        yield {"kind": "delta", "text": content}
+                    for call in delta.get("tool_calls") or []:
+                        index = int(call.get("index") or 0)
+                        slot = pending.setdefault(index, {"call_id": "", "name": "", "arguments": ""})
+                        if call.get("id"):
+                            slot["call_id"] = call["id"]
+                        function = call.get("function") or {}
+                        if function.get("name"):
+                            slot["name"] = function["name"]
+                        if function.get("arguments"):
+                            slot["arguments"] += function["arguments"]
+                    finish = choice.get("finish_reason") or delta.get("finish_reason")
+                    if finish in {"tool_calls", "stop", "length"}:
+                        for index in sorted(pending):
+                            emitted_any = True
+                            yield {"kind": "tool_call", "call": dict(pending[index])}
+                        pending.clear()
+                        yield {"kind": "done", "finish_reason": finish}
+                        return
+        if not completed:
+            phase = FailurePhase.MID_STREAM if emitted_any else FailurePhase.PRE_STREAM
+            raise classify_provider_error(
+                RuntimeError("stream ended prematurely without [DONE] or finish_reason"),
+                provider=provider,
+                model=model,
+                phase=phase,
+            )
+    except ClassifiedProviderError:
+        raise
+    except Exception as error:
+        phase = FailurePhase.MID_STREAM if emitted_any else FailurePhase.PRE_STREAM
+        stream_failure = classify_provider_error(
+            error, provider=provider, model=model, phase=phase
+        )
+    if stream_failure is not None:
+        raise stream_failure
     for index in sorted(pending):
         yield {"kind": "tool_call", "call": dict(pending[index])}
     yield {"kind": "done", "finish_reason": "stop"}

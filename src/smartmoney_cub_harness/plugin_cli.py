@@ -217,8 +217,12 @@ def profile_show(profile_name: str) -> dict[str, Any]:
 def plugin_catalog() -> dict[str, Any]:
     """Show curated external projects and the boundary each one must respect."""
     from smartmoney_cub_harness.plugins.catalog import catalog_payload
+    from smartmoney_cub_harness.plugins.curated_catalog import curated_catalog_payload
 
-    return catalog_payload()
+    payload = catalog_payload()
+    payload["curated_finance"] = curated_catalog_payload()
+    payload["safety"] = SAFETY_DECLARATION
+    return payload
 
 
 def profile_dump(*, output_path: str | None = None) -> dict[str, Any]:
@@ -375,5 +379,51 @@ def plugin_run(
         "envelope": envelope,
         "recorded_evidence": recorded,
         "evidence_path": None,
+        "safety": SAFETY_DECLARATION,
+    }
+
+
+def plugin_detail(
+    plugin_id: str,
+    *,
+    profile_name: str = "default-offline",
+    plugin_dirs: list[str] | None = None,
+    state_db: str | None = None,
+) -> dict[str, Any]:
+    runtime = _runtime(profile_name, state_db)
+    runtime.discover(plugin_dirs or [])
+    instance = runtime.registry.get(plugin_id)
+    store = PluginStateStore(state_db or DEFAULT_STATE_DB)
+    record = store.get(plugin_id)
+    config = store.get_config(plugin_id)
+    events = store.events(plugin_id, limit=20)
+
+    if instance is None and record is None:
+        return {"status": "not_found", "plugin_id": plugin_id, "safety": SAFETY_DECLARATION}
+
+    status_dict = instance.status() if instance is not None else record
+    return {
+        "status": "ok",
+        "plugin_id": plugin_id,
+        "plugin": status_dict,
+        "manifest": (instance.manifest if instance else (record.get("manifest") if record else None)) or {},
+        "config": config,
+        "events": events,
+        "safety": SAFETY_DECLARATION,
+    }
+
+
+def plugin_configure(
+    plugin_id: str,
+    config: dict[str, Any],
+    *,
+    state_db: str | None = None,
+) -> dict[str, Any]:
+    store = PluginStateStore(state_db or DEFAULT_STATE_DB)
+    store.set_config(plugin_id, config)
+    return {
+        "status": "ok",
+        "plugin_id": plugin_id,
+        "config": config,
         "safety": SAFETY_DECLARATION,
     }

@@ -14,8 +14,12 @@ from typing import Any, Callable
 
 from smartmoney_cub_harness import __version__, analytics
 from smartmoney_cub_harness import extractors
+import subprocess
+import sys
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
+    default_settings,
+    settings_path,
     OFFLINE_PROVIDER_ID,
     PROVIDER_PROTOCOLS,
     ProviderError,
@@ -34,7 +38,7 @@ from smartmoney_cub_harness.agent.providers import (
     save_settings,
     update_provider,
 )
-from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime
+from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime, ReviewLifecycleError
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
@@ -76,30 +80,42 @@ class ApiError(Exception):
 class WorkbenchService:
     """Holds the store and assembles API responses."""
 
-    def __init__(self, root: str | Path, *, workspace_db: str | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        workspace_db: str | None = None,
+        trader_service: Any = None,
+        dsh_bridge: Any = None,
+    ) -> None:
         self.root = Path(root)
         self.store = Store(self.root)
-        # The rule library sits under this service's own state root, not under a
-        # relative path resolved against the process working directory. The
-        # literal that used to be here meant a workbench started with
-        # --state-dir elsewhere still wrote rules into ./state/workspace/review.db:
-        # a rule proposed in a session landed outside the review data the session
-        # was reading, and the rule library page showed a different store than the
-        # assistant had written to. A caller that wants one specific file (both the
-        # workbench and trader serve expose --workspace-db) still overrides it.
+        self.recovered_sessions = self.store.recover_interrupted_sessions()
         self.workspace_db = workspace_db or str(self.root / "workspace" / "review.db")
-        # The assistant writes the challenger rules it proposes into the same rule
-        # library this service reads. Passing the resolved path down is what makes
-        # that true: without it the runtime falls back to a store-root default and
-        # a rule proposed in a session would never appear in the rule library the
-        # user is looking at.
+        self.trader_service = trader_service
+        self._owned_trader_service = False
+        if self.trader_service is None:
+            from smartmoney_cub_harness.agent.tools import _detect_trader_service
+
+            detected = _detect_trader_service(self.root)
+            if detected is not None:
+                self.trader_service = detected
+                self._owned_trader_service = True
         self.runtime = ReviewAgentRuntime(
-            self.store, credentials_root=str(self.root), workspace_db=self.workspace_db
+            self.store,
+            credentials_root=str(self.root),
+            workspace_db=self.workspace_db,
+            trader_service=self.trader_service,
+            dsh_bridge=dsh_bridge,
         )
         self._lock = threading.Lock()
 
     def close(self) -> None:
         self.store.close()
+        if getattr(self, "_owned_trader_service", False) and self.trader_service is not None:
+            close = getattr(getattr(self.trader_service, "store", None), "close", None)
+            if callable(close):
+                close()
 
     # ---- overview ------------------------------------------------------
 
@@ -121,14 +137,29 @@ class WorkbenchService:
             "trend_color_scheme": self.store.get_setting("trend_color_scheme", "cn"),
         }
 
+    def _analysis(
+        self,
+        portfolio_id: str | None = None,
+        *,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> dict[str, Any]:
+        return self.runtime.toolbox._analysis(portfolio_id=portfolio_id, year=year, month=month)
+
     def overview(self, query: dict[str, list[str]]) -> dict[str, Any]:
         portfolio_id = _one(query, "portfolio_id") or DEFAULT_PORTFOLIO_ID
         today = datetime.now(timezone.utc).astimezone()
         year = int(_one(query, "year") or today.year)
         month = int(_one(query, "month") or today.month)
-        analysis = analytics.analyze(
-            self.store.list_fills(portfolio_id=portfolio_id), year=year, month=month
-        )
+        analysis = self._analysis(portfolio_id=portfolio_id, year=year, month=month)
+        fills = self.store.list_fills(portfolio_id=portfolio_id)
+        if not fills and self.trader_service is not None:
+            try:
+                from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+
+                fills = self.trader_service._fills(LOCAL_CONTEXT, limit=100000)
+            except Exception:
+                pass
         return {
             "status": "ok",
             "portfolio_id": portfolio_id,
@@ -144,14 +175,14 @@ class WorkbenchService:
             "ledger_status": analysis["ledger_status"],
             "round_trips": analysis["round_trips"],
             "recent_trades": analysis["round_trips"][-10:][::-1],
-            "fill_count": len(self.store.list_fills(portfolio_id=portfolio_id)),
+            "fill_count": len(fills),
             "recent_documents": self.store.list_documents(portfolio_id=portfolio_id)[:5],
             "safety": SAFETY_DECLARATION,
         }
 
     def trades(self, query: dict[str, list[str]]) -> dict[str, Any]:
         portfolio_id = _one(query, "portfolio_id") or DEFAULT_PORTFOLIO_ID
-        analysis = analytics.analyze(self.store.list_fills(portfolio_id=portfolio_id))
+        analysis = self._analysis(portfolio_id=portfolio_id)
         trips = analysis["round_trips"]
         symbol = _one(query, "symbol")
         regime = _one(query, "regime")
@@ -159,18 +190,26 @@ class WorkbenchService:
             trips = [trip for trip in trips if symbol in trip["symbol"] or symbol in (trip.get("name") or "")]
         if regime:
             trips = [trip for trip in trips if (trip.get("regime") or "") == regime]
+        fills = self.store.list_fills(portfolio_id=portfolio_id)
+        if not fills and self.trader_service is not None:
+            try:
+                from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+
+                fills = self.trader_service._fills(LOCAL_CONTEXT, limit=100000)
+            except Exception:
+                pass
         return {
             "status": "ok",
             "count": len(trips),
             "trades": trips,
-            "fills": self.store.list_fills(portfolio_id=portfolio_id),
+            "fills": fills,
             "open_positions": analysis["open_positions"],
             "issues": analysis["issues"],
             "safety": SAFETY_DECLARATION,
         }
 
     def trade_detail(self, round_trip_id: str) -> dict[str, Any]:
-        analysis = analytics.analyze(self.store.list_fills())
+        analysis = self._analysis()
         trip = next(
             (item for item in analysis["round_trips"] if item["round_trip_id"] == round_trip_id),
             None,
@@ -190,19 +229,18 @@ class WorkbenchService:
         year = int(_one(query, "year") or today.year)
         month = int(_one(query, "month") or today.month)
         portfolio_id = _one(query, "portfolio_id") or DEFAULT_PORTFOLIO_ID
-        ledger = analytics.build_ledger(self.store.list_fills(portfolio_id=portfolio_id))
-        days = analytics.calendar_days(ledger, year=year, month=month)
+        analysis = self._analysis(portfolio_id=portfolio_id, year=year, month=month)
         return {
             "status": "ok",
             "year": year,
             "month": month,
-            "days": days,
+            "days": analysis["calendar"],
             "safety": SAFETY_DECLARATION,
         }
 
     def analytics_report(self, query: dict[str, list[str]]) -> dict[str, Any]:
         portfolio_id = _one(query, "portfolio_id") or DEFAULT_PORTFOLIO_ID
-        analysis = analytics.analyze(self.store.list_fills(portfolio_id=portfolio_id))
+        analysis = self._analysis(portfolio_id=portfolio_id)
         return {
             "status": "ok",
             "summary": analysis["summary"],
@@ -270,16 +308,106 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def _plugin_state_db(self) -> str | None:
+        candidates = [
+            self.root / "plugins" / "plugin_state.db",
+            self.root.parent / "plugins" / "plugin_state.db",
+            Path("state/plugins/plugin_state.db"),
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+        return None
+
     def plugins(self) -> dict[str, Any]:
         from smartmoney_cub_harness.plugin_cli import plugin_list  # noqa: PLC0415
 
         try:
-            return plugin_list()
+            return plugin_list(state_db=self._plugin_state_db())
         except Exception as error:  # pragma: no cover - plugin tree is optional
             return {
                 "status": "unavailable",
                 "error": str(error),
                 "plugins": [],
+                "safety": SAFETY_DECLARATION,
+            }
+
+    def plugin_enable(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_enable  # noqa: PLC0415
+
+        try:
+            return plugin_enable(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to enable plugin: {error}") from error
+
+    def plugin_disable(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_disable  # noqa: PLC0415
+
+        try:
+            return plugin_disable(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to disable plugin: {error}") from error
+
+    def plugin_catalog(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_catalog  # noqa: PLC0415
+
+        try:
+            return plugin_catalog()
+        except Exception as error:
+            raise ApiError(f"failed to read plugin catalog: {error}") from error
+
+    def plugin_detail(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_detail  # noqa: PLC0415
+
+        try:
+            return plugin_detail(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to read plugin detail: {error}") from error
+
+    def plugin_configure(self, plugin_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_configure  # noqa: PLC0415
+
+        try:
+            return plugin_configure(plugin_id, config, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to configure plugin: {error}") from error
+
+    def plugin_reload(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import profile_reload  # noqa: PLC0415
+
+        try:
+            return profile_reload(state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to reload plugins: {error}") from error
+
+    def open_config_file(self) -> dict[str, Any]:
+        # DSH style openDocument: opens the configuration file in native desktop editor
+        providers_file = settings_path(self.root)
+        if not providers_file.is_file():
+            providers_file.parent.mkdir(parents=True, exist_ok=True)
+            providers_file.write_text(
+                json.dumps(default_settings(), ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+        resolved = providers_file.resolve()
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", "-t", str(resolved)])
+            elif sys.platform == "win32":
+                os.startfile(str(resolved))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(resolved)])
+            return {
+                "status": "ok",
+                "path": str(resolved),
+                "safety": SAFETY_DECLARATION,
+            }
+        except Exception as error:
+            return {
+                "status": "error",
+                "error": f"无法打开配置文件: {error}",
+                "path": str(resolved),
                 "safety": SAFETY_DECLARATION,
             }
 
@@ -373,7 +501,14 @@ class WorkbenchService:
             extraction_id=extraction_id or None,
             edited_by=str(payload.get("edited_by") or "import"),
         )
-        analysis = analytics.analyze(self.store.list_fills(portfolio_id=portfolio_id))
+        if self.trader_service is not None:
+            try:
+                from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+
+                self.trader_service.import_trades(LOCAL_CONTEXT, rows=normalized)
+            except Exception:
+                pass
+        analysis = self._analysis(portfolio_id=portfolio_id)
         return {
             **result,
             "ledger_status": analysis["ledger_status"],
@@ -389,6 +524,13 @@ class WorkbenchService:
         outcome = self.store.add_fills(
             [result["fill"]], portfolio_id=portfolio_id, edited_by="manual"
         )
+        if self.trader_service is not None:
+            try:
+                from smartmoney_cub_harness.trader.auth.identity import LOCAL_CONTEXT
+
+                self.trader_service.import_trades(LOCAL_CONTEXT, rows=[result["fill"]])
+            except Exception:
+                pass
         return {**outcome, "safety": SAFETY_DECLARATION}
 
     def documents(self, query: dict[str, list[str]]) -> dict[str, Any]:
@@ -462,6 +604,41 @@ class WorkbenchService:
             raise ApiError("message text is required")
         return self.runtime.run_turn(session_id, text)
 
+    def review_scope(self, session_id: str) -> dict[str, Any]:
+        try:
+            return self.runtime.review_scope_preview(session_id)
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="review_scope_error") from None
+
+    def confirm_review_scope(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.runtime.confirm_review_scope(session_id, payload)
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="review_scope_error") from None
+
+    def cancel_turn(self, session_id: str) -> dict[str, Any]:
+        return self.runtime.cancel_turn(session_id)
+
+    def resume_turn(self, session_id: str, payload: dict[str, Any]) -> Any:
+        try:
+            return self.runtime.resume_turn(session_id, str(payload.get("text") or ""))
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="resume_error") from None
+
+    def record_challenger(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.runtime.record_challenger_proposal(session_id, payload.get("proposal") or payload)
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="challenger_error") from None
+
+    def record_review_package(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.runtime.record_review_package(
+                session_id, payload.get("review_package") or payload
+            )
+        except ReviewLifecycleError as error:
+            raise ApiError(str(error), status=400, code="review_package_error") from None
+
     # ---- settings ------------------------------------------------------
 
     def provider_views(
@@ -532,6 +709,11 @@ class WorkbenchService:
                 {"id": key, "label": value} for key, value in PROVIDER_PROTOCOLS.items()
             ],
             "defaults": self.default_selection(),
+            "agent_presets": {
+                "system_prompt": str(self.store.get_setting("agent_system_prompt", "") or ""),
+                "default_effort": str(self.store.get_setting("agent_default_effort", "medium") or "medium"),
+                "context_strategy": str(self.store.get_setting("agent_context_strategy", "summary_compact") or "summary_compact"),
+            },
             "credentials_file": credentials_path(self.root).name,
             "redaction_policy": REDACTION_POLICY_VERSION,
             "engine": extractors.ocr_backend_status(),
@@ -590,6 +772,14 @@ class WorkbenchService:
             self.store.set_setting("default_reasoning", str(payload["default_reasoning"] or "off"))
         if payload.get("trend_color_scheme") in {"cn", "intl"}:
             self.store.set_setting("trend_color_scheme", payload["trend_color_scheme"])
+        if "agent_presets" in payload and isinstance(payload["agent_presets"], dict):
+            presets = payload["agent_presets"]
+            if "system_prompt" in presets:
+                self.store.set_setting("agent_system_prompt", str(presets["system_prompt"] or ""))
+            if "default_effort" in presets:
+                self.store.set_setting("agent_default_effort", str(presets["default_effort"] or "medium"))
+            if "context_strategy" in presets:
+                self.store.set_setting("agent_context_strategy", str(presets["context_strategy"] or "summary_compact"))
 
         credentials = load_credentials(self.root)
         settings = load_settings(self.root)
@@ -1034,6 +1224,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/plugins":
                 self._json(self.service.plugins())
                 return
+            if path == "/api/plugins/catalog":
+                self._json(self.service.plugin_catalog())
+                return
+            if path == "/api/plugins/detail":
+                plugin_id = _one(query, "plugin_id") or ""
+                if not plugin_id:
+                    raise ApiError("plugin_id query parameter is required")
+                self._json(self.service.plugin_detail(plugin_id))
+                return
             if path == "/api/documents":
                 self._json(self.service.documents(query))
                 return
@@ -1041,7 +1240,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 self._json(self.service.sessions())
                 return
             if path.startswith("/api/assistant/sessions/"):
-                session_id = urllib.parse.unquote(path[len("/api/assistant/sessions/"):])
+                rest = path[len("/api/assistant/sessions/"):]
+                if rest.endswith("/review/scope"):
+                    session_id = urllib.parse.unquote(rest[:-len("/review/scope")].rstrip("/"))
+                    self._json(self.service.review_scope(session_id))
+                    return
+                session_id = urllib.parse.unquote(rest)
                 self._json(self.service.session_detail(session_id, query))
                 return
             if path == "/api/settings":
@@ -1133,6 +1337,27 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 if action == "fork":
                     self._json(self.service.fork_session(session_id, self._read_json()))
                     return
+                if action == "cancel":
+                    self._json(self.service.cancel_turn(session_id))
+                    return
+                if action == "resume":
+                    self._stream_events(
+                        session_id,
+                        self.service.resume_turn(session_id, self._read_json()),
+                    )
+                    return
+                if action == "review/scope":
+                    self._json(self.service.review_scope(session_id))
+                    return
+                if action == "review/confirm":
+                    self._json(self.service.confirm_review_scope(session_id, self._read_json()))
+                    return
+                if action == "review/challenger":
+                    self._json(self.service.record_challenger(session_id, self._read_json()))
+                    return
+                if action == "review/package":
+                    self._json(self.service.record_review_package(session_id, self._read_json()))
+                    return
                 if action == "preview":
                     self._json(self.service.session_preview(session_id))
                     return
@@ -1141,6 +1366,38 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
+                return
+            if path == "/api/settings/open-file":
+                if not is_loopback(self.client_address[0]):
+                    raise ApiError("open-file is only allowed from local loopback", status=403, code="forbidden")
+                self._json(self.service.open_config_file())
+                return
+            if path == "/api/plugins/enable":
+                payload = self._read_json()
+                plugin_id = str(payload.get("plugin_id") or "")
+                if not plugin_id:
+                    raise ApiError("plugin_id is required")
+                self._json(self.service.plugin_enable(plugin_id))
+                return
+            if path == "/api/plugins/disable":
+                payload = self._read_json()
+                plugin_id = str(payload.get("plugin_id") or "")
+                if not plugin_id:
+                    raise ApiError("plugin_id is required")
+                self._json(self.service.plugin_disable(plugin_id))
+                return
+            if path == "/api/plugins/configure":
+                payload = self._read_json()
+                plugin_id = str(payload.get("plugin_id") or "")
+                if not plugin_id:
+                    raise ApiError("plugin_id is required")
+                config = payload.get("config") or {}
+                if not isinstance(config, dict):
+                    raise ApiError("config must be a dictionary")
+                self._json(self.service.plugin_configure(plugin_id, config))
+                return
+            if path == "/api/plugins/reload":
+                self._json(self.service.plugin_reload())
                 return
             if path == "/api/settings/providers":
                 self._json(self.service.add_provider(self._read_json()))
@@ -1212,6 +1469,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
 
     def _stream_turn(self, session_id: str, payload: dict[str, Any]) -> None:
         events = self.service.stream_turn(session_id, payload)
+        self._stream_events(session_id, events)
+
+    def _stream_events(self, session_id: str, events: Any) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -1253,9 +1513,9 @@ def start_workbench(
     workspace_db: str | None = None,
     trader_service: Any = None,
     trader_store: Any = None,
+    dsh_bridge: Any = None,
     ready: Callable[[str], None] | None = None,
 ) -> None:
-    service = WorkbenchService(root, workspace_db=workspace_db)
     if trader_service is not None and trader_store is not None:
         raise ValueError("pass either trader_service or trader_store, not both")
     owned_trader_store = None
@@ -1264,6 +1524,12 @@ def start_workbench(
 
         trader_service = TraderService(trader_store)
         owned_trader_store = trader_store
+
+    service = WorkbenchService(
+        root, workspace_db=workspace_db, trader_service=trader_service, dsh_bridge=dsh_bridge
+    )
+    if trader_service is None and service.trader_service is not None:
+        trader_service = service.trader_service
     handler = type(
         "BoundWorkbenchHandler",
         (WorkbenchHandler,),

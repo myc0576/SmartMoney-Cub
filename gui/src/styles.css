@@ -201,9 +201,22 @@ textarea { resize: vertical; min-height: 62px; }
   .assistant { width: 340px; }
 }
 @media (max-width: 980px) {
-  .content.with-assistant .assistant { display: none; }
-  .assistant.drawer { display: flex; position: fixed; inset: 0 0 0 auto; width: min(420px, 92vw); z-index: 30; }
+  .content.with-assistant .assistant.drawer:not(.open) { display: none; }
+  .assistant.drawer.open {
+    display: flex; position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh;
+    z-index: 30; border-left: 0; box-shadow: 0 16px 48px var(--color-shadow);
+  }
 }
+
+.scope-flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 9px; }
+.scope-flow span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 6px; font-size: 10px; }
+.scope-flow-lead { background: var(--panel-2); border-color: var(--accent) !important; font-weight: 600; }
+.scope-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 9px; }
+.scope-grid > div { display: flex; flex-direction: column; gap: 2px; padding: 6px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); min-width: 0; }
+.scope-grid span { color: var(--muted); font-size: 10px; }
+.scope-grid strong { font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.scope-hint { margin-top: 8px; font-size: 11px; }
+.resume-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); font-size: 12px; }
 
 
 
@@ -397,3 +410,343 @@ th.num .th-sort { text-align: right; }
 .meter.loss > span { background: var(--neg); }
 
 .stage-row { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--inset); }
+
+/* ---- DSH-style Settings & Plugins System --------------------------- */
+
+/* Sub-tabs bar */
+.dsh-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.dsh-subtab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.dsh-subtab:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.dsh-subtab.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+.dsh-tab-badge {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 400;
+}
+.dsh-subtab.active .dsh-tab-badge {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Inventory Header */
+.dsh-inventory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.dsh-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 34px;
+  flex: 1;
+  max-width: 420px;
+}
+.dsh-search-bar:focus-within {
+  border-color: var(--accent);
+}
+.dsh-search-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.dsh-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12.5px;
+  width: 100%;
+}
+.dsh-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px;
+}
+.dsh-clear-btn:hover {
+  color: var(--text);
+}
+
+/* Cards Grid */
+.dsh-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.dsh-plugin-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.dsh-plugin-card:hover {
+  border-color: var(--border-strong, var(--accent));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.dsh-plugin-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dsh-plugin-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dsh-status-dot.active {
+  background: #38d39f;
+  box-shadow: 0 0 6px rgba(56, 211, 159, 0.5);
+}
+.dsh-status-dot.inactive {
+  background: var(--muted);
+  opacity: 0.5;
+}
+.dsh-version-tag {
+  font-size: 10.5px;
+  color: var(--muted);
+  background: var(--inset);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.dsh-cap-tag {
+  font-size: 10.5px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.dsh-switch-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--inset);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dsh-switch-btn.active {
+  background: rgba(56, 211, 159, 0.15);
+  border-color: #38d39f;
+  color: #38d39f;
+}
+.dsh-plugin-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+/* Settings Layout (DSH Left Nav + Right Content) */
+.dsh-settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dsh-settings-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+.dsh-settings-heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dsh-open-config-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.15s ease;
+}
+.dsh-open-config-btn:hover {
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+.dsh-settings-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 18px;
+  min-height: 520px;
+}
+@media (max-width: 860px) {
+  .dsh-settings-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.dsh-settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+.dsh-nav-tab {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 9px 12px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.15s ease;
+}
+.dsh-nav-tab:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+.dsh-nav-tab.active {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.dsh-settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Modals */
+.dsh-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.dsh-modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.dsh-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.dsh-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.dsh-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.dsh-code-box {
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 11.5px;
+  font-family: monospace;
+  overflow-x: auto;
+  max-height: 220px;
+}
+
+/* Quick link to external provider console / portal (e.g. AlphaTech) */
+.dsh-get-key-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-accent);
+  font-size: 11.5px;
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: rgba(41, 98, 255, 0.08);
+  border: 1px solid rgba(41, 98, 255, 0.2);
+  transition: all 0.15s ease;
+}
+.dsh-get-key-link:hover {
+  background: rgba(41, 98, 255, 0.16);
+  border-color: var(--color-accent);
+  text-decoration: none;
+}

@@ -197,6 +197,7 @@ export type KeyStatus = 'configured' | 'missing' | 'unknown';
 export interface ProviderView {
   provider_id: string;
   label: string;
+  portal_url?: string;
   base_url: string;
   protocol: string;
   protocol_label?: string;
@@ -223,6 +224,7 @@ export interface ProviderView {
 export interface CatalogEntry {
   provider_id: string;
   label: string;
+  portal_url?: string;
   base_url: string;
   protocol: string;
   protocol_label: string;
@@ -263,6 +265,22 @@ export interface SessionEvent {
   role: string | null;
   payload: Record<string, any>;
   created_at: string;
+}
+
+export interface ReviewScopeResponse {
+  status: string;
+  phase: string;
+  confirmed: boolean;
+  envelope: {
+    schema: string;
+    scope: Record<string, unknown>;
+    payload: Record<string, unknown>;
+    payload_sha256: string;
+    redaction_policy: string;
+    sent_keys: string[];
+    safety: string;
+  };
+  safety: string;
 }
 
 export interface AuditRecord {
@@ -670,4 +688,89 @@ export interface ReplayMarker {
 
 export interface ReplaySessions extends SafetyEnvelope {
   sessions: ReplaySession[];
+}
+
+/* ---- plugins & agent presets (DSH alignment) ------------------------ */
+
+export interface PluginItem {
+  plugin_id: string;
+  name?: string;
+  version: string;
+  state: string;
+  capabilities: string[];
+  isolation: string;
+  enabled?: boolean;
+  required_services?: string[];
+  optional_services?: string[];
+  missing_services?: string[];
+  last_error?: string | null;
+  health?: Record<string, any> | null;
+  manifest?: Record<string, any>;
+}
+
+export interface PluginDetailResponse extends SafetyEnvelope {
+  status: string;
+  plugin_id: string;
+  plugin: PluginItem;
+  manifest: Record<string, any>;
+  config: Record<string, any>;
+  events: {
+    id: number;
+    plugin_id: string;
+    from_state: string | null;
+    to_state: string;
+    detail: string;
+    created_at: string;
+    safety?: string;
+  }[];
+}
+
+export interface PluginCatalogEntry {
+  project: string;
+  repo: string;
+  level: string;
+  capabilities: string[];
+  license: string;
+  maintained: string;
+  boundary: string;
+  network_required: boolean;
+  execution_risk: string;
+}
+
+export interface PluginCatalogResponse extends SafetyEnvelope {
+  schema: string;
+  levels: string[];
+  entries: PluginCatalogEntry[];
+  by_level: Record<string, PluginCatalogEntry[]>;
+  counts: Record<string, number>;
+  policy: string;
+  curated_finance?: {
+    schema: string;
+    plugins: CuratedFinancePlugin[];
+    safety: string;
+  };
+}
+
+export interface CuratedFinancePlugin {
+  id: string;
+  name: string;
+  version: string;
+  source: string;
+  commit: string;
+  license: string;
+  declared_network: boolean;
+  capabilities: string[];
+  permissions: string[];
+  installed: boolean;
+  enabled: boolean;
+  update: Record<string, any>;
+  health: Record<string, any>;
+  profile_reload: Record<string, any>;
+  safety: string;
+}
+
+export interface AgentPresets {
+  system_prompt: string;
+  default_effort: string;
+  context_strategy: string;
 }
