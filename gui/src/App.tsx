@@ -256,7 +256,17 @@ export function App() {
             {tab === 'rules' ? <RulesView /> : null}
             {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}
             {tab === 'plugins' ? <PluginsView /> : null}
-            {tab === 'settings' ? <SettingsView meta={meta} onMetaChange={() => void loadMeta()} /> : null}
+            {tab === 'settings' ? (
+              <SettingsView
+                meta={meta}
+                onMetaChange={() => void loadMeta()}
+                scheme={scheme}
+                theme={theme}
+                onToggleScheme={toggleScheme}
+                onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+                onGoToPlugins={() => setTab('plugins')}
+              />
+            ) : null}
           </div>
 
           {assistantOpen ? (

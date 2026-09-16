@@ -27,6 +27,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [reviewScope, setReviewScope] = useState<import('../types').ReviewScopeResponse | null>(null);
   // Set when the assistant surface cannot be reached at all. On a shared host the
   // review workbench API is closed at the trust boundary, so every call here
   // 403s. Without this the panel looked entirely functional -- example prompts,
@@ -114,6 +115,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
         });
       }
     });
+    void api.reviewScope(activeId).then(setReviewScope).catch(() => setReviewScope(null));
   }, [activeId, meta]);
 
   useEffect(() => {
@@ -147,6 +149,11 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       sessionId = created.session.session_id;
       setActiveId(sessionId);
       await loadSessions();
+    }
+    if (!reviewScope?.confirmed || reviewScope.envelope.scope.review_id !== sessionId) {
+      const preview = await api.reviewScope(sessionId);
+      setReviewScope(preview);
+      return;
     }
     setInput('');
     setBusy(true);
@@ -194,10 +201,20 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     });
   };
 
-  const stop = () => {
+  const stop = async () => {
+    if (activeId && busy) {
+      await api.cancelTurn(activeId).catch(() => undefined);
+    }
     abortRef.current?.abort();
     setBusy(false);
     setTurn(null);
+  };
+
+  const confirmScope = async () => {
+    if (!activeId) return;
+    const confirmed = await api.confirmReviewScope(activeId, { review_id: activeId });
+    setReviewScope(confirmed);
+    await loadSessions();
   };
 
   const fork = async () => {
@@ -245,6 +262,17 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       ) : null}
 
       <div className="assistant-body" ref={bodyRef}>
+        {reviewScope && !reviewScope.confirmed ? (
+          <div className="notice" style={{ fontSize: 12, lineHeight: 1.6 }}>
+            <strong>请先确认本次复盘范围</strong>
+            <div className="muted" style={{ marginTop: 4 }}>
+              DSH 只会收到脱敏后的摘要；决策时间：{String(reviewScope.envelope.scope.decision_time || '—')}。
+            </div>
+            <button className="primary" style={{ marginTop: 8 }} onClick={() => void confirmScope()}>
+              确认范围并继续
+            </button>
+          </div>
+        ) : null}
         {unavailable ? (
           <div className="notice" style={{ fontSize: 12, lineHeight: 1.7 }}>
             复盘助手在这个部署里不可用：{unavailable}
@@ -327,7 +355,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
           />
           <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             {busy ? (
-              <button className="ghost" onClick={stop}>停止</button>
+              <button className="ghost" onClick={() => void stop()}>停止</button>
             ) : (
               <button className="primary" onClick={send} disabled={!input.trim() || Boolean(unavailable)}>发送</button>
             )}

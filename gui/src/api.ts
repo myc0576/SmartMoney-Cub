@@ -1,6 +1,7 @@
 import type {
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
   SessionEvent, SessionSummary, UploadResult,
+  PluginCatalogResponse, PluginDetailResponse,
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
   Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
   TraderCalendar, TradeLogDetail, TraderHealth, TraderImportResult, TraderMeta,
@@ -133,6 +134,29 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ note }) },
     ),
   plugins: () => request<Record<string, any>>('/api/plugins'),
+  enablePlugin: (pluginId: string) =>
+    request<{ status: string; plugin: any; safety: string }>('/api/plugins/enable', {
+      method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
+    }),
+  disablePlugin: (pluginId: string) =>
+    request<{ status: string; plugin: any; safety: string }>('/api/plugins/disable', {
+      method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
+    }),
+  pluginCatalog: () => request<PluginCatalogResponse>('/api/plugins/catalog'),
+  pluginDetail: (pluginId: string) =>
+    request<PluginDetailResponse>('/api/plugins/detail?plugin_id=' + encodeURIComponent(pluginId)),
+  configurePlugin: (pluginId: string, config: Record<string, any>) =>
+    request<{ status: string; config: Record<string, any>; safety: string }>('/api/plugins/configure', {
+      method: 'POST', body: JSON.stringify({ plugin_id: pluginId, config }),
+    }),
+  reloadPlugins: () =>
+    request<{ status: string; safety: string }>('/api/plugins/reload', {
+      method: 'POST', body: JSON.stringify({}),
+    }),
+  openConfigFile: () =>
+    request<{ status: string; path?: string; error?: string; safety: string }>('/api/settings/open-file', {
+      method: 'POST', body: JSON.stringify({}),
+    }),
   documents: (params: { portfolio_id?: string } = {}) =>
     request<{ documents: Overview['recent_documents'] }>('/api/documents?' + new URLSearchParams(clean(params)).toString()),
   settings: () => request<Record<string, any>>('/api/settings'),
@@ -184,6 +208,24 @@ export const api = {
     request<{ session: SessionSummary }>('/api/assistant/sessions/' + encodeURIComponent(id) + '/fork', {
       method: 'POST', body: JSON.stringify(payload),
     }),
+  reviewScope: (id: string) =>
+    request<import('./types').ReviewScopeResponse>(
+      '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/scope',
+    ),
+  confirmReviewScope: (id: string, payload: Record<string, unknown> = {}) =>
+    request<import('./types').ReviewScopeResponse & { session: SessionSummary }>(
+      '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/confirm',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  cancelTurn: (id: string) =>
+    request<{ status: string; session: SessionSummary }>(
+      '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  resumeTurn: (id: string, text = '', handlers?: StreamHandlers) =>
+    handlers
+      ? streamResume(id, text, handlers)
+      : Promise.reject(new Error('resume handlers are required')),
 };
 
 function clean(params: Record<string, unknown>): Record<string, string> {
@@ -232,6 +274,36 @@ export async function streamTurn(sessionId: string, text: string, handlers: Stre
       } catch {
         // A partial frame is not worth failing the whole turn over.
       }
+    }
+  }
+  handlers.onDone();
+}
+
+export async function streamResume(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
+  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/resume'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+    signal: handlers.signal,
+  });
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => '');
+    handlers.onError(detail || 'resume failed: ' + response.status);
+    return;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() || '';
+    for (const frame of frames) {
+      const line = frame.split('\n').find((item) => item.startsWith('data:'));
+      if (!line) continue;
+      try { handlers.onEvent(JSON.parse(line.slice(5).trim())); } catch { /* ignore partial frame */ }
     }
   }
   handlers.onDone();
