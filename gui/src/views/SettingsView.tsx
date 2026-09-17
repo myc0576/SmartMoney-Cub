@@ -5,6 +5,7 @@ import type {
 } from '../types';
 import { Badge, Panel } from '../components/common';
 import { effortLabel } from '../components/ModelPicker';
+import { PluginsView } from './PluginsView';
 
 // Settings -> 模型 Providers, rebuilt against DSH's Settings -> Models page.
 //
@@ -267,7 +268,6 @@ export function SettingsView({
   theme,
   onToggleScheme,
   onToggleTheme,
-  onGoToPlugins,
 }: {
   meta: Meta | null;
   onMetaChange: () => void;
@@ -275,7 +275,6 @@ export function SettingsView({
   theme?: 'light' | 'dark';
   onToggleScheme?: () => void;
   onToggleTheme?: () => void;
-  onGoToPlugins?: () => void;
 }) {
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
@@ -303,7 +302,12 @@ export function SettingsView({
 
   const load = async (): Promise<ProviderView[]> => {
     const settings = await api.settings();
-    const next = (settings.providers as ProviderView[]) || [];
+    // The legacy offline provider remains readable for migration, but is not
+    // presented as a selectable model. A missing key should surface as setup
+    // guidance, never as a fake local answer route.
+    const next = ((settings.providers as ProviderView[]) || []).filter(
+      (provider) => provider.provider_id !== 'offline',
+    );
     setProviders(next);
     setCatalog((settings.catalog as CatalogEntry[]) || []);
     setProtocols((settings.protocols as ProtocolOption[]) || []);
@@ -471,7 +475,6 @@ export function SettingsView({
             </svg>
             {openingFile ? '正在打开...' : '打开配置文件'}
           </button>
-          <span className="muted" style={{ fontSize: 10 }}>仅打开本机配置；不会上传或执行文件内容。</span>
         </div>
       </div>
 
@@ -653,29 +656,7 @@ export function SettingsView({
 
           {/* 3. 插件设置 */}
           {activeSection === 'plugins' ? (
-            <Panel title="插件系统全局策略">
-              <div className="grid" style={{ gap: 14 }}>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-                  插件只能读取外部数据并作为复盘证据使用。它们不能下单、不能改账户，也不能绕过脱敏。
-                  任何 <code>available_at</code> 晚于决策时间的证据都会判定为未来数据并拒绝。
-                </div>
-
-                <div className="stage-row">
-                  <div style={{ fontWeight: 500, marginBottom: 4 }}>只读沙箱与隔离机制</div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    所有第三方插件默认运行在独立子进程（subprocess）环境中，对外网络访问必须在清单中显式声明。
-                  </div>
-                </div>
-
-                {onGoToPlugins ? (
-                  <div style={{ marginTop: 8 }}>
-                    <button className="primary" onClick={onGoToPlugins}>
-                      前往完整插件中心（管理与配置插件） →
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </Panel>
+            <PluginsView />
           ) : null}
 
           {/* 4. Agent 预设 */}
@@ -766,7 +747,7 @@ export function SettingsView({
 
               <Panel title={'外发审计（最近 ' + audits.length + ' 条）'}>
                 {audits.length === 0 ? (
-                  <div className="muted">还没有向外部模型发送过请求。本地离线复盘不会产生外发记录。</div>
+                  <div className="muted">还没有向外部模型发送过请求。未配置可路由模型时，助手会停在设置引导，不会发起请求。</div>
                 ) : (
                   <div className="scroll-x">
                     <table>

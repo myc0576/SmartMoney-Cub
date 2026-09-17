@@ -207,7 +207,7 @@ def test_the_offline_provider_needs_no_key(tmp_path) -> None:
     assert provider["requires_key"] is False
 
 
-def test_a_provider_without_a_key_falls_back_to_local_review(tmp_path) -> None:
+def test_a_provider_without_a_key_returns_visible_setup_error(tmp_path) -> None:
     service = _service(tmp_path)
     try:
         service.store.add_fills([_fill()])
@@ -215,10 +215,9 @@ def test_a_provider_without_a_key_falls_back_to_local_review(tmp_path) -> None:
         events = list(
             service.stream_turn(session["session"]["session_id"], {"text": "帮我复盘这几笔"})
         )
-        text = "".join(event.get("text", "") for event in events if event["kind"] == "delta")
-        # Without a configured key the turn still completes, using local numbers.
-        assert "本地离线复盘" in text
-        assert events[-1]["kind"] == "done"
+        assert events[-1]["kind"] == "error"
+        assert events[-1]["code"] == "model_required"
+        assert events[-1]["action"] == "configure_model"
         # Nothing left the machine, so there is no outbound audit row.
         assert service.store.list_audits() == []
     finally:
@@ -234,7 +233,7 @@ def test_a_turn_is_persisted_so_a_reload_resumes_it(tmp_path) -> None:
         events = service.session_detail(session_id, {})["events"]
         kinds = [event["kind"] for event in events]
         assert "user_message" in kinds
-        assert "assistant_message" in kinds
+        assert "error" in kinds
         seqs = [event["seq"] for event in events]
         assert seqs == sorted(seqs)
         assert len(set(seqs)) == len(seqs)
@@ -455,7 +454,7 @@ def test_http_get_endpoints_and_unknown_routes(tmp_path) -> None:
 
 def test_http_resume_stream_uses_the_resume_generator(tmp_path) -> None:
     service = _service(tmp_path)
-    session_id = service.create_session({"title": "HTTP 恢复"})["session"]["session_id"]
+    session_id = service.create_session({"title": "HTTP 恢复", "provider_id": "offline"})["session"]["session_id"]
     service.store.append_event(session_id, kind="user_message", role="user", payload={"text": "继续本地复盘"})
     service.store.update_session(session_id, status="interrupted")
     handler = type(
@@ -865,7 +864,7 @@ def test_review_envelope_uses_a_valid_portfolio_alias_when_context_is_sparse(tmp
 
 def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
     service = _service(tmp_path)
-    session = service.create_session({"title": "可恢复复盘"})["session"]
+    session = service.create_session({"title": "可恢复复盘", "provider_id": "offline"})["session"]
     session_id = session["session_id"]
     service.store.update_session(session_id, status="running")
     try:

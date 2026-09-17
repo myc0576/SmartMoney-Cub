@@ -51,6 +51,15 @@ export function RulesView() {
 
   useEffect(() => {
     void load();
+    const onUpdate = () => { void load(); };
+    window.addEventListener('smcub:rules-updated', onUpdate);
+    window.addEventListener('focus', onUpdate);
+    const timer = setInterval(() => { void load(); }, 2000);
+    return () => {
+      window.removeEventListener('smcub:rules-updated', onUpdate);
+      window.removeEventListener('focus', onUpdate);
+      clearInterval(timer);
+    };
   }, []);
 
   const champions = rules.filter((rule) => rule.status === 'champion');
@@ -73,6 +82,7 @@ export function RulesView() {
       setNote('');
       setMessage('规则「' + ruleId + '」已晋级为 champion。');
       await load();
+      window.dispatchEvent(new CustomEvent('smcub:rules-updated'));
     } catch (thrown) {
       setFailure(thrown instanceof Error ? thrown.message : String(thrown));
     } finally {
@@ -205,4 +215,3 @@ function RuleTable({ rules, promoting, note, busy, onNote, onOpen, onSubmit }: T
     </div>
   );
 }
-

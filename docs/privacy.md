@@ -85,5 +85,7 @@ external model provider, the request carries only redacted structured fields.
 This policy applies to the preconfigured company gateway and to every provider
 added later. See [docs/review-agent.md](review-agent.md) for the full table.
 
-When no provider key is configured, the assistant answers from local data and
-sends nothing.
+When a key-required provider has no configured key, the assistant shows setup
+guidance and sends nothing. Local gateways that explicitly declare
+`requires_key = false` can still be used through their own authentication
+boundary.

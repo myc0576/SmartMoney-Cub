@@ -71,3 +71,7 @@ work/
 # store inside it is a throwaway database.
 artifacts/visual/*.png
 artifacts/visual/tmp-state/
+
+# Local outputs and downloads
+graphify-out/
+release_downloads/

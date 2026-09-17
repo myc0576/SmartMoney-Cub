@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { CuratedFinancePlugin, PluginCatalogEntry, PluginCatalogResponse, PluginDetailResponse, PluginItem } from '../types';
+import type { PluginCatalogEntry, PluginCatalogResponse, PluginDetailResponse, PluginItem } from '../types';
 import { Badge, Empty, Panel } from '../components/common';
 
-type PluginTab = 'inventory' | 'config' | 'catalog';
+type PluginTab = 'market' | 'inventory' | 'config' | 'catalog';
 
 export function PluginsView() {
-  const [tab, setTab] = useState<PluginTab>('inventory');
+  const [tab, setTab] = useState<PluginTab>('market');
   const [plugins, setPlugins] = useState<PluginItem[]>([]);
   const [catalogData, setCatalogData] = useState<PluginCatalogResponse | null>(null);
+  const [marketData, setMarketData] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
+  const [marketCategory, setMarketCategory] = useState('全部');
 
   // Drawer / modal for plugin inspection & events
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
@@ -45,9 +47,18 @@ export function PluginsView() {
     }
   };
 
+  const loadMarket = async () => {
+    try {
+      setMarketData(await api.pluginMarket());
+    } catch {
+      // The official market is additive; local inventory remains usable.
+    }
+  };
+
   useEffect(() => {
     void loadPlugins();
     void loadCatalog();
+    void loadMarket();
   }, []);
 
   const openDetail = async (pluginId: string) => {
@@ -111,6 +122,23 @@ export function PluginsView() {
     }
   };
 
+  const installMarket = async (pluginId: string) => {
+    setError('');
+    setNotice('');
+    try {
+      const entry = ((marketData?.catalog || []) as Record<string, any>[]).find((item) => item.plugin_id === pluginId);
+      const config = entry && !entry.requires_credentials ? { permissions_confirmed: true } : {};
+      const result = await api.installMarketPlugin(pluginId, config);
+      setNotice(result.status === 'configuration_required'
+        ? '插件已进入配置向导：请先确认权限、密钥与健康检查。'
+        : '官方插件已启用。');
+      await loadMarket();
+      await loadPlugins();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
   const filteredPlugins = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return plugins;
@@ -127,13 +155,24 @@ export function PluginsView() {
     return plugins.filter((p) => p.state === 'ACTIVE' || p.enabled).length;
   }, [plugins]);
 
+  const marketEntries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return ((marketData?.catalog || []) as Record<string, any>[]).filter((item) => {
+      const categoryMatch = marketCategory === '全部' || item.category === marketCategory;
+      const searchMatch = !q || [item.plugin_id, item.name, item.description, item.category]
+        .some((value) => String(value || '').toLowerCase().includes(q));
+      return categoryMatch && searchMatch;
+    });
+  }, [marketData, marketCategory, search]);
+  const marketCategories = ['全部', ...Array.from(new Set(((marketData?.catalog || []) as Record<string, any>[]).map((item) => String(item.category || '其他'))))];
+
   return (
     <div className="grid" style={{ gap: 14 }}>
       <div className="notice" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <strong>复盘安全底线：</strong>插件只能读取外部数据并作为复盘证据使用。禁止下单、改账户与绕过脱敏。任何 <code>available_at</code> 晚于决策时间的数据都会被判定为未来数据拒绝。
         </div>
-        <Badge kind="ok">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</Badge>
+        <Badge kind="ok">READ_ONLY</Badge>
       </div>
 
       {notice ? <div className="notice" role="status" style={{ borderLeftColor: 'var(--color-accent)' }}>{notice}</div> : null}
@@ -141,10 +180,17 @@ export function PluginsView() {
 
       <div className="dsh-subtabs">
         <button
+          className={'dsh-subtab' + (tab === 'market' ? ' active' : '')}
+          onClick={() => setTab('market')}
+        >
+          官方插件市场
+          <span className="dsh-tab-badge">{marketData?.catalog?.length || 20}</span>
+        </button>
+        <button
           className={'dsh-subtab' + (tab === 'inventory' ? ' active' : '')}
           onClick={() => setTab('inventory')}
         >
-          插件列表
+          已安装插件
           <span className="dsh-tab-badge">{plugins.length}</span>
         </button>
         <button
@@ -157,7 +203,7 @@ export function PluginsView() {
           className={'dsh-subtab' + (tab === 'catalog' ? ' active' : '')}
           onClick={() => setTab('catalog')}
         >
-          生态目录
+          开源生态目录
           <span className="dsh-tab-badge">{catalogData?.entries?.length || 0}</span>
         </button>
       </div>
@@ -384,33 +430,51 @@ export function PluginsView() {
               </div>
             ))}
           </div>
-          {catalogData?.curated_finance?.plugins?.length ? (
-            <div style={{ marginTop: 18 }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>SmartMoney 受限 Cordis 适配器</div>
-              <div className="grid" style={{ gap: 10 }}>
-                {catalogData.curated_finance.plugins.map((item: CuratedFinancePlugin) => (
-                  <div className="provider-card" key={item.id}>
-                    <div className="provider-head">
-                      <div>
-                        <span className="provider-title">{item.name}</span>
-                        <span className="provider-id">{item.id} · v{item.version}</span>
-                      </div>
-                      <Badge kind={item.enabled ? 'ok' : 'warn'}>{item.enabled ? '已启用' : '待确认'}</Badge>
-                    </div>
-                    <div className="provider-meta">
-                      来源：{item.source} · commit：{item.commit} · 网络：{item.declared_network ? '声明需要' : '不需要'} · 上游执行：否
-                    </div>
-                    <div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
-                      {item.capabilities.map((cap) => <span className="dsh-cap-tag" key={cap}>{cap}</span>)}
-                    </div>
-                    <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-                      权限：{item.permissions.join('、')} · profile reload：显式边界 · {item.license}
-                    </div>
-                  </div>
-                ))}
-              </div>
+        </Panel>
+      ) : null}
+
+      {tab === 'market' ? (
+        <Panel title="官方插件市场">
+          <div className="plugin-market-head">
+            <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+              官方精选插件只读接入复盘证据。安装会先进入配置向导，确认权限、密钥与健康检查后才会挂载。
             </div>
-          ) : null}
+            <Badge kind="ok">READ_ONLY</Badge>
+          </div>
+          <div className="plugin-toolbar" style={{ marginTop: 12 }}>
+            <div className="segmented" role="tablist" aria-label="插件市场分类">
+              {marketCategories.map((category) => (
+                <button key={category} className={marketCategory === category ? 'active' : ''} onClick={() => setMarketCategory(category)}>
+                  {category}
+                </button>
+              ))}
+            </div>
+            <span className="muted" style={{ fontSize: 11 }}>已收录 {marketData?.catalog?.length || 0} 个精选插件</span>
+          </div>
+          <div className="plugin-card-grid">
+            {marketEntries.map((item) => (
+              <div className="plugin-card" key={item.plugin_id}>
+                <div className="plugin-card-top">
+                  <div className="plugin-icon">✦</div>
+                  <div className="grow">
+                    <strong>{item.name || item.plugin_id}</strong>
+                    <div className="mono muted">{item.plugin_id} · v{item.version}</div>
+                  </div>
+                </div>
+                <p>{item.description}</p>
+                <div className="plugin-tags">
+                  <span className="tag">{item.category}</span>
+                  {item.requires_credentials ? <span className="tag">需要密钥</span> : <span className="tag">免密钥</span>}
+                </div>
+                <div className="plugin-card-foot">
+                  <span className="muted">{item.installed ? '已安装 · ' + item.state : '官方精选 · 只读沙箱'}</span>
+                  <button className={item.installed ? 'ghost' : 'primary'} onClick={() => void installMarket(item.plugin_id)}>
+                    {item.installed ? '继续配置' : '安装'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </Panel>
       ) : null}
 
