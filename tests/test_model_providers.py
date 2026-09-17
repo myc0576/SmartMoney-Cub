@@ -8,10 +8,13 @@ import pytest
 
 from smartmoney_cub_harness.agent.providers import (
     ALPHATECH_PROVIDER_ID,
+    COMMANDCODE_PROVIDER_ID,
+    COMMANDCODE_BASE_URL,
     OFFLINE_PROVIDER_ID,
     PROVIDER_CATALOG,
     ProviderError,
     catalog_view,
+    build_request_body,
     default_settings,
     install_provider,
     list_provider_ids,
@@ -26,6 +29,7 @@ from smartmoney_cub_harness.agent.providers import (
     update_provider,
 )
 from smartmoney_cub_harness.workbench.server import WorkbenchService
+from smartmoney_cub_harness.workbench import server as workbench_server
 
 # The provider surface follows the harness model-routing convention: install from
 # a catalog, add a custom provider for a gateway, discover models from the
@@ -53,6 +57,51 @@ def test_the_catalog_offers_more_than_one_provider(tmp_path) -> None:
     install_provider(tmp_path, "deepseek", from_catalog=True)
     after = {entry["provider_id"]: entry for entry in catalog_view(load_settings(tmp_path))}
     assert after["deepseek"]["installed"] is True
+
+
+def test_commandcode_catalog_normalizes_deepseek_flash_alias() -> None:
+    entry = PROVIDER_CATALOG[COMMANDCODE_PROVIDER_ID]
+    assert entry["base_url"] == COMMANDCODE_BASE_URL
+    body = json.loads(build_request_body(
+        model="/deepseekv4.1flash",
+        messages=[{"role": "user", "content": "ping"}],
+        tools=None,
+        stream=False,
+        provider=entry,
+    ))
+    assert body["model"] == "commandcode/deepseek/deepseek-v4.1-flash"
+
+
+def test_commandcode_loopback_route_does_not_need_a_provider_key(tmp_path) -> None:
+    install_provider(tmp_path, COMMANDCODE_PROVIDER_ID, from_catalog=True)
+    service = WorkbenchService(tmp_path)
+    try:
+        session = service.create_session({
+            "title": "commandcode",
+            "provider_id": COMMANDCODE_PROVIDER_ID,
+            "model": "commandcode/deepseek/deepseek-v4.1-flash",
+        })["session"]
+        resolved = service.runtime.resolve_session_provider(session)
+        assert resolved["provider_id"] == COMMANDCODE_PROVIDER_ID
+        assert resolved["requires_key"] is False
+        assert resolved["has_key"] is False
+    finally:
+        service.close()
+
+
+def test_commandcode_model_discovery_allows_gateway_auth(monkeypatch, tmp_path) -> None:
+    install_provider(tmp_path, COMMANDCODE_PROVIDER_ID, from_catalog=True)
+    monkeypatch.setattr(
+        workbench_server,
+        "provider_models",
+        lambda provider: {"status": "ok", "models": ["commandcode/deepseek/deepseek-v4.1-flash"], "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"},
+    )
+    service = WorkbenchService(tmp_path)
+    try:
+        result = service.discover_models({"provider_id": COMMANDCODE_PROVIDER_ID})
+        assert result["models"] == ["commandcode/deepseek/deepseek-v4.1-flash"]
+    finally:
+        service.close()
 
 
 def test_installing_from_the_catalog_copies_its_models_and_endpoint(tmp_path) -> None:
@@ -575,7 +624,7 @@ def test_the_default_selection_is_stored_and_survives_a_restart(tmp_path) -> Non
         reopened.close()
 
 
-def test_a_removed_default_provider_falls_back_instead_of_breaking(tmp_path) -> None:
+def test_a_removed_default_provider_surfaces_setup_error(tmp_path) -> None:
     service = WorkbenchService(tmp_path)
     try:
         install_provider(tmp_path, "gw", base_url="https://gw.example/v1", models=["m"])
@@ -584,10 +633,11 @@ def test_a_removed_default_provider_falls_back_instead_of_breaking(tmp_path) -> 
         selection = service.default_selection()
         assert selection["provider_id"] in {ALPHATECH_PROVIDER_ID, OFFLINE_PROVIDER_ID}
         assert selection["provider_id"] != "gw"
-        # A session that pointed at the removed provider answers locally.
+        # A session that pointed at the removed provider surfaces setup guidance.
         session = service.create_session({"title": "复盘", "provider_id": "gw", "model": "m"})
         events = list(service.stream_turn(session["session"]["session_id"], {"text": "复盘"}))
-        assert events[-1]["kind"] == "done"
+        assert events[-1]["kind"] == "error"
+        assert events[-1]["code"] == "model_required"
         assert service.store.list_audits() == []
     finally:
         service.close()
