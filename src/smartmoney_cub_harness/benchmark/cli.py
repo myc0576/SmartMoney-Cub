@@ -34,6 +34,8 @@ def register_benchmark_commands(sub: Any) -> None:
     run_cmd.add_argument("--systems", nargs="+", help="Systems to evaluate (default: deterministic_baseline)")
     run_cmd.add_argument("--out-dir", default="artifacts/benchmark", help="Directory to save run JSON artifact")
     run_cmd.add_argument("--mode", choices=["all", "dev", "holdout"], default="all", help="Split filter (default: all)")
+    run_cmd.add_argument("--live", action="store_true", default=False, help="Enable live evaluation for external model backends")
+    run_cmd.add_argument("--limit-per-track", type=int, default=None, help="Limit number of cases evaluated per track")
 
     verify_cmd = bench_sub.add_parser("verify", help="Verify integrity of a benchmark run artifact")
     verify_cmd.add_argument("run_dir", help="Path to run directory or run.json")
@@ -55,6 +57,8 @@ def handle_benchmark_cli(args: argparse.Namespace) -> int:
             systems=args.systems,
             out_dir=args.out_dir,
             mode=args.mode,
+            live=getattr(args, "live", False),
+            limit_per_track=getattr(args, "limit_per_track", None),
         )
         _print_json(res)
         return 0

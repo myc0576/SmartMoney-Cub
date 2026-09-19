@@ -8,7 +8,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from smartmoney_cub_harness.benchmark.baseline import baseline_predictions
 from smartmoney_cub_harness.benchmark.cases import (
@@ -45,13 +45,11 @@ def _now_iso() -> str:
 
 def compute_benchmark_run_hash(payload: dict[str, Any]) -> str:
     """Compute deterministic run hash from run inputs and evaluated predictions."""
-    # Hash inputs: benchmark_id, tracks, sample_count, systems config, predictions
     canonical_systems = []
     for s in sorted(payload.get("systems", []), key=lambda x: x.get("system_id", "")):
         m = s.get("metrics")
         filtered_m = None
         if isinstance(m, dict):
-            # Exclude wall-clock volatile latency jitter to guarantee reproducible hash
             filtered_m = {
                 k: v
                 for k, v in m.items()
@@ -80,6 +78,10 @@ def run_benchmark(
     out_dir: str | Path | None = None,
     mode: str = "all",  # "all", "dev", or "holdout"
     base_dir: str | Path | None = None,
+    live: bool = False,
+    typesafe_backend: Any = None,
+    openrouter_backend: Any = None,
+    limit_per_track: int | None = None,
 ) -> dict[str, Any]:
     """Execute benchmark evaluation across selected tracks and systems."""
     selected_tracks = list(tracks) if tracks is not None else list(TRACK_IDS)
@@ -100,6 +102,8 @@ def run_benchmark(
         c_list = load_track(track, base_dir=base_dir)
         if mode in ("dev", "holdout"):
             c_list = [c for c in c_list if c.split == mode]
+        if limit_per_track is not None and limit_per_track > 0:
+            c_list = c_list[:limit_per_track]
         track_cases_map[track] = c_list
         all_cases.extend(c_list)
 
@@ -114,7 +118,6 @@ def run_benchmark(
     baseline_lats: list[float] = []
     baseline_costs: list[float] = []
 
-    # Per track breakdown
     baseline_track_details: dict[str, dict[str, Any]] = {}
     for track in selected_tracks:
         t_cases = track_cases_map[track]
@@ -185,59 +188,148 @@ def run_benchmark(
         )
 
     # 3. Check Jev systems (fail-closed, never fabricate)
-    # Try lazy import of jev
-    jev_available = False
+    jev_mod = None
     try:
         import smartmoney_cub_harness.jev as jev_mod
-        jev_available = True
     except Exception:
-        jev_available = False
+        jev_mod = None
 
     for sys_id in selected_systems:
         if sys_id == "deterministic_baseline":
             continue
 
         if sys_id in ("typesafe_direct", "typesafe-direct"):
-            # Check credential
             api_key = os.getenv("TYPESAFE_API_KEY")
-            if not jev_available:
-                reason = "jev_module_unavailable"
-            elif not api_key:
-                reason = "missing_credential"
-            else:
-                reason = "live_evaluation_not_wired"
+
+            if jev_mod is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "typesafe_direct",
+                        "status": "not_run",
+                        "reason": "jev_module_unavailable",
+                        "model_requested": "jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            if not api_key and typesafe_backend is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "typesafe_direct",
+                        "status": "not_run",
+                        "reason": "missing_credential",
+                        "model_requested": "jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            if not live and typesafe_backend is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "typesafe_direct",
+                        "status": "not_run",
+                        "reason": "live_evaluation_not_wired",
+                        "model_requested": "jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            # Execute live evaluation through typesafe backend
+            backend = typesafe_backend
+            if backend is None:
+                backend = jev_mod.TypeSafeDirectJevBackend(
+                    api_key=api_key,
+                    model_requested="jev-latest",
+                )
+
             evaluated_systems.append(
-                {
-                    "system_id": "typesafe_direct",
-                    "status": "not_run",
-                    "reason": reason,
-                    "model_requested": "typesafe-direct-latest",
-                    "model_resolved": None,
-                    "cost_usd": 0.0,
-                    "latency_p50_ms": 0.0,
-                    "metrics": None,
-                }
+                _evaluate_jev_system(
+                    system_id="typesafe_direct",
+                    backend=backend,
+                    selected_tracks=selected_tracks,
+                    track_cases_map=track_cases_map,
+                    sample_count=sample_count,
+                    baseline_raw_preds=baseline_raw_preds,
+                    default_model_requested="jev-latest",
+                )
             )
 
         elif sys_id in ("openrouter_jev", "openrouter-jev"):
             api_key = os.getenv("OPENROUTER_API_KEY")
-            if not jev_available:
-                reason = "jev_module_unavailable"
-            elif not api_key:
-                reason = "missing_credential"
-            else:
-                reason = "live_evaluation_not_wired"
+            if jev_mod is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "openrouter_jev",
+                        "status": "not_run",
+                        "reason": "jev_module_unavailable",
+                        "model_requested": "~typesafe/jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            if not api_key and openrouter_backend is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "openrouter_jev",
+                        "status": "not_run",
+                        "reason": "missing_credential",
+                        "model_requested": "~typesafe/jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            if not live and openrouter_backend is None:
+                evaluated_systems.append(
+                    {
+                        "system_id": "openrouter_jev",
+                        "status": "not_run",
+                        "reason": "live_evaluation_not_wired",
+                        "model_requested": "~typesafe/jev-latest",
+                        "model_resolved": None,
+                        "cost_usd": 0.0,
+                        "latency_p50_ms": 0.0,
+                        "metrics": None,
+                    }
+                )
+                continue
+
+            backend = openrouter_backend
+            if backend is None:
+                backend = jev_mod.OpenRouterJevBackend(
+                    api_key=api_key,
+                    model_requested="~typesafe/jev-latest",
+                )
+
             evaluated_systems.append(
-                {
-                    "system_id": "openrouter_jev",
-                    "status": "not_run",
-                    "reason": reason,
-                    "model_requested": "~typesafe/jev-latest",
-                    "model_resolved": None,
-                    "cost_usd": 0.0,
-                    "latency_p50_ms": 0.0,
-                    "metrics": None,
-                }
+                _evaluate_jev_system(
+                    system_id="openrouter_jev",
+                    backend=backend,
+                    selected_tracks=selected_tracks,
+                    track_cases_map=track_cases_map,
+                    sample_count=sample_count,
+                    baseline_raw_preds=baseline_raw_preds,
+                    default_model_requested="~typesafe/jev-latest",
+                )
             )
 
     run_payload: dict[str, Any] = {
@@ -253,11 +345,9 @@ def run_benchmark(
         "safety": SAFETY_DECLARATION,
     }
 
-    # Deterministic run hash
     run_hash = compute_benchmark_run_hash(run_payload)
     run_payload["run_hash"] = run_hash
 
-    # Write to out_dir if requested
     if out_dir is not None:
         target_dir = Path(out_dir) / run_id
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -266,6 +356,179 @@ def run_benchmark(
             json.dump(run_payload, f, indent=2, ensure_ascii=False)
 
     return run_payload
+
+
+def _evaluate_jev_system(
+    *,
+    system_id: str,
+    backend: Any,
+    selected_tracks: list[str],
+    track_cases_map: dict[str, list[BenchmarkCase]],
+    sample_count: int,
+    baseline_raw_preds: list[Any],
+    default_model_requested: str,
+) -> dict[str, Any]:
+    """Execute evaluation for a Jev backend across selected tracks, recording true outcomes."""
+    from smartmoney_cub_harness.jev.errors import JevProtocolError, JevUnavailable
+    from smartmoney_cub_harness.jev.questions import build_questions
+
+    all_preds: list[Any] = []
+    all_targets: list[Any] = []
+    all_confs: list[float] = []
+    all_lats: list[float] = []
+    all_costs: list[float] = []
+    track_details: dict[str, dict[str, Any]] = {}
+
+    model_requested = getattr(backend, "model_requested", default_model_requested)
+    model_resolved = None
+    total_cost = 0.0
+
+    raw_evaluations: list[dict[str, Any]] = []
+
+    for track in selected_tracks:
+        t_cases = track_cases_map[track]
+        t_preds: list[Any] = []
+        t_targets: list[Any] = []
+        t_confs: list[float] = []
+        t_lats: list[float] = []
+        t_costs: list[float] = []
+
+        for case in t_cases:
+            decision_time = case.state.get("decision_time", _now_iso())
+            try:
+                questions = build_questions(track, state=case.state, decision_time=decision_time)
+                decision = backend.evaluate(
+                    case.state,
+                    questions,
+                    decision_time=decision_time,
+                )
+            except JevProtocolError:
+                return {
+                    "system_id": system_id,
+                    "status": "not_run",
+                    "reason": "protocol_error",
+                    "model_requested": model_requested,
+                    "model_resolved": None,
+                    "cost_usd": 0.0,
+                    "latency_p50_ms": 0.0,
+                    "metrics": None,
+                }
+            except JevUnavailable as exc:
+                exc_str = str(exc).lower()
+                if "timeout" in exc_str or "timed out" in exc_str:
+                    reason = "timeout"
+                else:
+                    reason = "provider_unreachable"
+                return {
+                    "system_id": system_id,
+                    "status": "not_run",
+                    "reason": reason,
+                    "model_requested": model_requested,
+                    "model_resolved": None,
+                    "cost_usd": 0.0,
+                    "latency_p50_ms": 0.0,
+                    "metrics": None,
+                }
+            except Exception as exc:
+                exc_str = str(exc).lower()
+                if "timeout" in exc_str or "timed out" in exc_str:
+                    reason = "timeout"
+                elif "connection" in exc_str or "unreachable" in exc_str:
+                    reason = "provider_unreachable"
+                else:
+                    reason = "protocol_error"
+                return {
+                    "system_id": system_id,
+                    "status": "not_run",
+                    "reason": reason,
+                    "model_requested": model_requested,
+                    "model_resolved": None,
+                    "cost_usd": 0.0,
+                    "latency_p50_ms": 0.0,
+                    "metrics": None,
+                }
+
+            if model_resolved is None:
+                model_resolved = decision.model_resolved
+            c_cost = decision.estimated_cost_usd or 0.0
+            total_cost += c_cost
+            case_lat = decision.latency_ms
+
+            ans_map = {a.question_id: a for a in decision.answers}
+            case_eval_summary = {"case_id": case.case_id, "answers": {}}
+
+            for q_id, target_val in case.labels.items():
+                ans = ans_map.get(q_id)
+                if ans is not None:
+                    t_preds.append(ans.value)
+                    t_confs.append(ans.confidence)
+                    case_eval_summary["answers"][q_id] = {
+                        "value": ans.value,
+                        "confidence": ans.confidence,
+                        "target": target_val,
+                    }
+                else:
+                    t_preds.append(None)
+                    t_confs.append(0.0)
+                    case_eval_summary["answers"][q_id] = {
+                        "value": None,
+                        "confidence": 0.0,
+                        "target": target_val,
+                    }
+                t_targets.append(target_val)
+                t_lats.append(case_lat)
+                t_costs.append(c_cost)
+
+            raw_evaluations.append(case_eval_summary)
+
+        all_preds.extend(t_preds)
+        all_targets.extend(t_targets)
+        all_confs.extend(t_confs)
+        all_lats.extend(t_lats)
+        all_costs.extend(t_costs)
+
+        # Per track baseline slice for comparison
+        t_base_preds = []
+        for case in t_cases:
+            b_preds = baseline_predictions(case)
+            for q_id in case.labels.keys():
+                t_base_preds.append(b_preds.get(q_id))
+
+        track_details[track] = calculate_system_metrics(
+            total_cases=len(t_cases),
+            valid_schema_cases=len(t_cases),
+            preds=t_preds,
+            targets=t_targets,
+            confidences=t_confs,
+            latencies_ms=t_lats,
+            costs_usd=t_costs,
+            baseline_preds=t_base_preds,
+        )
+
+    overall_metrics = calculate_system_metrics(
+        total_cases=sample_count,
+        valid_schema_cases=sample_count,
+        preds=all_preds,
+        targets=all_targets,
+        confidences=all_confs,
+        latencies_ms=all_lats,
+        costs_usd=all_costs,
+        baseline_preds=baseline_raw_preds,
+    )
+
+    return {
+        "system_id": system_id,
+        "status": "completed",
+        "model_requested": model_requested,
+        "model_resolved": model_resolved or model_requested,
+        "cost_usd": round(total_cost, 6),
+        "latency_p50_ms": overall_metrics["p50_latency_ms"],
+        "latency_p95_ms": overall_metrics["p95_latency_ms"],
+        "latency_p99_ms": overall_metrics["p99_latency_ms"],
+        "metrics": overall_metrics,
+        "track_metrics": track_details,
+        "raw_evaluations": raw_evaluations,
+    }
 
 
 def verify_run(run_dir: str | Path) -> dict[str, Any]:
@@ -278,16 +541,13 @@ def verify_run(run_dir: str | Path) -> dict[str, Any]:
     with run_json.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Verify safety declaration
     if data.get("safety") != SAFETY_DECLARATION:
         raise ValueError(f"invalid or missing safety declaration: {data.get('safety')}")
 
-    # Verify required top-level fields
     for fld in ("run_id", "benchmark_id", "sample_count", "systems", "run_hash"):
         if fld not in data or data[fld] is None:
             raise ValueError(f"missing required field '{fld}' in benchmark run")
 
-    # Verify hash integrity
     saved_hash = data["run_hash"]
     recomputed = compute_benchmark_run_hash(data)
     if saved_hash != recomputed:
@@ -295,7 +555,6 @@ def verify_run(run_dir: str | Path) -> dict[str, Any]:
             f"run_hash mismatch: saved '{saved_hash}', recomputed '{recomputed}'"
         )
 
-    # Verify systems
     systems = data.get("systems", [])
     if not systems:
         raise ValueError("run contains no systems")
@@ -353,7 +612,6 @@ def compare_runs(baseline_path: str | Path, candidate_path: str | Path) -> dict[
     with c_file.open("r", encoding="utf-8") as f:
         c_data = json.load(f)
 
-    # Find primary completed systems in baseline and candidate
     def get_sys_map(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
         return {s["system_id"]: s for s in data.get("systems", []) if s.get("status") == "completed"}
 
@@ -384,3 +642,4 @@ def compare_runs(baseline_path: str | Path, candidate_path: str | Path) -> dict[
         comparison["systems_deltas"][sys_id] = delta
 
     return comparison
+

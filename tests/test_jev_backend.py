@@ -224,3 +224,118 @@ def test_openrouter_backend_fails_closed_when_missing_base_url():
     questions = (JevQuestion("q1", "choice", "Pick", choices=("a", "b")),)
     with pytest.raises(JevUnavailable, match="missing base_url"):
         backend.evaluate({}, questions, decision_time="2026-06-01T15:00:00Z")
+
+def test_typesafe_direct_backend_contract_mapping_choice_noul_score():
+    def mock_wire_client(req):
+        # Verify request payload
+        body = json.loads(req.data.decode("utf-8"))
+        assert body["model"] == "jev-latest"
+        assert body["questions"]["q_choice"]["type"] == "choice"
+        assert body["questions"]["q_choice"]["criteria"] == {"sufficient": "sufficient", "partial": "partial"}
+        assert body["questions"]["q_noul"]["type"] == "noul"
+        assert body["questions"]["q_score"]["type"] == "score"
+        assert body["questions"]["q_score"]["criteria"] == ["Level 1", "Level 2", "Level 3", "Level 4", "Level 5"]
+
+        return {
+            "model": "jev-1.13.0",
+            "answers": {
+                "q_choice": {
+                    "type": "choice",
+                    "choice": "sufficient",
+                    "confidence": 0.98,
+                    "probabilities": {"sufficient": 0.98, "partial": 0.02},
+                },
+                "q_noul": {
+                    "type": "noul",
+                    "noul": 0.06,
+                },
+                "q_score": {
+                    "type": "score",
+                    "score": 1.96,
+                    "confidence": 0.06,
+                    "legend": {"0": "Level 1", "1": "Level 2", "2": "Level 3", "3": "Level 4", "4": "Level 5"},
+                    "probabilities": {"0": 0.12, "1": 0.21, "2": 0.31, "3": 0.31, "4": 0.05},
+                },
+            },
+            "usage": {"input_tokens": 499, "output_tokens": 20},
+        }
+
+    backend = TypeSafeDirectJevBackend(api_key="test-key", http_client=mock_wire_client)
+    questions = (
+        JevQuestion("q_choice", "choice", "Assess sufficiency", choices=("sufficient", "partial")),
+        JevQuestion("q_noul", "noul", "Is counter evidence present?"),
+        JevQuestion("q_score", "score", "Rate priority", scale_min=1, scale_max=5),
+    )
+
+    decision = backend.evaluate({"notes": "data"}, questions, decision_time="2026-06-01T15:00:00Z")
+
+    assert decision.model_requested == "jev-latest"
+    assert decision.model_resolved == "jev-1.13.0"
+    assert decision.request_id == ""
+    assert decision.estimated_cost_usd == 0.0
+    assert decision.usage == {"input_tokens": 499, "output_tokens": 20}
+
+    ans_map = {a.question_id: a for a in decision.answers}
+
+    # Choice mapping
+    assert ans_map["q_choice"].value == "sufficient"
+    assert ans_map["q_choice"].confidence == 0.98
+
+    # Noul mapping: 0.06 < 0.5 -> False, confidence = 0.06
+    assert ans_map["q_noul"].value is False
+    assert ans_map["q_noul"].confidence == 0.06
+
+    # Score mapping: 1.96 index + scale_min(1) = 2.96 -> rounded to 3
+    assert ans_map["q_score"].value == 3
+    assert ans_map["q_score"].confidence == 0.06
+
+
+def test_typesafe_direct_backend_disallowed_choice_raises_protocol_error():
+    def mock_bad_choice(req):
+        return {
+            "model": "jev-1.13.0",
+            "answers": {
+                "q_choice": {
+                    "type": "choice",
+                    "choice": "hallucinated_choice",
+                    "confidence": 0.9,
+                }
+            },
+            "usage": {"input_tokens": 100, "output_tokens": 10},
+        }
+
+    backend = TypeSafeDirectJevBackend(api_key="test-key", http_client=mock_bad_choice)
+    questions = (
+        JevQuestion("q_choice", "choice", "Pick", choices=("valid_a", "valid_b")),
+    )
+    with pytest.raises(JevProtocolError, match="not in allowed choices"):
+        backend.evaluate({"case": "toy"}, questions, decision_time="2026-06-01T15:00:00Z")
+
+
+def test_typesafe_direct_backend_live_smoke_skipped_without_key():
+    if not os.environ.get("TYPESAFE_LIVE_TEST"):
+        pytest.skip("TYPESAFE_LIVE_TEST not set; skipping live test")
+
+    key_path = "/tmp/.ts_probe_key"
+    if not os.path.exists(key_path):
+        pytest.skip("no live key file at /tmp/.ts_probe_key")
+
+    with open(key_path) as f:
+        key = f.read().strip()
+    if not key:
+        pytest.skip("empty key file")
+
+    os.environ["TYPESAFE_LIVE_ENABLED"] = "1"
+    try:
+        backend = TypeSafeDirectJevBackend(api_key=key)
+        questions = (
+            JevQuestion("major_counter_evidence", "noul", "Does major counter-evidence appear in the record?"),
+        )
+        decision = backend.evaluate({"notes": "smoke test"}, questions, decision_time="2026-06-01T15:00:00Z")
+        assert decision.model_resolved.startswith("jev-")
+        assert len(decision.answers) == 1
+        assert isinstance(decision.answers[0].value, bool)
+        assert 0.0 <= decision.answers[0].confidence <= 1.0
+    finally:
+        os.environ.pop("TYPESAFE_LIVE_ENABLED", None)
+

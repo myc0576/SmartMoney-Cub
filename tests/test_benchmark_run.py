@@ -178,3 +178,78 @@ def test_baseline_is_not_a_100_percent_tautology():
     assert len(perfect_tracks) < len(TRACK_IDS), (
         "Baseline cannot have 100% accuracy on every track; this indicates circular evaluation."
     )
+
+def test_typesafe_direct_live_evaluation_wired_with_mock():
+    def mock_backend_client(req):
+        body = json.loads(req.data.decode("utf-8"))
+        q_keys = list(body["questions"].keys())
+        answers = {}
+        for qk in q_keys:
+            q_info = body["questions"][qk]
+            if q_info["type"] == "noul":
+                answers[qk] = {"type": "noul", "noul": 0.05}
+            elif q_info["type"] == "choice":
+                choices = list(q_info["criteria"].keys())
+                answers[qk] = {"type": "choice", "choice": choices[0], "confidence": 0.95}
+            elif q_info["type"] == "score":
+                answers[qk] = {"type": "score", "score": 2.0, "confidence": 0.8}
+        return {
+            "model": "jev-1.13.0",
+            "answers": answers,
+            "usage": {"input_tokens": 120, "output_tokens": 12},
+        }
+
+    from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
+
+    fake_backend = TypeSafeDirectJevBackend(
+        api_key="mock-key",
+        http_client=mock_backend_client,
+    )
+
+    res = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=fake_backend,
+        limit_per_track=2,
+    )
+
+    sys_res = res["systems"][0]
+    assert sys_res["system_id"] == "typesafe_direct"
+    assert sys_res["status"] == "completed"
+    assert sys_res["model_requested"] == "jev-latest"
+    assert sys_res["model_resolved"] == "jev-1.13.0"
+    assert sys_res["metrics"] is not None
+    assert "accuracy" in sys_res["metrics"]
+    assert "macro_f1" in sys_res["metrics"]
+    assert "brier" in sys_res["metrics"]
+    assert "ece" in sys_res["metrics"]
+    assert "mcnemar_against_baseline" in sys_res["metrics"]
+
+
+def test_typesafe_direct_reports_truthful_reason_on_failure():
+    from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
+    from smartmoney_cub_harness.jev.errors import JevUnavailable, JevProtocolError
+
+    def timeout_client(req):
+        raise TimeoutError("timed out connecting to server")
+
+    bad_backend = TypeSafeDirectJevBackend(
+        api_key="mock-key",
+        http_client=timeout_client,
+    )
+
+    res = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=bad_backend,
+        limit_per_track=2,
+    )
+    sys_res = res["systems"][0]
+    assert sys_res["status"] == "not_run"
+    assert sys_res["reason"] == "timeout"
+    assert sys_res["metrics"] is None
+

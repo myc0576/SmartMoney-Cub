@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
+import urllib.request
 from typing import Any, Callable, Mapping
 
 from smartmoney_cub_harness.jev.errors import JevProtocolError, JevUnavailable
@@ -25,10 +27,12 @@ class TypeSafeDirectJevBackend:
     def __init__(
         self,
         api_key: str | None = None,
-        model_requested: str = "typesafe/jev-direct",
-        base_url: str = "https://api.typesafe.ai/v1",
+        model_requested: str = "jev-latest",
+        base_url: str = "https://api.typesafe.ai",
         timeout_seconds: float = 30.0,
-        http_client: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        http_client: Callable[[urllib.request.Request], dict[str, Any]]
+        | Callable[[dict[str, Any]], dict[str, Any]]
+        | None = None,
     ) -> None:
         self.api_key = api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY")
         self.model_requested = model_requested
@@ -49,7 +53,7 @@ class TypeSafeDirectJevBackend:
                 "reason": "missing_credential",
                 "safety": SAFETY_DECLARATION,
             }
-        if self.http_client is None:
+        if self.http_client is None and not os.environ.get("TYPESAFE_LIVE_ENABLED"):
             return {
                 "status": "unavailable",
                 "available": False,
@@ -81,49 +85,81 @@ class TypeSafeDirectJevBackend:
         if not self.api_key:
             raise JevUnavailable("TypeSafe direct backend unavailable: missing credential")
 
-        if self.http_client is None:
+        if self.http_client is None and not os.environ.get("TYPESAFE_LIVE_ENABLED"):
             raise JevUnavailable(
                 "TypeSafe direct backend endpoint is unreachable or no client is wired in this environment"
             )
 
         start_t = time.perf_counter()
 
+        formatted_questions: dict[str, Any] = {}
+        for q in questions:
+            if q.kind == "noul":
+                formatted_questions[q.question_id] = {
+                    "type": "noul",
+                    "instructions": q.prompt,
+                }
+            elif q.kind == "choice":
+                formatted_questions[q.question_id] = {
+                    "type": "choice",
+                    "instructions": q.prompt,
+                    "criteria": {c: c for c in q.choices},
+                }
+            elif q.kind == "score":
+                s_min = int(q.scale_min) if q.scale_min is not None else 0
+                s_max = int(q.scale_max) if q.scale_max is not None else 1
+                criteria_list = [f"Level {lvl}" for lvl in range(s_min, s_max + 1)]
+                formatted_questions[q.question_id] = {
+                    "type": "score",
+                    "instructions": q.prompt,
+                    "criteria": criteria_list,
+                }
+            else:
+                raise JevProtocolError(f"Unsupported question kind: {q.kind}")
+
         request_payload = {
             "model": self.model_requested,
+            "questions": formatted_questions,
             "state": state,
-            "questions": [
-                {
-                    "question_id": q.question_id,
-                    "kind": q.kind,
-                    "prompt": q.prompt,
-                    "choices": list(q.choices),
-                    "scale_min": q.scale_min,
-                    "scale_max": q.scale_max,
-                }
-                for q in questions
-            ],
-            "decision_time": decision_time,
         }
 
-        try:
-            resp_data = self.http_client(request_payload)
-        except Exception as exc:
-            raise JevUnavailable(f"TypeSafe direct request failed: {exc}") from exc
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        req = urllib.request.Request(
+            f"{self.base_url}/v1/systemone",
+            data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+
+        resp_data = self._execute_request(req, request_payload)
 
         model_resolved = resp_data.get("model_resolved") or resp_data.get("model") or self.model_requested
         raw_answers = resp_data.get("answers")
-        if not isinstance(raw_answers, list):
-            raise JevProtocolError("TypeSafe response missing 'answers' list")
-
-        answers_by_id = {
-            a.get("question_id"): a for a in raw_answers if isinstance(a, dict)
-        }
+        if isinstance(raw_answers, list):
+            answers_by_id = {
+                a.get("question_id"): a for a in raw_answers if isinstance(a, dict)
+            }
+        elif isinstance(raw_answers, dict):
+            answers_by_id = raw_answers
+        else:
+            raise JevProtocolError("TypeSafe response missing 'answers' object or list")
 
         parsed_answers: list[JevAnswer] = []
         for q in questions:
             raw_ans = answers_by_id.get(q.question_id)
             if raw_ans is None:
                 raise JevProtocolError(f"Missing answer for question '{q.question_id}'")
+            if not isinstance(raw_ans, dict):
+                raise JevProtocolError(f"Answer for '{q.question_id}' must be an object")
+
+            ans_type = raw_ans.get("type")
+            if ans_type is not None and ans_type != q.kind:
+                raise JevProtocolError(
+                    f"Type mismatch for '{q.question_id}': expected {q.kind}, got {ans_type}"
+                )
 
             val = raw_ans.get("value")
             if q.kind == "noul":
@@ -131,21 +167,41 @@ class TypeSafeDirectJevBackend:
                     val = val.lower() in ("true", "yes", "1")
                 else:
                     val = bool(val)
+                prob = raw_ans.get("noul")
+                if prob is not None:
+                    conf = float(prob)
+                    val = conf >= 0.5
+                else:
+                    conf = float(raw_ans.get("confidence", 1.0))
             elif q.kind == "choice":
-                val = str(val)
+                if "choice" in raw_ans:
+                    val = str(raw_ans["choice"])
+                else:
+                    val = str(val if val is not None else "")
                 if q.choices and val not in q.choices:
                     raise JevProtocolError(
                         f"Answer '{val}' for '{q.question_id}' not in allowed choices {q.choices}"
                     )
+                conf = float(raw_ans.get("confidence", 1.0))
             elif q.kind == "score":
-                try:
-                    val = float(val) if "." in str(val) else int(val)
-                except (ValueError, TypeError) as exc:
-                    raise JevProtocolError(
-                        f"Answer for score question '{q.question_id}' must be numeric"
-                    ) from exc
+                raw_score = raw_ans.get("score")
+                s_min = int(q.scale_min) if q.scale_min is not None else 0
+                if raw_score is not None:
+                    float_index = float(raw_score)
+                    val = int(round(float_index + s_min))
+                    conf = float(raw_ans.get("confidence", float_index))
+                else:
+                    try:
+                        val = float(val) if "." in str(val) else int(val)
+                    except (ValueError, TypeError) as exc:
+                        raise JevProtocolError(
+                            f"Answer for score question '{q.question_id}' must be numeric"
+                        ) from exc
+                    conf = float(raw_ans.get("confidence", 1.0))
+            else:
+                conf = float(raw_ans.get("confidence", 1.0))
 
-            conf = float(raw_ans.get("confidence", 1.0))
+            conf = float(raw_ans.get("confidence", conf))
             rationale = str(raw_ans.get("rationale", ""))
             parsed_answers.append(
                 JevAnswer(
@@ -159,8 +215,10 @@ class TypeSafeDirectJevBackend:
 
         latency_ms = round((time.perf_counter() - start_t) * 1000.0, 2)
         usage = dict(resp_data.get("usage", {}))
-        estimated_cost_usd = float(resp_data.get("estimated_cost_usd", 0.0))
-        request_id = str(resp_data.get("request_id", ""))
+        estimated_cost_usd = (
+            None if resp_data.get("estimated_cost_usd") is None else float(resp_data["estimated_cost_usd"])
+        )
+        request_id = str(resp_data.get("request_id", "") or "")
 
         run_hash = compute_run_hash(
             backend_id=self.backend_id,
@@ -181,8 +239,34 @@ class TypeSafeDirectJevBackend:
             answers=tuple(parsed_answers),
             latency_ms=latency_ms,
             usage=usage,
-            estimated_cost_usd=estimated_cost_usd,
+            estimated_cost_usd=estimated_cost_usd if estimated_cost_usd is not None else 0.0,
             request_id=request_id,
             run_hash=run_hash,
             safety=SAFETY_DECLARATION,
         )
+
+    def _execute_request(
+        self,
+        req: urllib.request.Request,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self.http_client is not None:
+            try:
+                try:
+                    return self.http_client(req)
+                except TypeError:
+                    return self.http_client(payload)
+            except Exception as exc:
+                if isinstance(exc, (JevUnavailable, JevProtocolError)):
+                    raise
+                raise JevUnavailable(f"TypeSafe direct request failed: {exc}") from exc
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                raw_bytes = resp.read()
+                return json.loads(raw_bytes.decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError) as exc:
+            raise JevUnavailable(f"TypeSafe direct request failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise JevProtocolError(f"TypeSafe direct response not valid JSON: {exc}") from exc
+
