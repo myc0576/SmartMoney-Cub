@@ -16,6 +16,25 @@
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
+![Finance-JEV Benchmark Hero](artifacts/benchmark/run_20260919_121535_240/benchmark-hero-1200x630.png)
+
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+
+### 30-Second Quickstart
+
+```bash
+# 1. Install harness and dev dependencies
+pip install -e ".[dev]"
+
+# 2. Verify environment and strict read-only safety boundary
+smcub doctor
+
+# 3. Shortest review loop (capture offline toy run & replay)
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+```
+
+
 It has **no embedded LLM** in its core, **no broker connection**, and
 **no automatic trading**: the control plane runs entirely offline. The review assistant
 is a separate, opt-in surface that calls the provider you configure and sends only

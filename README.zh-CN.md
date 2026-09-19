@@ -25,6 +25,23 @@
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
+![Finance-JEV Benchmark Hero](artifacts/benchmark/run_20260919_121535_240/benchmark-hero-1200x630.png)
+
+### 30 秒极速上手
+
+```bash
+# 1. 安装核心库与开发依赖
+pip install -e ".[dev]"
+
+# 2. 环境健康检查与确定性安全声明验证
+smcub doctor
+
+# 3. 最短离线复盘体验闭环 (捕获决策并执行回放)
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+```
+
+
 [English](README.md)
 
 </div>
