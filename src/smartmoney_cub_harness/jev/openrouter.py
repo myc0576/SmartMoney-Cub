@@ -51,6 +51,17 @@ class OpenRouterJevBackend:
                 "reason": "missing_credential",
                 "safety": SAFETY_DECLARATION,
             }
+        if not self.base_url:
+            return {
+                "status": "unavailable",
+                "available": False,
+                "backend_id": self.backend_id,
+                "provider_id": self.provider_id,
+                "model_requested": self.model_requested,
+                "model_resolved": None,
+                "reason": "missing_base_url",
+                "safety": SAFETY_DECLARATION,
+            }
         return {
             "status": "ok",
             "available": True,
@@ -71,6 +82,8 @@ class OpenRouterJevBackend:
         """Evaluate state against questions via OpenRouter API, recording model_resolved."""
         if not self.api_key:
             raise JevUnavailable("OpenRouter Jev backend unavailable: missing OPENROUTER_API_KEY")
+        if not self.base_url:
+            raise JevUnavailable("OpenRouter Jev backend unavailable: missing base_url")
 
         start_t = time.perf_counter()
 

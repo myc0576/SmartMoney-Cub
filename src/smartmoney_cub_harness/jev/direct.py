@@ -49,6 +49,17 @@ class TypeSafeDirectJevBackend:
                 "reason": "missing_credential",
                 "safety": SAFETY_DECLARATION,
             }
+        if self.http_client is None:
+            return {
+                "status": "unavailable",
+                "available": False,
+                "backend_id": self.backend_id,
+                "provider_id": self.provider_id,
+                "model_requested": self.model_requested,
+                "model_resolved": None,
+                "reason": "no_client",
+                "safety": SAFETY_DECLARATION,
+            }
         return {
             "status": "ok",
             "available": True,
@@ -70,14 +81,12 @@ class TypeSafeDirectJevBackend:
         if not self.api_key:
             raise JevUnavailable("TypeSafe direct backend unavailable: missing credential")
 
-        start_t = time.perf_counter()
-
         if self.http_client is None:
-            # Standard library direct network call or fail-closed
-            # Offline by default: fail-closed with JevUnavailable
             raise JevUnavailable(
-                "TypeSafe direct backend endpoint is unreachable or offline in this environment"
+                "TypeSafe direct backend endpoint is unreachable or no client is wired in this environment"
             )
+
+        start_t = time.perf_counter()
 
         request_payload = {
             "model": self.model_requested,

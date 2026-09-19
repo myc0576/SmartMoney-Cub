@@ -46,16 +46,17 @@ def test_typesafe_direct_backend_fails_closed_without_credential(monkeypatch):
 
 
 def test_typesafe_direct_backend_fails_closed_offline_with_key():
-    backend = TypeSafeDirectJevBackend(api_key="test-key-mock")
+    # Backend constructed with credential but no client must NOT report available
+    backend = TypeSafeDirectJevBackend(api_key="test-key-mock", http_client=None)
     health = backend.health()
-    assert health["available"] is True
+    assert health["available"] is False
+    assert health["reason"] == "no_client"
     assert health["safety"] == SAFETY_DECLARATION
 
     questions = (
         JevQuestion("q1", "choice", "Pick", choices=("yes", "no")),
     )
-    # In offline environment without mock client, must fail closed with JevUnavailable
-    with pytest.raises(JevUnavailable, match="unreachable or offline"):
+    with pytest.raises(JevUnavailable, match="no client is wired"):
         backend.evaluate({"case": "toy"}, questions, decision_time="2026-06-01T15:00:00Z")
 
 
@@ -77,6 +78,10 @@ def test_typesafe_direct_backend_with_mock_client_succeeds():
         }
 
     backend = TypeSafeDirectJevBackend(api_key="test-key", http_client=mock_client)
+    health = backend.health()
+    assert health["available"] is True
+    assert health["safety"] == SAFETY_DECLARATION
+
     questions = (
         JevQuestion("q1", "choice", "Pick", choices=("yes", "no")),
     )
@@ -207,4 +212,15 @@ def test_openrouter_backend_fails_closed_on_network_error():
         JevQuestion("q1", "choice", "Pick", choices=("a", "b")),
     )
     with pytest.raises(JevUnavailable, match="request failed"):
+        backend.evaluate({}, questions, decision_time="2026-06-01T15:00:00Z")
+
+
+def test_openrouter_backend_fails_closed_when_missing_base_url():
+    backend = OpenRouterJevBackend(api_key="sk-test", base_url="")
+    health = backend.health()
+    assert health["available"] is False
+    assert health["reason"] == "missing_base_url"
+    assert health["safety"] == SAFETY_DECLARATION
+    questions = (JevQuestion("q1", "choice", "Pick", choices=("a", "b")),)
+    with pytest.raises(JevUnavailable, match="missing base_url"):
         backend.evaluate({}, questions, decision_time="2026-06-01T15:00:00Z")
