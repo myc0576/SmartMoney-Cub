@@ -326,6 +326,25 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         )
 
     # Hero SVG
+    hero_sys_lines: list[str] = []
+    hero_y = 340
+    for s in systems:
+        sid = s.get("system_id", "unknown")
+        st = s.get("status", "unknown")
+        if st == "completed":
+            met = s.get("metrics") or {}
+            acc = float(met.get("accuracy", 0.0))
+            f1 = float(met.get("macro_f1", 0.0))
+            ece = float(met.get("ece", 0.0))
+            lat = float(met.get("p50_latency_ms", 0.0))
+            line_str = f"System: {sid} | Status: completed | Accuracy: {acc:.2%} | Macro F1: {f1:.4f} | ECE: {ece:.4f} | Latency: {lat:.1f}ms"
+        else:
+            reason = s.get("reason", "no cred")
+            line_str = f"System: {sid} | Status: not_run ({reason}) | Accuracy: N/A | Macro F1: N/A | ECE: N/A | Latency: —"
+        hero_sys_lines.append(f'  <text x="44" y="{hero_y}" class="body">{line_str}</text>')
+        hero_y += 35
+    hero_systems_svg = "\n".join(hero_sys_lines)
+
     hero_svg_content = (
         '  <rect x="24" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="2" />\n'
         '  <text x="40" y="140" class="subtitle">Accuracy</text>\n'
@@ -345,17 +364,36 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         f'  <text x="910" y="220" class="meta">Cost: ${b_cost:.4f}/case</text>\n'
         '  <rect x="24" y="265" width="1152" height="295" rx="8" fill="#1e293b" stroke="#334155" />\n'
         '  <text x="44" y="295" class="heading">Systems Summary &amp; McNemar Significance Against Baseline</text>\n'
-        f'  <text x="44" y="340" class="body">System: deterministic_baseline | Status: completed | Accuracy: {b_acc:.2%} | Macro F1: {b_f1:.4f} | ECE: {b_metrics.get("ece", 0):.4f} | Latency: {b_p50:.1f}ms</text>'
+        f'{hero_systems_svg}'
     )
     hero_svg = target_out / "benchmark-hero-1200x630.svg"
     hero_svg.write_text(make_svg(1200, 630, "Finance-Jev Benchmark Suite — Official Run Results", "Autonomous financial reasoning evaluation across 4 frozen tracks", hero_svg_content), encoding="utf-8")
     created_files.append(str(hero_svg))
 
     # Leaderboard SVG
+    lead_sys_lines: list[str] = []
+    lead_y = 190
+    for r_idx, s in enumerate(systems, start=1):
+        sid = s.get("system_id", "unknown")
+        st = s.get("status", "unknown")
+        if st == "completed":
+            met = s.get("metrics") or {}
+            acc = float(met.get("accuracy", 0.0))
+            f1 = float(met.get("macro_f1", 0.0))
+            ece = float(met.get("ece", 0.0))
+            cost = float(met.get("cost_per_case", 0.0))
+            row_str = f"#{r_idx}  {sid}  |  Status: completed  |  Acc: {acc:.2%}  |  F1: {f1:.4f}  |  ECE: {ece:.4f}  |  Cost: ${cost:.4f}"
+        else:
+            reason = s.get("reason", "no cred")
+            row_str = f"#{r_idx}  {sid}  |  Status: not_run ({reason})  |  Acc: N/A  |  F1: N/A  |  ECE: N/A  |  Cost: $0.0000"
+        lead_sys_lines.append(f'  <text x="44" y="{lead_y}" class="body">{row_str}</text>')
+        lead_y += 35
+    lead_systems_svg = "\n".join(lead_sys_lines)
+
     lead_svg_content = (
         '  <rect x="24" y="110" width="852" height="320" rx="8" fill="#1e293b" stroke="#334155" />\n'
         '  <text x="44" y="145" class="heading">Ranked Systems — Overall Performance</text>\n'
-        f'  <text x="44" y="190" class="body">#1  deterministic_baseline  |  Status: completed  |  Acc: {b_acc:.2%}  |  F1: {b_f1:.4f}  |  ECE: {b_metrics.get("ece", 0):.4f}  |  Cost: ${b_cost:.4f}</text>'
+        f'{lead_systems_svg}'
     )
     lead_svg = target_out / "benchmark-leaderboard.svg"
     lead_svg.write_text(make_svg(900, 500, "Benchmark Leaderboard", "Standardized Model Ranking and Calibration", lead_svg_content), encoding="utf-8")
@@ -411,4 +449,3 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     created_files.append(str(card_svg))
 
     return created_files
-

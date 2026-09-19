@@ -117,3 +117,27 @@ def test_render_images_full_suite_and_exact_match(tmp_path: Path):
     assert ece_val in hero_svg_text
     assert safety_decl in hero_svg_text
     assert res["run_hash"][:16] in hero_svg_text
+
+
+def test_svg_renders_unmeasured_systems_matching_png(tmp_path: Path):
+    out_bench = tmp_path / "bench_out"
+    res = run_benchmark(
+        tracks=["macro-policy"],
+        systems=["deterministic_baseline", "typesafe_direct", "openrouter_jev"],
+        mode="dev",
+        out_dir=out_bench,
+    )
+    run_dir = out_bench / res["run_id"]
+    images_dir = tmp_path / "rendered_artifacts"
+
+    render_images(run_dir, out_dir=images_dir)
+
+    hero_svg_text = (images_dir / "benchmark-hero-1200x630.svg").read_text(encoding="utf-8")
+    lead_svg_text = (images_dir / "benchmark-leaderboard.svg").read_text(encoding="utf-8")
+
+    for sys_id in ("deterministic_baseline", "typesafe_direct", "openrouter_jev"):
+        assert sys_id in hero_svg_text, f"{sys_id} missing from hero SVG"
+        assert sys_id in lead_svg_text, f"{sys_id} missing from leaderboard SVG"
+
+    assert "not_run" in hero_svg_text
+    assert "not_run" in lead_svg_text
