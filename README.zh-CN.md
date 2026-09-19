@@ -31,7 +31,7 @@
 
 SmartMoney-Cub 原生支持 Jev（[TypeSafe 官方主页](https://typesafe.ai/) | [OpenRouter 托管主页](https://openrouter.ai/typesafe/jev)）作为可选的类型化语义判断层，提供 TypeSafe 原生直连与 OpenRouter 路由两种可插拔后端。Jev 仅用于回答结构化的 `noul`、`choice` 与 `score` 语义审查问题，所有数值运算、日期比较以及严格的时效边界门禁（`available_at <= decision_time`）始终由确定性 Python 代码执行与强制校验。
 
-仓库内置 `finance-jev-v1` 离线评测基准套件，包含涵盖四大赛道（`trading-review`、`financial-filings`、`industry-events`、`macro-policy`）的 240 例冻结离线案例。在官方发布的参考运行产物（[assets/benchmark/run.json](assets/benchmark/run.json)）中，确定性规则基线实现了 **84.26%** 的综合准确率（95% Wilson 置信区间 [81.97%, 86.31%]）与 **0.7885** 的宏平均 F1。TypeSafe Jev 在线评测系统（`typesafe_direct`，通过真实 API 评测，服务端解析为 `jev-1.13.0` 模型）实现了 **81.67%** 的综合准确率（95% Wilson 置信区间 [79.25%, 83.86%]）、**0.7425** 的宏平均 F1 以及 1220 ms 的 P50 延迟。该指标如实反映在当前冻结玩具案例集上的评测结果，不代表能泛化至真实实盘环境。OpenRouter 后端（`openrouter_jev`）因未配置密钥继续如实标注为 `not_run`。
+仓库内置 `finance-jev-v1` 离线评测基准套件，包含涵盖四大赛道（`trading-review`、`financial-filings`、`industry-events`、`macro-policy`）的 240 例冻结离线案例。在彻底移除输入中的答案泄漏后，案例采用真实的证据叙述（交易执行日志、财报披露节选、行业电讯简报与央行公报原文）供模型进行结构化审方。在官方发布的参考运行产物（[assets/benchmark/run.json](assets/benchmark/run.json)）中，确定性规则基线实现了 **82.16%** 的综合准确率（95% Wilson 置信区间 [79.69%, 84.38%]）与 **0.7276** 的宏平均 F1（共 1,020 项评测问题）。TypeSafe Jev 在线评测系统（`typesafe_direct`，通过真实 API 评测，服务端解析为 `jev-1.13.0` 模型）实现了 **73.63%** 的综合准确率（95% Wilson 置信区间 [70.84%, 76.24%]）、**0.6684** 的宏平均 F1 以及 1176 ms 的 P50 延迟，并在概率校准上表现更优（ECE 为 0.1412 对比基线的 0.1784）。该指标如实反映在当前去泄漏冻结玩具案例集上的真实表现，不代表能泛化至真实实盘环境。OpenRouter 后端（`openrouter_jev`）因未配置密钥继续如实标注为 `not_run`。
 
 ### 30 秒极速上手
 

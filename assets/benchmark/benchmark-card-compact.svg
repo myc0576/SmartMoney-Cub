@@ -17,11 +17,11 @@
   <text x="25" y="68" class="subtitle">finance-jev-v1 • Summary</text>
     <rect x="24" y="100" width="552" height="190" rx="8" fill="#1e293b" stroke="#334155" />
   <text x="40" y="130" class="heading">Model: deterministic_rules_v1</text>
-  <text x="40" y="160" class="body" fill="#3b82f6" font-weight="bold">Accuracy: 84.26% (95% CI: [81.97%, 86.31%])</text>
-  <text x="40" y="190" class="body">Macro F1: 0.7885  |  ECE: 0.1574</text>
+  <text x="40" y="160" class="body" fill="#3b82f6" font-weight="bold">Accuracy: 82.16% (95% CI: [79.69%, 84.38%])</text>
+  <text x="40" y="190" class="body">Macro F1: 0.7276  |  ECE: 0.1784</text>
   <text x="40" y="220" class="body">P50 Latency: 0.0 ms  |  Cost: $0.0000/case</text>
   <text x="40" y="250" class="meta">Sample Count: 240 across 4 tracks</text>
   <line x1="0" y1="312" x2="600" y2="312" stroke="#334155" stroke-width="1" />
   <text x="24" y="330" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="348" class="meta">Date: 2026-09-20T00:09:06 | Git: 1230d003 | Run Hash: 81c683fff1da4ae1... | Model: deterministic_rules_v1</text>
+  <text x="24" y="348" class="meta">Date: 2026-09-20T00:27:09 | Git: e0a33361 | Run Hash: f9fe47c901db81fd... | Model: deterministic_rules_v1</text>
 </svg>

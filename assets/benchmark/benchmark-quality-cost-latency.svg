@@ -17,9 +17,9 @@
   <text x="25" y="68" class="subtitle">Trade-off analysis across evaluated reasoning systems</text>
     <rect x="24" y="110" width="752" height="320" rx="8" fill="#1e293b" stroke="#334155" />
   <text x="44" y="145" class="heading">Pareto Efficiency: Accuracy vs. P50 Latency vs. Cost</text>
-  <text x="44" y="190" class="body">Baseline: Acc=84.26%, P50=0.0ms, Cost=$0.0000/case</text>
-  <text x="44" y="225" class="body">P95 Latency: 0.00ms  |  P99 Latency: 0.01ms</text>
+  <text x="44" y="190" class="body">Baseline: Acc=82.16%, P50=0.0ms, Cost=$0.0000/case</text>
+  <text x="44" y="225" class="body">P95 Latency: 0.01ms  |  P99 Latency: 0.01ms</text>
   <line x1="0" y1="452" x2="800" y2="452" stroke="#334155" stroke-width="1" />
   <text x="24" y="470" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="488" class="meta">Date: 2026-09-20T00:09:06 | Git: 1230d003 | Run Hash: 81c683fff1da4ae1... | Model: deterministic_rules_v1</text>
+  <text x="24" y="488" class="meta">Date: 2026-09-20T00:27:09 | Git: e0a33361 | Run Hash: f9fe47c901db81fd... | Model: deterministic_rules_v1</text>
 </svg>
