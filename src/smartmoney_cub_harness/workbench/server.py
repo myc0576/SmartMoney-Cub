@@ -39,6 +39,8 @@ from smartmoney_cub_harness.agent.providers import (
     update_provider,
 )
 from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime, ReviewLifecycleError
+from smartmoney_cub_harness.governance import GovernanceStore, profile_facts_from_trades
+from smartmoney_cub_harness.plugin_marketplace import MarketplaceStore
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
@@ -108,6 +110,8 @@ class WorkbenchService:
             trader_service=self.trader_service,
             dsh_bridge=dsh_bridge,
         )
+        self.governance = GovernanceStore(self.root)
+        self.marketplace = MarketplaceStore(self.root)
         self._lock = threading.Lock()
 
     def close(self) -> None:
@@ -116,6 +120,85 @@ class WorkbenchService:
             close = getattr(getattr(self.trader_service, "store", None), "close", None)
             if callable(close):
                 close()
+
+
+    # ---- profile / strategy governance --------------------------------
+
+    def governance_view(self) -> dict[str, Any]:
+        snapshot = self.governance.snapshot()
+        return {
+            "status": "ok",
+            "profiles": snapshot.get("profiles", []),
+            "strategies": snapshot.get("strategies", []),
+            "evaluations": snapshot.get("evaluations", []),
+            "promotions": snapshot.get("promotions", []),
+            "events": snapshot.get("events", [])[-100:],
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def generate_profile(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        portfolio_id = str((payload or {}).get("portfolio_id") or DEFAULT_PORTFOLIO_ID)
+        fills = self.store.list_fills(portfolio_id=portfolio_id)
+        facts = profile_facts_from_trades(fills)
+        source = str((payload or {}).get("source_snapshot") or f"fills:{len(fills)}")
+        result = self.governance.create_baseline_from_import(
+            source_snapshot=source, sample_count=len(fills), facts=facts
+        )
+        return {"status": "ok", **result, "safety": SAFETY_DECLARATION}
+
+    def edit_profile(self, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = self.governance.edit_profile(profile_id, payload, edited_by="user")
+        except KeyError as error:
+            raise ApiError(f"no profile {profile_id!r}", status=404, code="not_found") from error
+        return {"status": "ok", **result, "safety": SAFETY_DECLARATION}
+
+    def create_chat_challenger(self, payload: dict[str, Any]) -> dict[str, Any]:
+        text = str(payload.get("text") or "")
+        rules = payload.get("rules")
+        if not isinstance(rules, list):
+            rules = [{"rule": str(payload.get("rule") or text), "evidence_required": True}]
+        result = self.governance.create_challenger_from_chat(
+            text=text,
+            rules=rules,
+            family=str(payload.get("family") or "general"),
+            metrics=payload.get("metrics") if isinstance(payload.get("metrics"), dict) else None,
+        )
+        return {"status": "ok", **result, "safety": SAFETY_DECLARATION}
+
+    def evaluate_strategy(self, strategy_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            evaluation = self.governance.evaluate(strategy_id, payload.get("metrics") if isinstance(payload.get("metrics"), dict) else None)
+        except KeyError as error:
+            raise ApiError(f"no strategy {strategy_id!r}", status=404, code="not_found") from error
+        return {"status": "ok", "evaluation": evaluation, "safety": SAFETY_DECLARATION}
+
+    def request_promotion(self, strategy_id: str) -> dict[str, Any]:
+        try:
+            request = self.governance.request_promotion(strategy_id)
+        except KeyError as error:
+            raise ApiError(f"no strategy {strategy_id!r}", status=404, code="not_found") from error
+        except ValueError as error:
+            raise ApiError(str(error), code="promotion_refused") from error
+        return {"status": "ok", "promotion": request, "safety": SAFETY_DECLARATION}
+
+    def confirm_promotion(self, promotion_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = self.governance.confirm_promotion(promotion_id, str(payload.get("note") or ""))
+        except KeyError as error:
+            raise ApiError(f"no promotion {promotion_id!r}", status=404, code="not_found") from error
+        except ValueError as error:
+            raise ApiError(str(error), code="promotion_refused") from error
+        return {"status": "ok", **result, "safety": SAFETY_DECLARATION}
+
+    def rollback_strategy(self, strategy_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            result = self.governance.rollback(strategy_id, str(payload.get("note") or ""))
+        except KeyError as error:
+            raise ApiError(f"no strategy {strategy_id!r}", status=404, code="not_found") from error
+        except ValueError as error:
+            raise ApiError(str(error), code="rollback_refused") from error
+        return {"status": "ok", **result, "safety": SAFETY_DECLARATION}
 
     # ---- overview ------------------------------------------------------
 
@@ -323,12 +406,115 @@ class WorkbenchService:
         from smartmoney_cub_harness.plugin_cli import plugin_list  # noqa: PLC0415
 
         try:
-            return plugin_list(state_db=self._plugin_state_db())
+            result = plugin_list(state_db=self._plugin_state_db())
+            result["marketplace"] = self.marketplace.view()
+            return result
         except Exception as error:  # pragma: no cover - plugin tree is optional
             return {
                 "status": "unavailable",
                 "error": str(error),
                 "plugins": [],
+                "marketplace": self.marketplace.view(),
+                "safety": SAFETY_DECLARATION,
+            }
+
+    def plugin_market(self) -> dict[str, Any]:
+        return {"status": "ok", **self.marketplace.view(), "safety": SAFETY_DECLARATION}
+
+    def install_market_plugin(self, plugin_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.marketplace.install(plugin_id, payload.get("config") if isinstance(payload.get("config"), dict) else None)
+        except KeyError as error:
+            raise ApiError(f"no official plugin {plugin_id!r}", status=404, code="not_found") from error
+
+    def update_market_plugin(self, plugin_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.marketplace.update(plugin_id, confirm=bool(payload.get("confirm")))
+        except KeyError as error:
+            raise ApiError(f"plugin {plugin_id!r} is not installed", status=404, code="not_found") from error
+
+    def set_market_plugin_enabled(self, plugin_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.marketplace.set_enabled(plugin_id, bool(payload.get("enabled", True)))
+        except KeyError as error:
+            raise ApiError(f"plugin {plugin_id!r} is not installed", status=404, code="not_found") from error
+
+    def plugin_enable(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_enable  # noqa: PLC0415
+
+        try:
+            return plugin_enable(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to enable plugin: {error}") from error
+
+    def plugin_disable(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_disable  # noqa: PLC0415
+
+        try:
+            return plugin_disable(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to disable plugin: {error}") from error
+
+    def plugin_catalog(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_catalog  # noqa: PLC0415
+
+        try:
+            return plugin_catalog()
+        except Exception as error:
+            raise ApiError(f"failed to read plugin catalog: {error}") from error
+
+    def plugin_detail(self, plugin_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_detail  # noqa: PLC0415
+
+        try:
+            return plugin_detail(plugin_id, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to read plugin detail: {error}") from error
+
+    def plugin_configure(self, plugin_id: str, config: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import plugin_configure  # noqa: PLC0415
+
+        try:
+            return plugin_configure(plugin_id, config, state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to configure plugin: {error}") from error
+
+    def plugin_reload(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_cli import profile_reload  # noqa: PLC0415
+
+        try:
+            return profile_reload(state_db=self._plugin_state_db())
+        except Exception as error:
+            raise ApiError(f"failed to reload plugins: {error}") from error
+
+    def open_config_file(self) -> dict[str, Any]:
+        # DSH style openDocument: opens the configuration file in native desktop editor
+        providers_file = settings_path(self.root)
+        if not providers_file.is_file():
+            providers_file.parent.mkdir(parents=True, exist_ok=True)
+            providers_file.write_text(
+                json.dumps(default_settings(), ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+        resolved = providers_file.resolve()
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", "-t", str(resolved)])
+            elif sys.platform == "win32":
+                os.startfile(str(resolved))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(resolved)])
+            return {
+                "status": "ok",
+                "path": str(resolved),
+                "safety": SAFETY_DECLARATION,
+            }
+        except Exception as error:
+            return {
+                "status": "error",
+                "error": f"无法打开配置文件: {error}",
+                "path": str(resolved),
                 "safety": SAFETY_DECLARATION,
             }
 
@@ -508,9 +694,15 @@ class WorkbenchService:
                 self.trader_service.import_trades(LOCAL_CONTEXT, rows=normalized)
             except Exception:
                 pass
+        onboarding = self.governance.create_baseline_from_import(
+            source_snapshot=str(document_id or extraction_id or f"fills:{len(normalized)}"),
+            sample_count=len(normalized),
+            facts=profile_facts_from_trades(normalized),
+        )
         analysis = self._analysis(portfolio_id=portfolio_id)
         return {
             **result,
+            "onboarding": onboarding,
             "ledger_status": analysis["ledger_status"],
             "blocking_issues": analysis["blocking_issues"],
             "safety": SAFETY_DECLARATION,
@@ -602,7 +794,32 @@ class WorkbenchService:
         text = str(payload.get("text") or "").strip()
         if not text:
             raise ApiError("message text is required")
-        return self.runtime.run_turn(session_id, text)
+
+        # A rule expressed in chat is a governance artifact, not an invisible
+        # side effect. Persist and stream the challenger card before the model
+        # turn so the user can inspect and explicitly promote it even when the
+        # selected provider is unavailable.
+        def events() -> Any:
+            artifact = self.create_chat_challenger({
+                "text": text,
+                "rules": payload.get("rules"),
+                "family": payload.get("family") or "general",
+                "metrics": payload.get("metrics"),
+            })
+            if artifact.get("created"):
+                self.store.append_event(
+                    session_id,
+                    kind="artifact",
+                    payload={"artifact": artifact},
+                )
+                yield {
+                    "kind": "artifact",
+                    "artifact": artifact,
+                    "safety": SAFETY_DECLARATION,
+                }
+            yield from self.runtime.run_turn(session_id, text)
+
+        return events()
 
     def review_scope(self, session_id: str) -> dict[str, Any]:
         try:
@@ -833,7 +1050,11 @@ class WorkbenchService:
             }
         if api_key:
             resolved["api_key"] = api_key
-        if not resolved.get("api_key") and resolved.get("protocol") != "offline":
+        if (
+            not resolved.get("api_key")
+            and resolved.get("protocol") != "offline"
+            and resolved.get("requires_key", True)
+        ):
             raise ApiError("an API key is required to fetch models")
 
         try:
@@ -864,7 +1085,7 @@ class WorkbenchService:
                 "note": "离线模式不会发出网络请求",
                 "safety": SAFETY_DECLARATION,
             }
-        if not provider["has_key"]:
+        if provider.get("requires_key", True) and not provider["has_key"]:
             return {
                 "status": "error",
                 "provider_id": provider_id,
@@ -971,6 +1192,290 @@ class WorkbenchService:
             "checks": checks,
             "safety": SAFETY_DECLARATION,
         }
+
+    def jev_status(self) -> dict[str, Any]:
+        """Diagnostic state of the Jev reasoning engine and configured backends."""
+        try:
+            from smartmoney_cub_harness.jev.cli import run_jev_doctor  # noqa: PLC0415
+            doc = run_jev_doctor()
+        except ImportError as err:
+            return {
+                "engine": "jev",
+                "provider_id": "none",
+                "model_requested": "",
+                "model_resolved": None,
+                "available": False,
+                "safety": SAFETY_DECLARATION,
+                "reason": f"import_error: {err}",
+                "detail": str(err),
+            }
+
+        backends = doc.get("backends", {})
+        direct = backends.get("typesafe-direct", {})
+        openrouter = backends.get("openrouter-jev", {})
+
+        active = direct if direct.get("available") else (openrouter if openrouter.get("available") else direct)
+
+        return {
+            "engine": doc.get("engine", "jev"),
+            "provider_id": active.get("provider_id", "typesafe"),
+            "model_requested": active.get("model_requested", ""),
+            "model_resolved": active.get("model_resolved"),
+            "available": bool(active.get("available", False)),
+            "safety": doc.get("safety", SAFETY_DECLARATION),
+            "reason": active.get("reason"),
+            "detail": doc,
+            "backends": backends,
+        }
+
+    def jev_tracks(self) -> dict[str, Any]:
+        """Track definitions and question packs for the Jev reasoning engine."""
+        from dataclasses import asdict  # noqa: PLC0415
+        from smartmoney_cub_harness.jev.questions import available_tracks, build_questions  # noqa: PLC0415
+
+        load_track = None
+        try:
+            from smartmoney_cub_harness.benchmark.cases import load_track  # noqa: PLC0415
+        except ImportError:
+            pass
+
+        tracks_data = []
+        for track_id in available_tracks():
+            questions = build_questions(track_id)
+            case_count = 60
+            if load_track is not None:
+                try:
+                    case_count = len(load_track(track_id))
+                except Exception:
+                    pass
+            tracks_data.append({
+                "track": track_id,
+                "question_count": len(questions),
+                "case_count": case_count,
+                "questions": [asdict(q) for q in questions],
+            })
+        return {
+            "tracks": tracks_data,
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def agents(self) -> dict[str, Any]:
+        """Scan detected coding agents and their integration status."""
+        from dataclasses import asdict  # noqa: PLC0415
+        try:
+            from smartmoney_cub_harness.agent.integrations import scan_agents  # noqa: PLC0415
+            agent_list = [asdict(a) for a in scan_agents()]
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+
+        return {
+            "agents": agent_list,
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def agents_apply(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        dry_run = bool(payload.get("dry_run", False))
+        try:
+            from smartmoney_cub_harness.agent.integrations import apply_agent  # noqa: PLC0415
+            res = apply_agent(agent_id, dry_run=dry_run)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def agents_disable(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        try:
+            from smartmoney_cub_harness.agent.integrations import disable_agent  # noqa: PLC0415
+            res = disable_agent(agent_id)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def agents_restore(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        try:
+            from smartmoney_cub_harness.agent.integrations import restore_agent  # noqa: PLC0415
+            res = restore_agent(agent_id)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def _benchmark_dir(self) -> Path | None:
+        resolved = self._resolve_benchmark_run()
+        if resolved:
+            return resolved[0]
+        return None
+
+    def _resolve_benchmark_run(self) -> tuple[Path, str, dict[str, Any]] | None:
+        """Resolve active benchmark run directory, source ('local' or 'bundled'), and run payload."""
+        roots: list[Path] = []
+        for r in (self.root, self.root.parent):
+            if r not in roots:
+                roots.append(r)
+        cwd = Path.cwd()
+        if cwd not in roots:
+            roots.append(cwd)
+
+        for r in roots:
+            # 1. Local artifacts under this root
+            art_dir = r / "artifacts" / "benchmark"
+            if art_dir.is_dir():
+                run_dirs = [d for d in art_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+                if run_dirs:
+                    run_dirs.sort(key=lambda d: d.name, reverse=True)
+                    latest_dir = run_dirs[0]
+                    try:
+                        run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
+                        return latest_dir, "local", run_data
+                    except Exception:
+                        pass
+
+            # 2. Bundled assets under this root
+            ast_dir = r / "assets" / "benchmark"
+            if ast_dir.is_dir():
+                if (ast_dir / "run.json").is_file():
+                    try:
+                        run_data = json.loads((ast_dir / "run.json").read_text(encoding="utf-8"))
+                        return ast_dir, "bundled", run_data
+                    except Exception:
+                        pass
+                run_dirs = [d for d in ast_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+                if run_dirs:
+                    run_dirs.sort(key=lambda d: d.name, reverse=True)
+                    latest_dir = run_dirs[0]
+                    try:
+                        run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
+                        return latest_dir, "bundled", run_data
+                    except Exception:
+                        pass
+
+        return None
+
+    def benchmark_latest(self) -> dict[str, Any]:
+        """Return the latest benchmark run details and image locations."""
+        resolved = self._resolve_benchmark_run()
+        if not resolved:
+            return {"run_id": None, "safety": SAFETY_DECLARATION}
+
+        latest_dir, source, run_data = resolved
+
+        run_id = run_data.get("run_id") or latest_dir.name
+        generated_at = run_data.get("generated_at") or run_data.get("run_date")
+        tracks = run_data.get("tracks", [])
+        systems = run_data.get("systems", [])
+
+        images = [
+            {
+                "name": p.name,
+                "url": f"/api/benchmark/images/{run_id}/{p.name}",
+            }
+            for p in sorted(latest_dir.glob("*.png"))
+        ]
+
+        return {
+            "run_id": run_id,
+            "source": source,
+            "generated_at": generated_at,
+            "run_date": run_data.get("run_date"),
+            "benchmark_id": run_data.get("benchmark_id", "finance-jev-v1"),
+            "mode": run_data.get("mode", "all"),
+            "sample_count": run_data.get("sample_count", 240),
+            "git_sha": run_data.get("git_sha"),
+            "run_hash": run_data.get("run_hash"),
+            "tracks": tracks,
+            "systems": systems,
+            "images": images,
+            "image_urls": {
+                p.name: f"/api/benchmark/images/{run_id}/{p.name}"
+                for p in sorted(latest_dir.glob("*.png"))
+            },
+            "safety": run_data.get("safety", SAFETY_DECLARATION),
+        }
+
+    def benchmark_image(self, run_id: str, filename: str) -> tuple[bytes, str] | None:
+        """Read a benchmark run image and return (bytes, mime_type)."""
+        import re  # noqa: PLC0415
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", filename) or ".." in filename:
+            return None
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", run_id) or ".." in run_id:
+            return None
+
+        target_dir: Path | None = None
+        if run_id == "latest":
+            resolved = self._resolve_benchmark_run()
+            if resolved:
+                target_dir = resolved[0]
+        else:
+            roots: list[Path] = []
+            for r in (self.root, self.root.parent):
+                if r not in roots:
+                    roots.append(r)
+            cwd = Path.cwd()
+            if cwd not in roots:
+                roots.append(cwd)
+
+            # 1. Look in local artifacts for matching run_id directory
+            for r in roots:
+                candidate = r / "artifacts" / "benchmark" / run_id
+                if candidate.is_dir():
+                    target_dir = candidate
+                    break
+
+            # 2. If not found in artifacts, look in bundled assets
+            if target_dir is None:
+                for r in roots:
+                    c = r / "assets" / "benchmark"
+                    if not c.is_dir():
+                        continue
+                    if (c / "run.json").is_file():
+                        try:
+                            data = json.loads((c / "run.json").read_text(encoding="utf-8"))
+                            if data.get("run_id") == run_id or run_id == "bundled":
+                                target_dir = c
+                                break
+                        except Exception:
+                            pass
+                    candidate_sub = c / run_id
+                    if candidate_sub.is_dir():
+                        target_dir = candidate_sub
+                        break
+
+        if target_dir is None:
+            return None
+
+        target_file = (target_dir / filename).resolve()
+        try:
+            target_file.relative_to(target_dir.resolve())
+        except ValueError:
+            return None
+
+        if not target_file.is_file():
+            return None
+
+        content_types = {
+            ".png": "image/png",
+            ".svg": "image/svg+xml",
+            ".json": "application/json; charset=utf-8",
+        }
+        mime = content_types.get(target_file.suffix.lower(), "application/octet-stream")
+        return target_file.read_bytes(), mime
+
 
 
 def _effective_key(
@@ -1221,8 +1726,14 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/rules":
                 self._json(self.service.rules())
                 return
+            if path == "/api/governance":
+                self._json(self.service.governance_view())
+                return
             if path == "/api/plugins":
                 self._json(self.service.plugins())
+                return
+            if path == "/api/plugins/market":
+                self._json(self.service.plugin_market())
                 return
             if path == "/api/plugins/catalog":
                 self._json(self.service.plugin_catalog())
@@ -1259,6 +1770,35 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/doctor":
                 self._json(self.service.doctor())
+                return
+            if path == "/api/jev/status":
+                self._json(self.service.jev_status())
+                return
+            if path == "/api/jev/tracks":
+                self._json(self.service.jev_tracks())
+                return
+            if path == "/api/agents":
+                self._json(self.service.agents())
+                return
+            if path == "/api/benchmark/latest":
+                self._json(self.service.benchmark_latest())
+                return
+            if path.startswith("/api/benchmark/images/"):
+                rest = path[len("/api/benchmark/images/"):].lstrip("/")
+                run_id, _, filename = rest.partition("/")
+                res = self.service.benchmark_image(run_id, filename)
+                if res is None:
+                    self._json(
+                        {"status": "error", "error": "image not found", "code": "not_found", "safety": SAFETY_DECLARATION},
+                        status=404,
+                    )
+                    return
+                body, content_type = res
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
         except ApiError as error:
             # The declaration belongs on every response, refusals included. These
@@ -1322,6 +1862,32 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/import/manual":
                 self._json(self.service.add_manual_fill(self._read_json()))
+                return
+            if path == "/api/governance/profile":
+                self._json(self.service.generate_profile(self._read_json()))
+                return
+            if path.startswith("/api/governance/profile/"):
+                profile_id = urllib.parse.unquote(path[len("/api/governance/profile/"):])
+                self._json(self.service.edit_profile(profile_id, self._read_json()))
+                return
+            if path == "/api/governance/challengers":
+                self._json(self.service.create_chat_challenger(self._read_json()))
+                return
+            if path.startswith("/api/governance/strategies/") and path.endswith("/evaluate"):
+                strategy_id = urllib.parse.unquote(path[len("/api/governance/strategies/"):-len("/evaluate")])
+                self._json(self.service.evaluate_strategy(strategy_id, self._read_json()))
+                return
+            if path.startswith("/api/governance/strategies/") and path.endswith("/promote"):
+                strategy_id = urllib.parse.unquote(path[len("/api/governance/strategies/"):-len("/promote")])
+                self._json(self.service.request_promotion(strategy_id))
+                return
+            if path.startswith("/api/governance/promotions/") and path.endswith("/confirm"):
+                promotion_id = urllib.parse.unquote(path[len("/api/governance/promotions/"):-len("/confirm")])
+                self._json(self.service.confirm_promotion(promotion_id, self._read_json()))
+                return
+            if path.startswith("/api/governance/strategies/") and path.endswith("/rollback"):
+                strategy_id = urllib.parse.unquote(path[len("/api/governance/strategies/"):-len("/rollback")])
+                self._json(self.service.rollback_strategy(strategy_id, self._read_json()))
                 return
             if path == "/api/assistant/sessions":
                 self._json(self.service.create_session(self._read_json()))
@@ -1396,6 +1962,20 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     raise ApiError("config must be a dictionary")
                 self._json(self.service.plugin_configure(plugin_id, config))
                 return
+            if path.startswith("/api/plugins/market/"):
+                rest = path[len("/api/plugins/market/"):]
+                plugin_id, _, action = rest.partition("/")
+                plugin_id = urllib.parse.unquote(plugin_id)
+                payload = self._read_json()
+                if action in {"", "install", "configure"}:
+                    self._json(self.service.install_market_plugin(plugin_id, payload))
+                    return
+                if action == "update":
+                    self._json(self.service.update_market_plugin(plugin_id, payload))
+                    return
+                if action in {"enable", "disable"}:
+                    self._json(self.service.set_market_plugin_enabled(plugin_id, {"enabled": action == "enable"}))
+                    return
             if path == "/api/plugins/reload":
                 self._json(self.service.plugin_reload())
                 return
@@ -1434,6 +2014,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 # reachable only from the local single-user workbench.
                 rule_id = urllib.parse.unquote(path[len("/api/rules/"):-len("/promote")])
                 self._json(self.service.promote_rule(rule_id, self._read_json()))
+                return
+            if path == "/api/agents/apply":
+                self._json(self.service.agents_apply(self._read_json()))
+                return
+            if path == "/api/agents/disable":
+                self._json(self.service.agents_disable(self._read_json()))
+                return
+            if path == "/api/agents/restore":
+                self._json(self.service.agents_restore(self._read_json()))
                 return
         except ApiError as error:
             self._json(

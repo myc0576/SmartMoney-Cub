@@ -1,4 +1,5 @@
 import type {
+  AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
   SessionEvent, SessionSummary, UploadResult,
   PluginCatalogResponse, PluginDetailResponse,
@@ -134,6 +135,19 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ note }) },
     ),
   plugins: () => request<Record<string, any>>('/api/plugins'),
+  pluginMarket: () => request<Record<string, any>>('/api/plugins/market'),
+  installMarketPlugin: (pluginId: string, config: Record<string, unknown> = {}) =>
+    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/install', {
+      method: 'POST', body: JSON.stringify({ config }),
+    }),
+  updateMarketPlugin: (pluginId: string, confirm = false) =>
+    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/update', {
+      method: 'POST', body: JSON.stringify({ confirm }),
+    }),
+  setMarketPluginEnabled: (pluginId: string, enabled: boolean) =>
+    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/' + (enabled ? 'enable' : 'disable'), {
+      method: 'POST', body: JSON.stringify({ enabled }),
+    }),
   enablePlugin: (pluginId: string) =>
     request<{ status: string; plugin: any; safety: string }>('/api/plugins/enable', {
       method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
@@ -185,6 +199,15 @@ export const api = {
     request<Record<string, any>>('/api/settings/test', { method: 'POST', body: JSON.stringify(payload) }),
   audit: (limit = 50) => request<{ audits: AuditRecord[] }>('/api/audit?limit=' + limit),
   doctor: () => request<Record<string, any>>('/api/doctor'),
+  governance: () => request<Record<string, any>>('/api/governance'),
+  requestStrategyPromotion: (strategyId: string) =>
+    request<Record<string, any>>('/api/governance/strategies/' + encodeURIComponent(strategyId) + '/promote', {
+      method: 'POST', body: JSON.stringify({}),
+    }),
+  confirmStrategyPromotion: (promotionId: string, note: string) =>
+    request<Record<string, any>>('/api/governance/promotions/' + encodeURIComponent(promotionId) + '/confirm', {
+      method: 'POST', body: JSON.stringify({ note }),
+    }),
 
   upload: (payload: { file_name: string; media_type: string; content_base64: string; portfolio_id?: string }) =>
     request<UploadResult>('/api/import/upload', { method: 'POST', body: JSON.stringify(payload) }),
@@ -222,6 +245,26 @@ export const api = {
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/package',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
+  jevStatus: () => request<JevStatusResponse>('/api/jev/status'),
+  jevTracks: () => request<JevTracksResponse>('/api/jev/tracks'),
+  agents: () => request<AgentsResponse>('/api/agents'),
+  agentApply: (agentId: string, dryRun = false) =>
+    request<AgentActionResponse>('/api/agents/apply', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, dry_run: dryRun }),
+    }),
+  agentDisable: (agentId: string) =>
+    request<AgentActionResponse>('/api/agents/disable', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }),
+  agentRestore: (agentId: string) =>
+    request<AgentActionResponse>('/api/agents/restore', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }),
+  benchmarkLatest: () => request<BenchmarkLatestResponse>('/api/benchmark/latest'),
+
   cancelTurn: (id: string) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',

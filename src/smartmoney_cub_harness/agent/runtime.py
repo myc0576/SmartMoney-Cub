@@ -71,6 +71,7 @@ SYSTEM_PROMPT = """你是 smartmoney-cub 的复盘助手。
    不要试图还原真实账号、姓名或精确金额，也不要要求用户提供这些信息。
 4. 提出规则时只能提出 challenger 候选规则。永远不要声称规则已晋升为 champion；晋升必须由用户显式确认。
 5. 如果数据记录存在阻断问题（例如无法配对的卖出），先说明问题，再给出复盘结论。
+6. 当讨论中识别出明确的交易执行偏差或改进策略时，调用 propose_challenger_rule 工具将候选规则固化到规则库，触发 Challenger 评估卡片。
 
 回答风格：简洁、具体、可执行。先给结论，再给依据。引用数据时说明它来自本地台账。
 """
@@ -193,6 +194,21 @@ class ReviewAgentRuntime:
 
         resolved = self.resolve_session_provider(session)
         if resolved["provider_id"] == OFFLINE_PROVIDER_ID:
+            if resolved.get("fallback_from"):
+                reason = resolved.get("fallback_reason") or "offline_review_removed"
+                message = "当前没有可路由的模型，请先在设置中配置并选择模型。"
+                payload = {"text": message, "code": "model_required", "reason": reason}
+                self.store.append_event(session_id, kind="error", payload=payload)
+                self.store.update_session(session_id, status="error")
+                yield {
+                    "kind": "error",
+                    "error": message,
+                    "code": "model_required",
+                    "reason": reason,
+                    "action": "configure_model",
+                    "safety": SAFETY_DECLARATION,
+                }
+                return
             for event in self._offline_turn(session_id, session, context):
                 if cancel_event.is_set():
                     yield from self._cancelled_events(session_id)
@@ -433,10 +449,11 @@ class ReviewAgentRuntime:
     # ---- provider path -------------------------------------------------
 
     def resolve_session_provider(self, session: dict[str, Any]) -> dict[str, Any]:
-        """Pick the provider for a turn, falling back to the offline review.
+        """Pick the provider for a turn, falling back to a visible setup error.
 
         A provider that was removed, or one with no usable key, must not send an
-        unauthenticated request. In both cases the turn is answered locally.
+        unauthenticated request. In both cases the UI is asked to configure a
+        routable model instead of silently generating a local answer.
         """
         credentials = load_credentials(self.credentials_root)
         settings = load_settings(self.credentials_root)
@@ -456,7 +473,15 @@ class ReviewAgentRuntime:
             )
         except ProviderError:
             return offline("provider_not_available", provider_id)
-        if resolved["protocol"] != "offline" and not resolved.get("has_key"):
+        # Some local OpenAI-compatible gateways (including CommandCode's
+        # loopback proxy) intentionally authenticate at the gateway layer and
+        # do not require a per-provider API key. Only key-required providers
+        # should fall through to the setup error.
+        if (
+            resolved["protocol"] != "offline"
+            and resolved.get("requires_key", True)
+            and not resolved.get("has_key")
+        ):
             return offline("no_api_key_configured", provider_id)
         return resolved
 
@@ -666,6 +691,29 @@ class ReviewAgentRuntime:
                     "result": result,
                     "safety": SAFETY_DECLARATION,
                 }
+                if call["name"] == "propose_challenger_rule" and isinstance(result, dict) and result.get("status") == "ok":
+                    rule_info = result.get("rule") or {}
+                    rule_id = rule_info.get("rule_id") or ""
+                    artifact_payload = {
+                        "kind": "governance_proposal",
+                        "strategy": {
+                            "strategy_id": rule_id,
+                            "title": rule_info.get("title") or rule_id,
+                            "name": rule_info.get("title") or rule_id,
+                            "status": "challenger",
+                        },
+                        "evaluation": {
+                            "status": "passed" if not result.get("metrics", {}).get("blockers") else "needs_review",
+                            "blockers": result.get("metrics", {}).get("blockers", []),
+                        },
+                        "safety": SAFETY_DECLARATION,
+                    }
+                    self.store.append_event(session_id, kind="artifact", payload={"artifact": artifact_payload})
+                    yield {
+                        "kind": "artifact",
+                        "artifact": artifact_payload,
+                        "safety": SAFETY_DECLARATION,
+                    }
                 working.append(
                     {
                         "role": "tool",

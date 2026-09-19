@@ -25,13 +25,13 @@ advice system.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q
-python -m smartmoney_cub_harness.cli doctor
+./scripts/dev-env.sh test
+./scripts/dev-env.sh verify
 ```
 
 ## Mandatory Agent Loops
 
-Any AI agent operating in this repository MUST strictly follow these two skills (configured in `.codex/skills/`):
+Any AI agent operating in this repository MUST strictly follow the skills configured in `.codex/skills/`:
 
 1. **`goal-loop` (端到端目标闭环)**:
    - Before modifying code, freeze Goal, Non-Goals, and a clear Definition of Done (DoD) checklist.
@@ -41,6 +41,16 @@ Any AI agent operating in this repository MUST strictly follow these two skills 
 2. **`verification-loop` (确定性门禁循环)**:
    - Iron Law: **NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE**.
    - Before claiming task complete or creating a PR, you MUST execute:
-     `./scripts/verify.sh` (or `python -m smartmoney_cub_harness.cli doctor` + `python -m pytest tests/ -q`).
+     `./scripts/verify.sh` (or `./scripts/dev-env.sh verify`).
    - All tests must pass, doctor safety output must confirm `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
    - Never tamper with tests or assertions to fake passes.
+
+3. **`workflow-cost-optimizer` (研发成本与上下文优化闭环)**:
+   - **Scale Triage (S/M/L)**: Small tasks (≤ 3 files) execute in single-agent mode without spawning sub-agents; M/L tasks use phased wave execution with role whitelists.
+   - **Code Graph First**: Never blind-grep the whole repo. Query `./scripts/dev-env.sh graph query '<symbol>'` to locate exact files and AST call sites first.
+   - **Deterministic CLI**: Use `./scripts/dev-env.sh [test|build|verify|graph|rtk]` for predictable execution without hallucinating parameter trial-and-error.
+   - **Progressive Disclosure**: Consult `docs/INDEX.md` before reading documentation; only load top-matched design specs into context.
+   - **RTK Compression**: Prefix shell commands with `rtk` to strip 60%-90% terminal noise and save tokens.
+   - **State Externalization**: Maintain persistent discoveries and task state in `ledger.md` rather than repeating huge progress boards across conversation turns.
+
+@RTK.md

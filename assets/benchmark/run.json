@@ -1,0 +1,191 @@
+{
+  "schema": "smartmoney_cub_benchmark_run.v1",
+  "run_id": "run_20260919_145255_240",
+  "benchmark_id": "finance-jev-v1",
+  "run_date": "2026-09-19T22:52:55+08:00",
+  "mode": "all",
+  "tracks": [
+    "trading-review",
+    "financial-filings",
+    "industry-events",
+    "macro-policy"
+  ],
+  "sample_count": 240,
+  "git_sha": "b24cd6ff80763c521d30ffe603c2fcf54fa6c87e",
+  "systems": [
+    {
+      "system_id": "deterministic_baseline",
+      "status": "completed",
+      "model_requested": "rule_based",
+      "model_resolved": "deterministic_rules_v1",
+      "cost_usd": 0.0,
+      "latency_p50_ms": 0.0,
+      "latency_p95_ms": 0.001,
+      "latency_p99_ms": 0.005,
+      "metrics": {
+        "schema_valid_rate": 1.0,
+        "accuracy": 0.8426,
+        "macro_f1": 0.7885,
+        "recall": 0.8366,
+        "fpr": 0.003,
+        "brier": 0.1574,
+        "ece": 0.1574,
+        "coverage": 1.0,
+        "abstention_rate": 0.0,
+        "selective_risk": 0.1574,
+        "stability": 1.0,
+        "p50_latency_ms": 0.0,
+        "p95_latency_ms": 0.001,
+        "p99_latency_ms": 0.005,
+        "cost_per_case": 0.0,
+        "retry_rate": 0.0,
+        "confidence_interval_95": [
+          0.8197,
+          0.8631
+        ],
+        "mcnemar_against_baseline": {
+          "statistic": 0.0,
+          "p_value": 1.0,
+          "b": 0,
+          "c": 0
+        }
+      },
+      "track_metrics": {
+        "trading-review": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.7583,
+          "macro_f1": 0.6926,
+          "recall": 0.7413,
+          "fpr": 0.0164,
+          "brier": 0.2417,
+          "ece": 0.2417,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.2417,
+          "stability": 1.0,
+          "p50_latency_ms": 0.001,
+          "p95_latency_ms": 0.001,
+          "p99_latency_ms": 0.005,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.7004,
+            0.8081
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        },
+        "financial-filings": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.84,
+          "macro_f1": 0.7146,
+          "recall": 0.7651,
+          "fpr": 0.0122,
+          "brier": 0.16,
+          "ece": 0.16,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.16,
+          "stability": 1.0,
+          "p50_latency_ms": 0.001,
+          "p95_latency_ms": 0.002,
+          "p99_latency_ms": 0.005,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.7943,
+            0.8771
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        },
+        "industry-events": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.8867,
+          "macro_f1": 0.8854,
+          "recall": 0.9275,
+          "fpr": 0.0058,
+          "brier": 0.1133,
+          "ece": 0.1133,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.1133,
+          "stability": 1.0,
+          "p50_latency_ms": 0.0,
+          "p95_latency_ms": 0.001,
+          "p99_latency_ms": 0.031,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.8458,
+            0.9178
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        },
+        "macro-policy": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.875,
+          "macro_f1": 0.8089,
+          "recall": 0.9407,
+          "fpr": 0.0096,
+          "brier": 0.125,
+          "ece": 0.125,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.125,
+          "stability": 1.0,
+          "p50_latency_ms": 0.0,
+          "p95_latency_ms": 0.001,
+          "p99_latency_ms": 0.002,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.8272,
+            0.911
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        }
+      }
+    },
+    {
+      "system_id": "typesafe_direct",
+      "status": "not_run",
+      "reason": "missing_credential",
+      "model_requested": "typesafe-direct-latest",
+      "model_resolved": null,
+      "cost_usd": 0.0,
+      "latency_p50_ms": 0.0,
+      "metrics": null
+    },
+    {
+      "system_id": "openrouter_jev",
+      "status": "not_run",
+      "reason": "missing_credential",
+      "model_requested": "~typesafe/jev-latest",
+      "model_resolved": null,
+      "cost_usd": 0.0,
+      "latency_p50_ms": 0.0,
+      "metrics": null
+    }
+  ],
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE",
+  "run_hash": "80f898f4a49fb8a470c5717a79aabbf1a1431b801310850cbc1056804a66e88a"
+}

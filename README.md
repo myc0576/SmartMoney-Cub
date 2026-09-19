@@ -16,6 +16,31 @@
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+
+### Jev Reasoning Layer & Four-Track Financial Benchmark
+
+SmartMoney-Cub supports Jev ([TypeSafe](https://typesafe.ai/) | [OpenRouter](https://openrouter.ai/typesafe/jev)) as an optional typed-judgment layer with two pluggable backends: TypeSafe direct and OpenRouter. Jev evaluates only structured `noul`, `choice`, and `score` judgments, while all arithmetic, date comparisons, and strict temporal boundary validation (`available_at <= decision_time`) remain enforced in deterministic Python code.
+
+The repository ships `finance-jev-v1`, a frozen offline evaluation suite containing 240 cases across four tracks (`trading-review`, `financial-filings`, `industry-events`, `macro-policy`). In the published reference run ([assets/benchmark/run.json](assets/benchmark/run.json)), the deterministic rule baseline achieves **84.26%** overall accuracy (95% Wilson confidence interval [81.97%, 86.31%]) and a macro F1 of **0.7885** across all 240 cases. The Jev systems (`typesafe_direct` and `openrouter_jev`) are truthfully reported as `not_run` due to unconfigured credentials in published artifacts, and report `live_evaluation_not_wired` when credentials are set without a wired live runner; Jev was not evaluated in the published reference run.
+
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+
+### 30-Second Quickstart
+
+```bash
+# 1. Install harness and dev dependencies
+pip install -e ".[dev]"
+
+# 2. Verify environment and strict read-only safety boundary
+smcub doctor
+
+# 3. Shortest review loop (capture offline toy run & replay)
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+```
+
+
 It has **no embedded LLM** in its core, **no broker connection**, and
 **no automatic trading**: the control plane runs entirely offline. The review assistant
 is a separate, opt-in surface that calls the provider you configure and sends only

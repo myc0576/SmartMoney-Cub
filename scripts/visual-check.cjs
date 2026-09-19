@@ -34,6 +34,8 @@ const VIEWS = [
   /* Labels below come from the navigation in gui/src/App.tsx; a label here that
    * does not match that file makes the view silently un-clickable. */
   ['成交台账', 'trades'],
+  ['Jev 引擎', 'jev'],
+  ['基准评测', 'benchmark'],
 ];
 
 const NOISE = /favicon|net::ERR_|Failed to load resource/i;

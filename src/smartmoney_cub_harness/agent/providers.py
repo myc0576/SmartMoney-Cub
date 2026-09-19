@@ -29,6 +29,8 @@ from smartmoney_cub_harness.agent.provider_errors import (
 
 ALPHATECH_PROVIDER_ID = "alphatech"
 ALPHATECH_BASE_URL = "https://alphatech.net.cn/v1"
+COMMANDCODE_PROVIDER_ID = "commandcode-api"
+COMMANDCODE_BASE_URL = "http://127.0.0.1:10100/v1"
 OFFLINE_PROVIDER_ID = "offline"
 
 REQUEST_TIMEOUT_SECONDS = 120
@@ -65,7 +67,7 @@ PROVIDER_PROTOCOLS: dict[str, str] = {
 # the raw enum ("xhigh") makes the selector unreadable, and shipping a bare name
 # with no explanation leaves the user guessing what the extra effort costs, so
 # every level carries both a label and a one-line description.
-REASONING_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high", "xhigh", "max")
+REASONING_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high", "xhigh", "max", "ultra")
 
 EFFORT_DETAILS: dict[str, dict[str, str]] = {
     "off": {"label": "不思考", "description": "直接作答，最快也最省。"},
@@ -75,6 +77,7 @@ EFFORT_DETAILS: dict[str, dict[str, str]] = {
     "high": {"label": "高", "description": "深入推理，适合多步归因。"},
     "xhigh": {"label": "很高", "description": "更长的推理链，明显更慢。"},
     "max": {"label": "最大", "description": "不计成本的推理，最慢也最容易触发限流。"},
+    "ultra": {"label": "极限", "description": "代理路由允许的最高推理强度，速度最慢。"},
 }
 
 DEEPSEEK_EFFORTS = ["off", "low", "high", "max"]
@@ -148,6 +151,16 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         # that could never answer, which is exactly the "not the latest" symptom
         # this list is here to prevent.
         "models": [
+            _model(
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                OPENAI_EFFORTS,
+                "medium",
+                context_window=922000,
+                max_tokens=32768,
+                description="快速敏捷的复盘主力模型，支持工具调用与多步反思。",
+                verified=True,
+            ),
             _model(
                 "deepseek-reasoner",
                 "DeepSeek Reasoner",
@@ -236,6 +249,59 @@ PROVIDER_CATALOG: dict[str, dict[str, Any]] = {
         "removable": True,
         "description": "智谱 GLM 接口。",
         "models": [_model("glm-4.6", "GLM-4.6"), _model("glm-4.5-air", "GLM-4.5 Air")],
+    },
+    COMMANDCODE_PROVIDER_ID: {
+        "provider_id": COMMANDCODE_PROVIDER_ID,
+        "label": "CommandCode API",
+        "base_url": COMMANDCODE_BASE_URL,
+        "protocol": "openai-chat",
+        "env_key": "",
+        "requires_key": False,
+        "installable": True,
+        "removable": True,
+        "description": "本机 CommandCode OpenAI 兼容网关。支持 GPT-5.6 Luna 与 DeepSeek V4.1 Flash。",
+        "models": [
+            _model(
+                "gpt-5.6-luna",
+                "GPT-5.6 Luna",
+                OPENAI_EFFORTS,
+                "medium",
+                context_window=922000,
+                max_tokens=32768,
+                description="CommandCode 路由的 GPT-5.6 Luna；敏捷快速，支持多步复盘。",
+                verified=True,
+            ),
+            _model(
+                "commandcode/deepseek/deepseek-v4.1-flash",
+                "DeepSeek V4.1 Flash",
+                ["off", "low", "medium", "high", "xhigh", "max", "ultra"],
+                "medium",
+                context_window=1000000,
+                max_tokens=32768,
+                description="CommandCode 路由的 DeepSeek V4.1 Flash；支持长上下文与流式输出。",
+                verified=True,
+            ),
+            _model(
+                "gpt-6-astra",
+                "GPT-6 Astra",
+                OPENAI_EFFORTS,
+                "medium",
+                context_window=872000,
+                max_tokens=32768,
+                description="CommandCode 路由的高推理旗舰模型。",
+                verified=True,
+            ),
+            _model(
+                "gpt-5.6-sol",
+                "GPT-5.6 Sol",
+                OPENAI_EFFORTS,
+                "low",
+                context_window=922000,
+                max_tokens=32768,
+                description="CommandCode 路由的通用工作马模型。",
+                verified=True,
+            ),
+        ],
     },
     OFFLINE_PROVIDER_ID: {
         "provider_id": OFFLINE_PROVIDER_ID,
@@ -800,7 +866,7 @@ def build_request_body(
 ) -> bytes:
     provider = provider or {"protocol": "openai-chat"}
     body: dict[str, Any] = {
-        "model": model,
+        "model": canonical_model_id(model, provider),
         "messages": messages,
         "max_tokens": MAX_TOKENS,
         "stream": stream,
@@ -810,6 +876,39 @@ def build_request_body(
         body["tool_choice"] = "auto"
     body.update(effort_parameter(model, effort, provider))
     return json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+
+def canonical_model_id(model: str, provider: dict[str, Any] | None = None) -> str:
+    """Normalize the shorthand used in settings to the gateway model id.
+
+    The CommandCode catalog exposes ``commandcode/deepseek/deepseek-v4.1-flash``
+    through its OpenAI-compatible proxy. Users often paste the shorter
+    ``deepseekv4.1flash`` or ``deepseek-v4.1-flash`` spelling; sending either
+    verbatim produces a gateway 404. The alias is scoped to the local
+    CommandCode route so another provider's model with the same display name is
+    never rewritten.
+    """
+    raw = str(model or "").strip()
+    if not raw:
+        return raw
+    provider = provider or {}
+    is_commandcode = (
+        provider.get("provider_id") == COMMANDCODE_PROVIDER_ID
+        or provider.get("provider_id") == "commandcode"
+        or str(provider.get("base_url") or "").rstrip("/") == COMMANDCODE_BASE_URL
+    )
+    if not is_commandcode:
+        return raw
+    aliases = {
+        "deepseekv4.1flash": "commandcode/deepseek/deepseek-v4.1-flash",
+        "deepseek-v4.1-flash": "commandcode/deepseek/deepseek-v4.1-flash",
+        "deepseek/deepseek-v4.1-flash": "commandcode/deepseek/deepseek-v4.1-flash",
+        "/deepseekv4.1flash": "commandcode/deepseek/deepseek-v4.1-flash",
+        "gpt5.6luna": "gpt-5.6-luna",
+        "gpt-5.6luna": "gpt-5.6-luna",
+        "gpt56luna": "gpt-5.6-luna",
+    }
+    return aliases.get(raw.lower(), raw)
 
 
 def _open(
