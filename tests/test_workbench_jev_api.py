@@ -157,3 +157,104 @@ def test_benchmark_latest_and_images_endpoints(http_server):
     status, err_body = _get(f"{base}/api/benchmark/images/latest/nonexistent.png")
     assert status == 404
     assert err_body["safety"] == SAFETY_DECLARATION
+
+
+def test_benchmark_latest_bundled_run_discovery(tmp_path: Path):
+    root = tmp_path / "app_root"
+    assets_dir = root / "assets" / "benchmark"
+    assets_dir.mkdir(parents=True)
+    sample_run = {
+        "schema": "smartmoney_cub_benchmark_run.v1",
+        "run_id": "run_bundled_test",
+        "benchmark_id": "finance-jev-v1",
+        "sample_count": 240,
+        "tracks": ["trading-review"],
+        "systems": [{"system_id": "deterministic_baseline", "status": "completed"}],
+        "safety": SAFETY_DECLARATION,
+    }
+    (assets_dir / "run.json").write_text(json.dumps(sample_run), encoding="utf-8")
+    (assets_dir / "benchmark-leaderboard.png").write_bytes(b"\x89PNG\r\n\x1a\nfake-image-bytes")
+
+    service = _service(root)
+    try:
+        latest = service.benchmark_latest()
+        assert latest["run_id"] == "run_bundled_test"
+        assert latest["source"] == "bundled"
+        assert latest["safety"] == SAFETY_DECLARATION
+        assert len(latest["images"]) == 1
+        assert latest["images"][0]["name"] == "benchmark-leaderboard.png"
+
+        # Verify image serving from bundled directory
+        res = service.benchmark_image("run_bundled_test", "benchmark-leaderboard.png")
+        assert res is not None
+        img_bytes, mime = res
+        assert img_bytes == b"\x89PNG\r\n\x1a\nfake-image-bytes"
+        assert mime == "image/png"
+
+        # Also serves via 'latest' run_id
+        res_latest = service.benchmark_image("latest", "benchmark-leaderboard.png")
+        assert res_latest is not None
+        img_bytes_latest, _ = res_latest
+        assert img_bytes_latest == b"\x89PNG\r\n\x1a\nfake-image-bytes"
+    finally:
+        service.close()
+
+
+def test_benchmark_latest_local_artifacts_priority(tmp_path: Path):
+    root = tmp_path / "app_root_local"
+    # Bundled run
+    assets_dir = root / "assets" / "benchmark"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "run.json").write_text(
+        json.dumps({"run_id": "run_bundled", "systems": [], "safety": SAFETY_DECLARATION}),
+        encoding="utf-8",
+    )
+    # Local run
+    local_run_dir = root / "artifacts" / "benchmark" / "run_local_001"
+    local_run_dir.mkdir(parents=True)
+    (local_run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run_local_001", "systems": [], "safety": SAFETY_DECLARATION}),
+        encoding="utf-8",
+    )
+    (local_run_dir / "test.png").write_bytes(b"local-image-data")
+
+    service = _service(root)
+    try:
+        latest = service.benchmark_latest()
+        assert latest["run_id"] == "run_local_001"
+        assert latest["source"] == "local"
+
+        res = service.benchmark_image("run_local_001", "test.png")
+        assert res is not None
+        img_bytes, mime = res
+        assert img_bytes == b"local-image-data"
+        assert mime == "image/png"
+    finally:
+        service.close()
+
+
+def test_benchmark_image_path_traversal_defence(tmp_path: Path):
+    root = tmp_path / "app_traversal"
+    assets_dir = root / "assets" / "benchmark"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "run.json").write_text(
+        json.dumps({"run_id": "run_safe", "safety": SAFETY_DECLARATION}),
+        encoding="utf-8",
+    )
+    (assets_dir / "valid.png").write_bytes(b"png-data")
+    secret_file = root / "secret.txt"
+    secret_file.write_text("sensitive-content", encoding="utf-8")
+
+    service = _service(root)
+    try:
+        # Invalid run_id with dot-dot
+        assert service.benchmark_image("..", "valid.png") is None
+        assert service.benchmark_image("../etc", "valid.png") is None
+        # Invalid filename with dot-dot
+        assert service.benchmark_image("run_safe", "../secret.txt") is None
+        assert service.benchmark_image("run_safe", "sub/../../secret.txt") is None
+        # Illegal characters
+        assert service.benchmark_image("run_safe;rm", "valid.png") is None
+        assert service.benchmark_image("run_safe", "valid*.png") is None
+    finally:
+        service.close()

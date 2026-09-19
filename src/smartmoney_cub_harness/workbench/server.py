@@ -1317,33 +1317,63 @@ class WorkbenchService:
             raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
 
     def _benchmark_dir(self) -> Path | None:
-        candidates = [
-            self.root / "artifacts" / "benchmark",
-            Path("artifacts/benchmark"),
-            Path.cwd() / "artifacts" / "benchmark",
-        ]
-        for c in candidates:
-            if c.is_dir():
-                return c
+        resolved = self._resolve_benchmark_run()
+        if resolved:
+            return resolved[0]
+        return None
+
+    def _resolve_benchmark_run(self) -> tuple[Path, str, dict[str, Any]] | None:
+        """Resolve active benchmark run directory, source ('local' or 'bundled'), and run payload."""
+        roots: list[Path] = []
+        for r in (self.root, self.root.parent):
+            if r not in roots:
+                roots.append(r)
+        cwd = Path.cwd()
+        if cwd not in roots:
+            roots.append(cwd)
+
+        for r in roots:
+            # 1. Local artifacts under this root
+            art_dir = r / "artifacts" / "benchmark"
+            if art_dir.is_dir():
+                run_dirs = [d for d in art_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+                if run_dirs:
+                    run_dirs.sort(key=lambda d: d.name, reverse=True)
+                    latest_dir = run_dirs[0]
+                    try:
+                        run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
+                        return latest_dir, "local", run_data
+                    except Exception:
+                        pass
+
+            # 2. Bundled assets under this root
+            ast_dir = r / "assets" / "benchmark"
+            if ast_dir.is_dir():
+                if (ast_dir / "run.json").is_file():
+                    try:
+                        run_data = json.loads((ast_dir / "run.json").read_text(encoding="utf-8"))
+                        return ast_dir, "bundled", run_data
+                    except Exception:
+                        pass
+                run_dirs = [d for d in ast_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+                if run_dirs:
+                    run_dirs.sort(key=lambda d: d.name, reverse=True)
+                    latest_dir = run_dirs[0]
+                    try:
+                        run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
+                        return latest_dir, "bundled", run_data
+                    except Exception:
+                        pass
+
         return None
 
     def benchmark_latest(self) -> dict[str, Any]:
         """Return the latest benchmark run details and image locations."""
-        bench_dir = self._benchmark_dir()
-        if not bench_dir:
+        resolved = self._resolve_benchmark_run()
+        if not resolved:
             return {"run_id": None, "safety": SAFETY_DECLARATION}
 
-        run_dirs = [d for d in bench_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
-        if not run_dirs:
-            return {"run_id": None, "safety": SAFETY_DECLARATION}
-
-        run_dirs.sort(key=lambda d: d.name, reverse=True)
-        latest_dir = run_dirs[0]
-
-        try:
-            run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
-        except Exception:
-            return {"run_id": None, "safety": SAFETY_DECLARATION}
+        latest_dir, source, run_data = resolved
 
         run_id = run_data.get("run_id") or latest_dir.name
         generated_at = run_data.get("generated_at") or run_data.get("run_date")
@@ -1360,6 +1390,7 @@ class WorkbenchService:
 
         return {
             "run_id": run_id,
+            "source": source,
             "generated_at": generated_at,
             "run_date": run_data.get("run_date"),
             "benchmark_id": run_data.get("benchmark_id", "finance-jev-v1"),
@@ -1382,22 +1413,58 @@ class WorkbenchService:
         import re  # noqa: PLC0415
         if not re.match(r"^[a-zA-Z0-9_.-]+$", filename) or ".." in filename:
             return None
-        bench_dir = self._benchmark_dir()
-        if not bench_dir:
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", run_id) or ".." in run_id:
             return None
 
+        target_dir: Path | None = None
         if run_id == "latest":
-            run_dirs = [d for d in bench_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
-            if not run_dirs:
-                return None
-            run_dirs.sort(key=lambda d: d.name, reverse=True)
-            target_dir = run_dirs[0]
+            resolved = self._resolve_benchmark_run()
+            if resolved:
+                target_dir = resolved[0]
         else:
-            if not re.match(r"^[a-zA-Z0-9_.-]+$", run_id) or ".." in run_id:
-                return None
-            target_dir = bench_dir / run_id
+            roots: list[Path] = []
+            for r in (self.root, self.root.parent):
+                if r not in roots:
+                    roots.append(r)
+            cwd = Path.cwd()
+            if cwd not in roots:
+                roots.append(cwd)
 
-        target_file = target_dir / filename
+            # 1. Look in local artifacts for matching run_id directory
+            for r in roots:
+                candidate = r / "artifacts" / "benchmark" / run_id
+                if candidate.is_dir():
+                    target_dir = candidate
+                    break
+
+            # 2. If not found in artifacts, look in bundled assets
+            if target_dir is None:
+                for r in roots:
+                    c = r / "assets" / "benchmark"
+                    if not c.is_dir():
+                        continue
+                    if (c / "run.json").is_file():
+                        try:
+                            data = json.loads((c / "run.json").read_text(encoding="utf-8"))
+                            if data.get("run_id") == run_id or run_id == "bundled":
+                                target_dir = c
+                                break
+                        except Exception:
+                            pass
+                    candidate_sub = c / run_id
+                    if candidate_sub.is_dir():
+                        target_dir = candidate_sub
+                        break
+
+        if target_dir is None:
+            return None
+
+        target_file = (target_dir / filename).resolve()
+        try:
+            target_file.relative_to(target_dir.resolve())
+        except ValueError:
+            return None
+
         if not target_file.is_file():
             return None
 

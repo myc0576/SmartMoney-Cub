@@ -889,6 +889,7 @@ export interface BenchmarkImageItem {
 
 export interface BenchmarkLatestResponse extends SafetyEnvelope {
   run_id: string | null;
+  source?: 'local' | 'bundled';
   generated_at?: string;
   run_date?: string;
   benchmark_id?: string;

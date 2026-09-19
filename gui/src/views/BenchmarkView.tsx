@@ -139,9 +139,14 @@ export function BenchmarkView() {
       {/* Top Banner with Safety Declaration */}
       <div className="banner" style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 'var(--radius)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 13 }}>Finance-Jev-v1 评测基准与排行榜</strong>
-            <span className="muted" style={{ marginLeft: 12, fontSize: 11 }}>240 例离线玩具案例 · 4 大赛道 · 确定性指标与评分可视化</span>
+            {data.source && (
+              <Badge kind={data.source === 'local' ? 'ok' : 'warn'}>
+                {data.source === 'local' ? '本地生成运行 (Local)' : '预置发布运行 (Bundled)'}
+              </Badge>
+            )}
+            <span className="muted" style={{ marginLeft: 4, fontSize: 11 }}>240 例离线玩具案例 · 4 大赛道 · 确定性指标与评分可视化</span>
           </div>
           <Badge kind="ok">{data.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'}</Badge>
         </div>
@@ -152,7 +157,10 @@ export function BenchmarkView() {
         <Kpi
           label="评测运行 ID (Run ID)"
           value={<span style={{ fontSize: 12 }}>{data.run_id}</span>}
-          note={'生成时间: ' + (data.run_date ? new Date(data.run_date).toLocaleString('zh-CN') : '—')}
+          note={
+            (data.source === 'bundled' ? '来源: 仓库预置发布产物' : '来源: 本地评测运行') +
+            (data.run_date ? ' · ' + new Date(data.run_date).toLocaleString('zh-CN') : '')
+          }
         />
         <Kpi
           label="案例总数 (Cases)"
