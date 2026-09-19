@@ -200,63 +200,45 @@ def run_benchmark(
         if sys_id in ("typesafe_direct", "typesafe-direct"):
             # Check credential
             api_key = os.getenv("TYPESAFE_API_KEY")
-            if not jev_available or not api_key:
-                evaluated_systems.append(
-                    {
-                        "system_id": "typesafe_direct",
-                        "status": "not_run",
-                        "reason": "missing_credential" if not api_key else "jev_module_unavailable",
-                        "model_requested": "typesafe-direct-latest",
-                        "model_resolved": None,
-                        "cost_usd": 0.0,
-                        "latency_p50_ms": 0.0,
-                        "metrics": None,
-                    }
-                )
+            if not jev_available:
+                reason = "jev_module_unavailable"
+            elif not api_key:
+                reason = "missing_credential"
             else:
-                # If credential was present, we would evaluate through JevBackend
-                # For now in this environment no credential is present
-                evaluated_systems.append(
-                    {
-                        "system_id": "typesafe_direct",
-                        "status": "not_run",
-                        "reason": "missing_credential",
-                        "model_requested": "typesafe-direct-latest",
-                        "model_resolved": None,
-                        "cost_usd": 0.0,
-                        "latency_p50_ms": 0.0,
-                        "metrics": None,
-                    }
-                )
+                reason = "live_evaluation_not_wired"
+            evaluated_systems.append(
+                {
+                    "system_id": "typesafe_direct",
+                    "status": "not_run",
+                    "reason": reason,
+                    "model_requested": "typesafe-direct-latest",
+                    "model_resolved": None,
+                    "cost_usd": 0.0,
+                    "latency_p50_ms": 0.0,
+                    "metrics": None,
+                }
+            )
 
         elif sys_id in ("openrouter_jev", "openrouter-jev"):
             api_key = os.getenv("OPENROUTER_API_KEY")
-            if not jev_available or not api_key:
-                evaluated_systems.append(
-                    {
-                        "system_id": "openrouter_jev",
-                        "status": "not_run",
-                        "reason": "missing_credential" if not api_key else "jev_module_unavailable",
-                        "model_requested": "~typesafe/jev-latest",
-                        "model_resolved": None,
-                        "cost_usd": 0.0,
-                        "latency_p50_ms": 0.0,
-                        "metrics": None,
-                    }
-                )
+            if not jev_available:
+                reason = "jev_module_unavailable"
+            elif not api_key:
+                reason = "missing_credential"
             else:
-                evaluated_systems.append(
-                    {
-                        "system_id": "openrouter_jev",
-                        "status": "not_run",
-                        "reason": "missing_credential",
-                        "model_requested": "~typesafe/jev-latest",
-                        "model_resolved": None,
-                        "cost_usd": 0.0,
-                        "latency_p50_ms": 0.0,
-                        "metrics": None,
-                    }
-                )
+                reason = "live_evaluation_not_wired"
+            evaluated_systems.append(
+                {
+                    "system_id": "openrouter_jev",
+                    "status": "not_run",
+                    "reason": reason,
+                    "model_requested": "~typesafe/jev-latest",
+                    "model_resolved": None,
+                    "cost_usd": 0.0,
+                    "latency_p50_ms": 0.0,
+                    "metrics": None,
+                }
+            )
 
     run_payload: dict[str, Any] = {
         "schema": BENCHMARK_RUN_SCHEMA,

@@ -103,9 +103,32 @@ def test_jev_systems_marked_not_run_without_credentials(tmp_path: Path, monkeypa
     systems_map = {s["system_id"]: s for s in res["systems"]}
     assert systems_map["deterministic_baseline"]["status"] == "completed"
     assert systems_map["typesafe_direct"]["status"] == "not_run"
+    assert systems_map["typesafe_direct"]["reason"] == "missing_credential"
     assert systems_map["typesafe_direct"]["metrics"] is None
     assert systems_map["openrouter_jev"]["status"] == "not_run"
+    assert systems_map["openrouter_jev"]["reason"] == "missing_credential"
     assert systems_map["openrouter_jev"]["metrics"] is None
+
+
+def test_jev_systems_truthful_reason_when_credential_present(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-typesafe-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+
+    res = run_benchmark(
+        tracks=["macro-policy"],
+        systems=["deterministic_baseline", "typesafe_direct", "openrouter_jev"],
+        mode="dev",
+        out_dir=tmp_path,
+    )
+
+    systems_map = {s["system_id"]: s for s in res["systems"]}
+    assert systems_map["typesafe_direct"]["status"] == "not_run"
+    assert systems_map["typesafe_direct"]["reason"] != "missing_credential"
+    assert systems_map["typesafe_direct"]["reason"] == "live_evaluation_not_wired"
+
+    assert systems_map["openrouter_jev"]["status"] == "not_run"
+    assert systems_map["openrouter_jev"]["reason"] != "missing_credential"
+    assert systems_map["openrouter_jev"]["reason"] == "live_evaluation_not_wired"
 
 
 def test_verify_run_detects_tampered_hash(tmp_path: Path):
