@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "run_dir",
         nargs="?",
-        default="artifacts/benchmark/run_20260919_123235_240",
+        default="artifacts/benchmark/run_20260919_133157_240",
         help="Path to the valid benchmark run directory",
     )
     parser.add_argument(

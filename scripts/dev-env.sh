@@ -112,7 +112,7 @@ case "$cmd" in
     sub="${2:-publish}"
     case "$sub" in
       publish)
-        run_arg="${3:-artifacts/benchmark/run_20260919_123235_240}"
+        run_arg="${3:-artifacts/benchmark/run_20260919_133157_240}"
         echo "[dev-env] 发布评测跑分图像到 tracked assets/benchmark/ ..."
         python3 scripts/publish_benchmark_images.py "$run_arg"
         ;;
