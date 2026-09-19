@@ -368,11 +368,7 @@ def build_questions(
                 prompt="Assess the expected horizon of impact.",
                 choices=("immediate", "near", "medium", "structural"),
             ),
-            JevQuestion(
-                question_id="available_at_decision_time",
-                kind="noul",
-                prompt="Was this macro policy data available at decision time?",
-            ),
+
         )
 
     raise ValueError(f"unhandled track '{track}'")

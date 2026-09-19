@@ -121,3 +121,42 @@ def test_ground_truth_labels_are_independent_from_baseline_predictions():
         f"Circularity defect detected: mismatch ratio {mismatch_ratio:.2%} is too low. "
         "Ground truth labels must be independently authored, not identical to baseline."
     )
+
+def test_no_gold_label_leakage_in_case_states():
+    """Ensure zero answer leakage from labels into state across all benchmark cases."""
+    from smartmoney_cub_harness.benchmark.cases import TRACK_IDS, load_track
+    import re
+
+    total_checked = 0
+    leaked = []
+
+    for track_id in TRACK_IDS:
+        cases = load_track(track_id)
+        for c in cases:
+            for q_id, gold_val in c.labels.items():
+                total_checked += 1
+                if q_id in c.state:
+                    leaked.append(f"{c.case_id}: label key {q_id} present in state")
+                    continue
+                if isinstance(gold_val, str) and gold_val in c.state:
+                    leaked.append(f"{c.case_id}: label value {gold_val} present as key in state")
+                    continue
+                for sk, sv in c.state.items():
+                    if sk in ("notes", "filing_disclosure_excerpt", "event_wire_dispatch", "statement_excerpt"):
+                        continue
+                    if type(sv) is type(gold_val) and sv == gold_val:
+                        leaked.append(f"{c.case_id}: label value {gold_val} matches state[{sk}]")
+                        break
+                if isinstance(gold_val, str):
+                    narrative = str(
+                        c.state.get("notes")
+                        or c.state.get("filing_disclosure_excerpt")
+                        or c.state.get("event_wire_dispatch")
+                        or c.state.get("statement_excerpt")
+                        or ""
+                    )
+                    if re.search(r"\b" + re.escape(gold_val) + r"\b", narrative, re.IGNORECASE):
+                        leaked.append(f"{c.case_id}: string label {gold_val} leaked into narrative")
+
+    assert total_checked == 1020
+    assert len(leaked) == 0, f"Found {len(leaked)} leaked labels across benchmark cases: {leaked[:5]}"

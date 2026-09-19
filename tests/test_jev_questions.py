@@ -134,13 +134,13 @@ def test_industry_events_track_questions():
 
 def test_macro_policy_track_questions():
     questions = build_questions(TRACK_MACRO_POLICY)
-    assert len(questions) == 4
+    assert len(questions) == 3
 
     by_id = {q.question_id: q for q in questions}
     assert "policy_stance" in by_id
     assert "macro_direction" in by_id
     assert "impact_horizon" in by_id
-    assert "available_at_decision_time" in by_id
+    assert "available_at_decision_time" not in by_id
 
     ps = by_id["policy_stance"]
     assert set(ps.choices) == {"hawkish", "dovish", "neutral", "mixed"}
@@ -150,9 +150,6 @@ def test_macro_policy_track_questions():
 
     ih = by_id["impact_horizon"]
     assert set(ih.choices) == {"immediate", "near", "medium", "structural"}
-
-    avail_q = by_id["available_at_decision_time"]
-    assert avail_q.kind == "noul"
 
 
 def test_deterministic_temporality_check_passes_when_valid():
