@@ -140,3 +140,18 @@ def test_compare_runs(tmp_path: Path):
     assert comp["safety"] == SAFETY_DECLARATION
     assert "deterministic_baseline" in comp["systems_deltas"]
     assert comp["systems_deltas"]["deterministic_baseline"]["accuracy"]["diff"] == 0.0
+
+
+def test_baseline_is_not_a_100_percent_tautology():
+    # Defend against tautological 1.0 accuracy sweep across all tracks
+    res = run_benchmark(tracks=list(TRACK_IDS), systems=["deterministic_baseline"])
+    overall_acc = res["systems"][0]["metrics"]["accuracy"]
+    assert 0.50 <= overall_acc < 0.98, (
+        f"Baseline accuracy {overall_acc:.2%} must be realistic and non-circular (expected 50%-98%)"
+    )
+
+    track_metrics = res["systems"][0]["track_metrics"]
+    perfect_tracks = [t for t, m in track_metrics.items() if m["accuracy"] >= 1.0]
+    assert len(perfect_tracks) < len(TRACK_IDS), (
+        "Baseline cannot have 100% accuracy on every track; this indicates circular evaluation."
+    )

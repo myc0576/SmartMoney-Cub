@@ -97,3 +97,27 @@ def test_safety_declaration_mismatch_rejected():
             labels={},
             safety="UNSAFE_DECLARATION",
         )
+
+
+def test_ground_truth_labels_are_independent_from_baseline_predictions():
+    from smartmoney_cub_harness.benchmark.baseline import baseline_predictions
+
+    # Defend against regression to circularity:
+    # Ensure that ground truth labels across the benchmark are NOT identical to baseline predictions
+    total_checked = 0
+    mismatched_cases = 0
+
+    for track in TRACK_IDS:
+        cases = load_track(track)
+        for c in cases:
+            pred = baseline_predictions(c)
+            total_checked += 1
+            if pred != c.labels:
+                mismatched_cases += 1
+
+    # At least 25% of cases should have baseline predictions diverge from gold ground truth
+    mismatch_ratio = mismatched_cases / total_checked
+    assert mismatch_ratio >= 0.25, (
+        f"Circularity defect detected: mismatch ratio {mismatch_ratio:.2%} is too low. "
+        "Ground truth labels must be independently authored, not identical to baseline."
+    )
