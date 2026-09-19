@@ -38,6 +38,59 @@ OTHER_KNOWN_AGENTS = (
     ("windsurf", "Windsurf / Codeium Cascade"),
 )
 
+META_FILENAME = ".smartmoney_cub_created.json"
+
+
+def _load_created_registry(root: Path) -> dict[str, Any]:
+    meta_file = root / META_FILENAME
+    if not meta_file.is_file():
+        return {}
+    try:
+        data = json.loads(meta_file.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_created_registry(root: Path, registry: dict[str, Any]) -> None:
+    meta_file = root / META_FILENAME
+    if not registry:
+        if meta_file.is_file():
+            try:
+                meta_file.unlink()
+            except OSError:
+                pass
+        return
+    try:
+        meta_file.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _is_config_empty(target_file: Path, fmt: str) -> bool:
+    if not target_file.is_file():
+        return True
+    try:
+        text = target_file.read_text(encoding="utf-8")
+    except Exception:
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if fmt == "json":
+        try:
+            val = json.loads(stripped)
+            return val == {} or val == []
+        except Exception:
+            return False
+    elif fmt in ("toml", "yaml"):
+        for line in stripped.splitlines():
+            s = line.strip()
+            if s and not s.startswith("#"):
+                return False
+        return True
+    return False
+
 
 @dataclass
 class AgentIntegration:
@@ -263,6 +316,22 @@ def apply_agent(
             owned_keys=["smartmoney_cub"],
         )
 
+    registry = _load_created_registry(root)
+    agent_meta = registry.get(agent_id) or {}
+    file_already_existed = target_file.is_file()
+    primary_dir = root / spec["dir"]
+    dir_already_existed = primary_dir.exists()
+
+    if not file_already_existed and not agent_meta.get("created_by_us"):
+        agent_meta["created_by_us"] = True
+        agent_meta["dir_created_by_us"] = not dir_already_existed
+        registry[agent_id] = agent_meta
+        _save_created_registry(root, registry)
+    elif file_already_existed and not agent_meta.get("created_by_us"):
+        if agent_id in registry:
+            del registry[agent_id]
+            _save_created_registry(root, registry)
+
     target_file.parent.mkdir(parents=True, exist_ok=True)
 
     if fmt == "json":
@@ -428,12 +497,44 @@ def restore_agent(
         cleaned = _remove_yaml_key(current_text, "smartmoney_cub")
         target_file.write_text(cleaned, encoding="utf-8")
 
+    registry = _load_created_registry(root)
+    agent_meta = registry.get(agent_id, {})
+    was_created_by_us = agent_meta.get("created_by_us", False)
+    dir_was_created_by_us = agent_meta.get("dir_created_by_us", False)
+
+    if was_created_by_us and _is_config_empty(target_file, fmt):
+        try:
+            target_file.unlink()
+        except OSError:
+            pass
+        if dir_was_created_by_us:
+            curr = target_file.parent
+            while curr != root:
+                if curr.name != ".config":
+                    try:
+                        if curr.exists() and not any(curr.iterdir()):
+                            curr.rmdir()
+                    except OSError:
+                        pass
+                curr = curr.parent
+        if agent_id in registry:
+            del registry[agent_id]
+            _save_created_registry(root, registry)
+
+    primary_dir = root / spec["dir"]
+    is_dir_present = primary_dir.exists()
+    if "alt_dir" in spec:
+        is_dir_present = is_dir_present or (root / spec["alt_dir"]).exists()
+    if target_file.exists():
+        is_dir_present = True
+
+    final_status = "detected" if is_dir_present else "not_found"
     return AgentIntegration(
         agent_id=agent_id,
         label=spec["label"],
-        status="detected" if (root / spec["dir"]).exists() else "not_found",
-        config_path=str(target_file),
-        detected_version="detected",
+        status=final_status,
+        config_path=str(target_file) if target_file.exists() else None,
+        detected_version="detected" if is_dir_present else None,
         detail="SmartMoney-Cub configuration removed; user configuration restored.",
         owned_keys=[],
     )

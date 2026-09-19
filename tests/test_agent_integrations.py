@@ -181,3 +181,22 @@ def test_unsupported_agent_handling(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Unsupported agent"):
         apply_agent(unsupported[0].agent_id, home=tmp_path)
+
+
+def test_restore_agent_cleans_up_created_file_and_dir(tmp_path: Path):
+    # Empty home: agent directory does not exist
+    initial_scan = {item.agent_id: item for item in scan_agents(home=tmp_path)}
+    assert initial_scan["claude-code"].status == "not_found"
+
+    # apply creates the file and directory
+    apply_agent("claude-code", home=tmp_path)
+    target_file = tmp_path / ".claude" / "settings.json"
+    assert target_file.is_file()
+
+    # restore must delete the created empty file and directory, returning to not_found
+    restored = restore_agent("claude-code", home=tmp_path)
+    assert restored.status == "not_found"
+    assert not target_file.exists()
+
+    after_scan = {item.agent_id: item for item in scan_agents(home=tmp_path)}
+    assert after_scan["claude-code"].status == "not_found"
