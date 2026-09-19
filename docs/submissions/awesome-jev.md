@@ -24,10 +24,10 @@ Rather than acting as an automated trading bot, SmartMoney-Cub serves as a trust
 SmartMoney-Cub implements first-class support for Jev-compatible review backends via the standardized `smartmoney_cub_harness.jev` module:
 
 1. **Four-Track Financial Question Pack**:
-   - `trading-review`: Execution discipline, risk/reward compliance, and time-stop validation.
-   - `financial-filings`: Earnings quality, cash flow divergence, and balance sheet anomalies.
-   - `industry-events`: Supply/demand shocks, technical substitution, and value chain impact.
-   - `macro-policy`: Monetary policy shifts, liquidity turning points, and systemic risk premiums.
+   - `trading-review`: Evidence sufficiency, major counter-evidence, failure mode, review priority.
+   - `financial-filings`: Disclosure supports conclusion, internal contradiction, materiality of change, evidence quality, information gap.
+   - `industry-events`: Event class, impact scope, duration, epistemic status, supply-chain impact.
+   - `macro-policy`: Policy stance, macro direction, impact horizon, availability at decision time.
 2. **Pluggable Backends**:
    - `TypeSafeDirectJevBackend`: Low-overhead direct interface with strict schema enforcement.
    - `OpenRouterJevBackend`: Cloud router adapter for comparing multiple reasoning models.
@@ -57,7 +57,7 @@ pip install -e ".[dev]"
 smcub doctor
 
 # Run the frozen offline benchmark suite
-smcub benchmark run --benchmark finance-jev-v1
+smcub benchmark run
 
 # Start the local workbench
 smcub workbench
@@ -69,4 +69,3 @@ smcub workbench
 
 - **Maintainer**: SmartMoney-Cub Team
 - **Issues & Discussions**: [GitHub Issues](https://github.com/myc0576/Smartmoney-Cub/issues)
-

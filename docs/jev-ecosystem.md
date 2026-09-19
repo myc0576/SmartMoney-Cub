@@ -80,10 +80,10 @@ class JevBackend(Protocol):
   - 95% Wilson 得分置信区间与对标基线的 McNemar 显著性检验。
 - **评测执行与图像生成**：
   ```bash
-  # 运行完整离线基准评测
-  smcub benchmark run --benchmark finance-jev-v1 --output artifacts/benchmark/latest/
-  # 渲染标准评测卡片与图表 (纯 Pillow 栅格与矢量 SVG，无需 matplotlib)
-  smcub benchmark render artifacts/benchmark/latest/
+  # 运行完整离线基准评测 (默认评测全量 4 赛道 240 例，产物保存至 artifacts/benchmark/)
+  smcub benchmark run --out-dir artifacts/benchmark
+  # 渲染标准评测卡片与图表 (纯 Pillow 栅格与矢量 SVG，指定 run 目录)
+  smcub benchmark render artifacts/benchmark/<run_id>
   ```
 
 ---
@@ -107,8 +107,7 @@ class JevBackend(Protocol):
    - 运行基准套件 `smcub benchmark run`，生成真实有效的 `run.json`。严禁虚报或夸大评测分值。
 2. **准备 PR 申请材料**：
    - 参考 `docs/submissions/awesome-jev.md` 标准模板编写介绍。
-   - 准备 1200x630 的标准基准 Hero 图或 Leaderboard 图（引用自 `artifacts/benchmark/`）。
+   - 准备 1200x630 的标准基准 Hero 图或 Leaderboard 图（引用自 tracked `assets/benchmark/`）。
 3. **提交规范**：
    - 提交 Issue 或 Pull Request 至 `awesome-jev` 仓库，分类归属至 **Trading & Financial Review Systems**。
    - 在 PR 说明中附上本地测试用例复现命令与只读安全声明。
-
