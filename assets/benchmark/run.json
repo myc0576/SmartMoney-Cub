@@ -1,8 +1,8 @@
 {
   "schema": "smartmoney_cub_benchmark_run.v1",
-  "run_id": "run_20260919_133157_240",
+  "run_id": "run_20260919_145255_240",
   "benchmark_id": "finance-jev-v1",
-  "run_date": "2026-09-19T21:31:57+08:00",
+  "run_date": "2026-09-19T22:52:55+08:00",
   "mode": "all",
   "tracks": [
     "trading-review",
@@ -11,7 +11,7 @@
     "macro-policy"
   ],
   "sample_count": 240,
-  "git_sha": "b68a39979bb3027866c4861b8d2290051cb19b71",
+  "git_sha": "b24cd6ff80763c521d30ffe603c2fcf54fa6c87e",
   "systems": [
     {
       "system_id": "deterministic_baseline",
@@ -21,7 +21,7 @@
       "cost_usd": 0.0,
       "latency_p50_ms": 0.0,
       "latency_p95_ms": 0.001,
-      "latency_p99_ms": 0.004,
+      "latency_p99_ms": 0.005,
       "metrics": {
         "schema_valid_rate": 1.0,
         "accuracy": 0.8426,
@@ -36,7 +36,7 @@
         "stability": 1.0,
         "p50_latency_ms": 0.0,
         "p95_latency_ms": 0.001,
-        "p99_latency_ms": 0.004,
+        "p99_latency_ms": 0.005,
         "cost_per_case": 0.0,
         "retry_rate": 0.0,
         "confidence_interval_95": [
@@ -63,9 +63,9 @@
           "abstention_rate": 0.0,
           "selective_risk": 0.2417,
           "stability": 1.0,
-          "p50_latency_ms": 0.0,
+          "p50_latency_ms": 0.001,
           "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.016,
+          "p99_latency_ms": 0.005,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -91,9 +91,9 @@
           "abstention_rate": 0.0,
           "selective_risk": 0.16,
           "stability": 1.0,
-          "p50_latency_ms": 0.0,
-          "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.003,
+          "p50_latency_ms": 0.001,
+          "p95_latency_ms": 0.002,
+          "p99_latency_ms": 0.005,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -121,7 +121,7 @@
           "stability": 1.0,
           "p50_latency_ms": 0.0,
           "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.007,
+          "p99_latency_ms": 0.031,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -148,7 +148,7 @@
           "selective_risk": 0.125,
           "stability": 1.0,
           "p50_latency_ms": 0.0,
-          "p95_latency_ms": 0.0,
+          "p95_latency_ms": 0.001,
           "p99_latency_ms": 0.002,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
