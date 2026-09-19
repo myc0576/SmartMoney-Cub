@@ -16,7 +16,7 @@
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
-![Finance-JEV Benchmark Hero](artifacts/benchmark/run_20260919_121535_240/benchmark-hero-1200x630.png)
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 

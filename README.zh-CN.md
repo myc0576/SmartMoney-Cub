@@ -25,7 +25,7 @@
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
-![Finance-JEV Benchmark Hero](artifacts/benchmark/run_20260919_121535_240/benchmark-hero-1200x630.png)
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
 ### 30 秒极速上手
 

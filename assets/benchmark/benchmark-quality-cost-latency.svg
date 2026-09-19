@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #f8fafc; }
+    .subtitle { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 14px; fill: #94a3b8; }
+    .heading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; font-weight: bold; fill: #f8fafc; }
+    .body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #e2e8f0; }
+    .meta { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 11px; fill: #64748b; }
+    .safety { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #f43f5e; }
+  </style>
+  <rect width="800" height="500" fill="#0f172a" stroke="#334155" stroke-width="2" />
+  <rect width="800" height="85" fill="#1e293b" />
+  <line x1="0" y1="85" x2="800" y2="85" stroke="#475569" stroke-width="1" />
+  <rect x="480" y="20" width="300" height="26" rx="4" fill="#334155" />
+  <text x="490" y="38" class="body" font-weight="bold">DATASET: finance-jev-v1 | N=240</text>
+  <text x="24" y="40" class="title">Quality, Cost & Latency Frontier</text>
+  <text x="25" y="68" class="subtitle">Trade-off analysis across evaluated reasoning systems</text>
+    <rect x="24" y="110" width="752" height="320" rx="8" fill="#1e293b" stroke="#334155" />
+  <text x="44" y="145" class="heading">Pareto Efficiency: Accuracy vs. P50 Latency vs. Cost</text>
+  <text x="44" y="190" class="body">Baseline: Acc=84.26%, P50=0.0ms, Cost=$0.0000/case</text>
+  <text x="44" y="225" class="body">P95 Latency: 0.00ms  |  P99 Latency: 0.00ms</text>
+  <line x1="0" y1="452" x2="800" y2="452" stroke="#334155" stroke-width="1" />
+  <text x="24" y="470" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
+  <text x="24" y="488" class="meta">Date: 2026-09-19T20:32:35 | Git: 37982b0e | Run Hash: 80f898f4a49fb8a4... | Model: deterministic_rules_v1</text>
+</svg>
