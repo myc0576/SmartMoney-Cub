@@ -27,6 +27,12 @@
 
 ![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
+### Jev 审查推理层与四轨金融评测基准
+
+SmartMoney-Cub 原生支持 Jev（[TypeSafe 官方主页](https://typesafe.ai/) | [OpenRouter 托管主页](https://openrouter.ai/typesafe/jev)）作为可选的类型化语义判断层，提供 TypeSafe 原生直连与 OpenRouter 路由两种可插拔后端。Jev 仅用于回答结构化的 `noul`、`choice` 与 `score` 语义审查问题，所有数值运算、日期比较以及严格的时效边界门禁（`available_at <= decision_time`）始终由确定性 Python 代码执行与强制校验。
+
+仓库内置 `finance-jev-v1` 离线评测基准套件，包含涵盖四大赛道（`trading-review`、`financial-filings`、`industry-events`、`macro-policy`）的 240 例冻结离线案例。在官方发布的参考运行产物（[assets/benchmark/run.json](assets/benchmark/run.json)）中，确定性规则基线实现了 **84.26%** 的综合准确率（95% Wilson 置信区间 [81.97%, 86.31%]）与 **0.7885** 的宏平均 F1。Jev 系统（`typesafe_direct` 与 `openrouter_jev`）在公开产物中因未配置线上密钥而如实标注为 `not_run`；在配置密钥但未接入在线评测时如实报告 `live_evaluation_not_wired`，公开发布运行中并未对 Jev 模型进行实测。
+
 ### 30 秒极速上手
 
 ```bash

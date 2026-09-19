@@ -6,6 +6,15 @@
 
 ---
 
+## 官方资源 / Official Resources
+
+- **Jev / TypeSafe 官方网站**: [https://typesafe.ai/](https://typesafe.ai/) — Jev 推理引擎开发方 TypeSafe 官方主页。
+- **OpenRouter Jev 模型页面**: [https://openrouter.ai/typesafe/jev](https://openrouter.ai/typesafe/jev) — OpenRouter 模型中心对 Jev 模型的官方托管与分发页面。
+
+*注：本项目作为独立的只读复盘与评测工具，链接至上述官方资源仅供用户配置后端与查阅模型规范，并不代表 Jev 或 TypeSafe 对本项目的官方背书。*
+
+---
+
 ## 1. 架构总览与核心设计原则
 
 Jev 生态集成严格遵循系统的只读安全铁律：

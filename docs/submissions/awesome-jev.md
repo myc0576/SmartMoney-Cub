@@ -2,6 +2,7 @@
 
 - **Project Name**: SmartMoney-Cub (`smartmoney-cub-harness`)
 - **Repository**: [https://github.com/myc0576/Smartmoney-Cub](https://github.com/myc0576/Smartmoney-Cub)
+- **Jev Official Resources**: [TypeSafe Official Site](https://typesafe.ai/) | [OpenRouter Jev Model](https://openrouter.ai/typesafe/jev)
 - **Category**: Trading & Financial Review Systems / AI Decision Governance
 - **Safety Declaration**: `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 - **License**: MIT
