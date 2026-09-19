@@ -186,3 +186,60 @@ def test_deterministic_temporality_check_fails_on_nested_source_future_leakage()
     }
     with pytest.raises(ValueError, match="future_leakage"):
         build_questions(TRACK_FINANCIAL_FILINGS, state=state)
+
+def test_score_question_without_levels_raises():
+    with pytest.raises(ValueError, match="must provide non-empty levels rubric"):
+        JevQuestion("q_no_levels", "score", "Rate severity", scale_min=1, scale_max=5)
+
+    with pytest.raises(ValueError, match="levels count .* must match scale range"):
+        JevQuestion(
+            "q_mismatched_levels",
+            "score",
+            "Rate severity",
+            scale_min=1,
+            scale_max=5,
+            levels=("Level 1", "Level 2"),  # Only 2 levels for a 1..5 scale (needs 5)
+        )
+
+
+def test_score_question_api_payload_carries_real_rubric_not_placeholders():
+    captured_payloads = []
+
+    def mock_client(req):
+        body = json.loads(req.data.decode("utf-8"))
+        captured_payloads.append(body)
+        return {
+            "model": "jev-1.13.0",
+            "answers": {
+                "review_priority": {
+                    "type": "score",
+                    "score": 3.0,
+                    "confidence": 0.9,
+                    "legend": {"0": "L1", "1": "L2", "2": "L3", "3": "L4", "4": "L5"},
+                    "probabilities": {"0": 0.0, "1": 0.0, "2": 0.1, "3": 0.8, "4": 0.1},
+                }
+            },
+            "usage": {"input_tokens": 150, "output_tokens": 20},
+        }
+
+    from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
+    import json
+    backend = TypeSafeDirectJevBackend(api_key="mock-key", http_client=mock_client)
+    rubric = (
+        "Routine profitable trade with normal execution; minimal review needed",
+        "Acceptable execution or minor loss within expected variance",
+        "Moderate loss or minor timing issue requiring standard retrospective",
+        "Significant loss, thesis breakdown, or stale data requiring prompt review",
+        "Severe loss, catastrophic drawdown, or explicit risk rule violation requiring immediate escalation",
+    )
+    q = JevQuestion("review_priority", "score", "Rate priority", scale_min=1, scale_max=5, levels=rubric)
+
+    decision = backend.evaluate({"notes": "Trade with thesis error"}, (q,), decision_time="2026-06-01T15:00:00Z")
+
+    assert len(captured_payloads) == 1
+    sent_criteria = captured_payloads[0]["questions"]["review_priority"]["criteria"]
+    # Must match real rubric descriptions exactly
+    assert sent_criteria == list(rubric)
+    # Must NOT be dummy placeholder strings
+    for item in sent_criteria:
+        assert not item.startswith("Level ")

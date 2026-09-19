@@ -107,8 +107,7 @@ class TypeSafeDirectJevBackend:
                 }
             elif q.kind == "score":
                 s_min = int(q.scale_min) if q.scale_min is not None else 0
-                s_max = int(q.scale_max) if q.scale_max is not None else 1
-                criteria_list = [f"Level {lvl}" for lvl in range(s_min, s_max + 1)]
+                criteria_list = list(q.levels) if q.levels else [f"Level {lvl}" for lvl in range(s_min, s_min + 1)]
                 formatted_questions[q.question_id] = {
                     "type": "score",
                     "instructions": q.prompt,

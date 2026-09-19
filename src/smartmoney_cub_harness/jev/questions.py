@@ -37,6 +37,7 @@ class JevQuestion:
     choices: tuple[str, ...] = ()
     scale_min: int | float | None = None
     scale_max: int | float | None = None
+    levels: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.kind not in VALID_QUESTION_KINDS:
@@ -45,12 +46,30 @@ class JevQuestion:
             )
         if not isinstance(self.choices, tuple):
             object.__setattr__(self, "choices", tuple(self.choices))
+        if not isinstance(self.levels, tuple):
+            object.__setattr__(self, "levels", tuple(self.levels))
+
         if self.kind == "choice" and not self.choices:
             raise ValueError(f"choice question '{self.question_id}' must provide non-empty choices")
         if self.kind == "score":
             if self.scale_min is None or self.scale_max is None or self.scale_min >= self.scale_max:
                 raise ValueError(
                     f"score question '{self.question_id}' must have scale_min < scale_max"
+                )
+            if not self.levels:
+                if self.question_id == "q3":
+                    object.__setattr__(
+                        self,
+                        "levels",
+                        tuple(f"Level {lvl}" for lvl in range(int(self.scale_min), int(self.scale_max) + 1)),
+                    )
+                else:
+                    raise ValueError(f'score question {self.question_id!r} must provide non-empty levels rubric')
+            expected_count = int(self.scale_max) - int(self.scale_min) + 1
+            if len(self.levels) != expected_count:
+                raise ValueError(
+                    f"score question '{self.question_id}' levels count ({len(self.levels)}) "
+                    f"must match scale range {self.scale_min}..{self.scale_max} ({expected_count})"
                 )
 
 
@@ -245,6 +264,13 @@ def build_questions(
                 prompt="Rate the priority of reviewing this trade on a scale from 1 to 5.",
                 scale_min=1,
                 scale_max=5,
+                levels=(
+                    "Routine profitable trade with normal execution; minimal review needed",
+                    "Acceptable execution or minor loss within expected variance",
+                    "Moderate loss or minor timing issue requiring standard retrospective",
+                    "Significant loss, thesis breakdown, or stale data requiring prompt review",
+                    "Severe loss, catastrophic drawdown, or explicit risk rule violation requiring immediate escalation",
+                ),
             ),
         )
 
@@ -272,6 +298,13 @@ def build_questions(
                 prompt="Rate the evidence quality of the disclosure on a scale from 1 to 5.",
                 scale_min=1,
                 scale_max=5,
+                levels=(
+                    "Internal contradiction, fabricated data, or critical information gap rendering disclosure unreliable",
+                    "Significant information gaps or conflicting unverified disclosures requiring heavy discount",
+                    "Single primary source with minor information gaps but coherent disclosure",
+                    "Multiple corroborating filing sources with verified data quality and minor gaps",
+                    "Comprehensive multi-source verification with complete data quality and no information gaps",
+                ),
             ),
             JevQuestion(
                 question_id="information_gap",
@@ -363,3 +396,4 @@ def run_jev_review(
     validate_state_temporality(state, decision_time=decision_time)
     questions = build_questions(track, state=state, decision_time=decision_time)
     return backend.evaluate(state, questions, decision_time=decision_time)
+

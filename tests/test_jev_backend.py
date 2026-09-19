@@ -234,7 +234,13 @@ def test_typesafe_direct_backend_contract_mapping_choice_noul_score():
         assert body["questions"]["q_choice"]["criteria"] == {"sufficient": "sufficient", "partial": "partial"}
         assert body["questions"]["q_noul"]["type"] == "noul"
         assert body["questions"]["q_score"]["type"] == "score"
-        assert body["questions"]["q_score"]["criteria"] == ["Level 1", "Level 2", "Level 3", "Level 4", "Level 5"]
+        assert body["questions"]["q_score"]["criteria"] == [
+            "Routine minimal review",
+            "Acceptable minor variance",
+            "Moderate loss retrospective",
+            "Significant loss prompt review",
+            "Severe drawdown escalation",
+        ]
 
         return {
             "model": "jev-1.13.0",
@@ -264,7 +270,20 @@ def test_typesafe_direct_backend_contract_mapping_choice_noul_score():
     questions = (
         JevQuestion("q_choice", "choice", "Assess sufficiency", choices=("sufficient", "partial")),
         JevQuestion("q_noul", "noul", "Is counter evidence present?"),
-        JevQuestion("q_score", "score", "Rate priority", scale_min=1, scale_max=5),
+        JevQuestion(
+            "q_score",
+            "score",
+            "Rate priority",
+            scale_min=1,
+            scale_max=5,
+            levels=(
+                "Routine minimal review",
+                "Acceptable minor variance",
+                "Moderate loss retrospective",
+                "Significant loss prompt review",
+                "Severe drawdown escalation",
+            ),
+        ),
     )
 
     decision = backend.evaluate({"notes": "data"}, questions, decision_time="2026-06-01T15:00:00Z")
