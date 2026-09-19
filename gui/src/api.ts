@@ -1,4 +1,5 @@
 import type {
+  AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
   SessionEvent, SessionSummary, UploadResult,
   PluginCatalogResponse, PluginDetailResponse,
@@ -244,6 +245,26 @@ export const api = {
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/package',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
+  jevStatus: () => request<JevStatusResponse>('/api/jev/status'),
+  jevTracks: () => request<JevTracksResponse>('/api/jev/tracks'),
+  agents: () => request<AgentsResponse>('/api/agents'),
+  agentApply: (agentId: string, dryRun = false) =>
+    request<AgentActionResponse>('/api/agents/apply', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId, dry_run: dryRun }),
+    }),
+  agentDisable: (agentId: string) =>
+    request<AgentActionResponse>('/api/agents/disable', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }),
+  agentRestore: (agentId: string) =>
+    request<AgentActionResponse>('/api/agents/restore', {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }),
+  benchmarkLatest: () => request<BenchmarkLatestResponse>('/api/benchmark/latest'),
+
   cancelTurn: (id: string) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',

@@ -1193,6 +1193,223 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def jev_status(self) -> dict[str, Any]:
+        """Diagnostic state of the Jev reasoning engine and configured backends."""
+        try:
+            from smartmoney_cub_harness.jev.cli import run_jev_doctor  # noqa: PLC0415
+            doc = run_jev_doctor()
+        except ImportError as err:
+            return {
+                "engine": "jev",
+                "provider_id": "none",
+                "model_requested": "",
+                "model_resolved": None,
+                "available": False,
+                "safety": SAFETY_DECLARATION,
+                "reason": f"import_error: {err}",
+                "detail": str(err),
+            }
+
+        backends = doc.get("backends", {})
+        direct = backends.get("typesafe-direct", {})
+        openrouter = backends.get("openrouter-jev", {})
+
+        active = direct if direct.get("available") else (openrouter if openrouter.get("available") else direct)
+
+        return {
+            "engine": doc.get("engine", "jev"),
+            "provider_id": active.get("provider_id", "typesafe"),
+            "model_requested": active.get("model_requested", ""),
+            "model_resolved": active.get("model_resolved"),
+            "available": bool(active.get("available", False)),
+            "safety": doc.get("safety", SAFETY_DECLARATION),
+            "reason": active.get("reason"),
+            "detail": doc,
+            "backends": backends,
+        }
+
+    def jev_tracks(self) -> dict[str, Any]:
+        """Track definitions and question packs for the Jev reasoning engine."""
+        from dataclasses import asdict  # noqa: PLC0415
+        from smartmoney_cub_harness.jev.questions import available_tracks, build_questions  # noqa: PLC0415
+
+        load_track = None
+        try:
+            from smartmoney_cub_harness.benchmark.cases import load_track  # noqa: PLC0415
+        except ImportError:
+            pass
+
+        tracks_data = []
+        for track_id in available_tracks():
+            questions = build_questions(track_id)
+            case_count = 60
+            if load_track is not None:
+                try:
+                    case_count = len(load_track(track_id))
+                except Exception:
+                    pass
+            tracks_data.append({
+                "track": track_id,
+                "question_count": len(questions),
+                "case_count": case_count,
+                "questions": [asdict(q) for q in questions],
+            })
+        return {
+            "tracks": tracks_data,
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def agents(self) -> dict[str, Any]:
+        """Scan detected coding agents and their integration status."""
+        from dataclasses import asdict  # noqa: PLC0415
+        try:
+            from smartmoney_cub_harness.agent.integrations import scan_agents  # noqa: PLC0415
+            agent_list = [asdict(a) for a in scan_agents()]
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+
+        return {
+            "agents": agent_list,
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def agents_apply(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        dry_run = bool(payload.get("dry_run", False))
+        try:
+            from smartmoney_cub_harness.agent.integrations import apply_agent  # noqa: PLC0415
+            res = apply_agent(agent_id, dry_run=dry_run)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def agents_disable(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        try:
+            from smartmoney_cub_harness.agent.integrations import disable_agent  # noqa: PLC0415
+            res = disable_agent(agent_id)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def agents_restore(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from dataclasses import asdict  # noqa: PLC0415
+        agent_id = str(payload.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ApiError("agent_id is required", status=400, code="missing_parameter")
+        try:
+            from smartmoney_cub_harness.agent.integrations import restore_agent  # noqa: PLC0415
+            res = restore_agent(agent_id)
+            return {"agent": asdict(res), "safety": SAFETY_DECLARATION}
+        except ImportError as err:
+            raise ApiError(f"Agent integration subsystem unavailable: {err}", status=503)
+        except (KeyError, ValueError):
+            raise ApiError(f"unknown agent: {agent_id}", status=404, code="not_found")
+
+    def _benchmark_dir(self) -> Path | None:
+        candidates = [
+            self.root / "artifacts" / "benchmark",
+            Path("artifacts/benchmark"),
+            Path.cwd() / "artifacts" / "benchmark",
+        ]
+        for c in candidates:
+            if c.is_dir():
+                return c
+        return None
+
+    def benchmark_latest(self) -> dict[str, Any]:
+        """Return the latest benchmark run details and image locations."""
+        bench_dir = self._benchmark_dir()
+        if not bench_dir:
+            return {"run_id": None, "safety": SAFETY_DECLARATION}
+
+        run_dirs = [d for d in bench_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+        if not run_dirs:
+            return {"run_id": None, "safety": SAFETY_DECLARATION}
+
+        run_dirs.sort(key=lambda d: d.name, reverse=True)
+        latest_dir = run_dirs[0]
+
+        try:
+            run_data = json.loads((latest_dir / "run.json").read_text(encoding="utf-8"))
+        except Exception:
+            return {"run_id": None, "safety": SAFETY_DECLARATION}
+
+        run_id = run_data.get("run_id") or latest_dir.name
+        generated_at = run_data.get("generated_at") or run_data.get("run_date")
+        tracks = run_data.get("tracks", [])
+        systems = run_data.get("systems", [])
+
+        images = [
+            {
+                "name": p.name,
+                "url": f"/api/benchmark/images/{run_id}/{p.name}",
+            }
+            for p in sorted(latest_dir.glob("*.png"))
+        ]
+
+        return {
+            "run_id": run_id,
+            "generated_at": generated_at,
+            "run_date": run_data.get("run_date"),
+            "benchmark_id": run_data.get("benchmark_id", "finance-jev-v1"),
+            "mode": run_data.get("mode", "all"),
+            "sample_count": run_data.get("sample_count", 240),
+            "git_sha": run_data.get("git_sha"),
+            "run_hash": run_data.get("run_hash"),
+            "tracks": tracks,
+            "systems": systems,
+            "images": images,
+            "image_urls": {
+                p.name: f"/api/benchmark/images/{run_id}/{p.name}"
+                for p in sorted(latest_dir.glob("*.png"))
+            },
+            "safety": run_data.get("safety", SAFETY_DECLARATION),
+        }
+
+    def benchmark_image(self, run_id: str, filename: str) -> tuple[bytes, str] | None:
+        """Read a benchmark run image and return (bytes, mime_type)."""
+        import re  # noqa: PLC0415
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", filename) or ".." in filename:
+            return None
+        bench_dir = self._benchmark_dir()
+        if not bench_dir:
+            return None
+
+        if run_id == "latest":
+            run_dirs = [d for d in bench_dir.iterdir() if d.is_dir() and (d / "run.json").is_file()]
+            if not run_dirs:
+                return None
+            run_dirs.sort(key=lambda d: d.name, reverse=True)
+            target_dir = run_dirs[0]
+        else:
+            if not re.match(r"^[a-zA-Z0-9_.-]+$", run_id) or ".." in run_id:
+                return None
+            target_dir = bench_dir / run_id
+
+        target_file = target_dir / filename
+        if not target_file.is_file():
+            return None
+
+        content_types = {
+            ".png": "image/png",
+            ".svg": "image/svg+xml",
+            ".json": "application/json; charset=utf-8",
+        }
+        mime = content_types.get(target_file.suffix.lower(), "application/octet-stream")
+        return target_file.read_bytes(), mime
+
+
 
 def _effective_key(
     settings: dict[str, Any],
@@ -1487,6 +1704,35 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/doctor":
                 self._json(self.service.doctor())
                 return
+            if path == "/api/jev/status":
+                self._json(self.service.jev_status())
+                return
+            if path == "/api/jev/tracks":
+                self._json(self.service.jev_tracks())
+                return
+            if path == "/api/agents":
+                self._json(self.service.agents())
+                return
+            if path == "/api/benchmark/latest":
+                self._json(self.service.benchmark_latest())
+                return
+            if path.startswith("/api/benchmark/images/"):
+                rest = path[len("/api/benchmark/images/"):].lstrip("/")
+                run_id, _, filename = rest.partition("/")
+                res = self.service.benchmark_image(run_id, filename)
+                if res is None:
+                    self._json(
+                        {"status": "error", "error": "image not found", "code": "not_found", "safety": SAFETY_DECLARATION},
+                        status=404,
+                    )
+                    return
+                body, content_type = res
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         except ApiError as error:
             # The declaration belongs on every response, refusals included. These
             # two paths omitted it, so a client error was the one reply that did
@@ -1701,6 +1947,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 # reachable only from the local single-user workbench.
                 rule_id = urllib.parse.unquote(path[len("/api/rules/"):-len("/promote")])
                 self._json(self.service.promote_rule(rule_id, self._read_json()))
+                return
+            if path == "/api/agents/apply":
+                self._json(self.service.agents_apply(self._read_json()))
+                return
+            if path == "/api/agents/disable":
+                self._json(self.service.agents_disable(self._read_json()))
+                return
+            if path == "/api/agents/restore":
+                self._json(self.service.agents_restore(self._read_json()))
                 return
         except ApiError as error:
             self._json(

@@ -774,3 +774,130 @@ export interface AgentPresets {
   default_effort: string;
   context_strategy: string;
 }
+
+
+// ==================== Jev Reasoning Engine Types ====================
+
+export interface JevBackendHealth {
+  status: string;
+  available: boolean;
+  backend_id: string;
+  provider_id: string;
+  model_requested: string;
+  model_resolved: string | null;
+  reason?: string;
+  safety: string;
+}
+
+export interface JevStatusResponse extends SafetyEnvelope {
+  engine: string;
+  provider_id: string;
+  model_requested: string;
+  model_resolved: string | null;
+  available: boolean;
+  reason?: string | null;
+  detail?: any;
+  backends?: Record<string, JevBackendHealth>;
+}
+
+export interface JevQuestionDef {
+  question_id: string;
+  kind: 'choice' | 'scale' | string;
+  prompt: string;
+  choices?: string[];
+  scale_min?: number | null;
+  scale_max?: number | null;
+}
+
+export interface JevTrackInfo {
+  track: string;
+  question_count: number;
+  case_count: number;
+  questions?: JevQuestionDef[];
+}
+
+export interface JevTracksResponse extends SafetyEnvelope {
+  tracks: JevTrackInfo[];
+}
+
+// ==================== Agent Integration Types ====================
+
+export type AgentStatus = 'not_found' | 'detected' | 'configured' | 'healthy' | 'unavailable' | 'unsupported';
+
+export interface AgentIntegration {
+  agent_id: string;
+  label: string;
+  status: AgentStatus;
+  config_path: string | null;
+  detected_version: string | null;
+  detail: string;
+  owned_keys: string[];
+}
+
+export interface AgentsResponse extends SafetyEnvelope {
+  agents: AgentIntegration[];
+}
+
+export interface AgentActionResponse extends SafetyEnvelope {
+  agent: AgentIntegration;
+}
+
+// ==================== Benchmark Engine Types ====================
+
+export interface BenchmarkMetric {
+  schema_valid_rate: number;
+  accuracy: number;
+  macro_f1: number;
+  recall: number;
+  fpr: number;
+  brier: number;
+  ece: number;
+  coverage: number;
+  abstention_rate: number;
+  selective_risk: number;
+  stability: number;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
+  cost_per_case: number;
+  retry_rate: number;
+  confidence_interval_95?: [number, number];
+  mcnemar_against_baseline?: {
+    statistic: number;
+    p_value: number;
+    b: number;
+    c: number;
+  };
+}
+
+export interface BenchmarkSystem {
+  system_id: string;
+  status: 'completed' | 'not_run' | string;
+  model_requested?: string;
+  model_resolved?: string | null;
+  cost_usd?: number;
+  latency_p50_ms?: number;
+  reason?: string;
+  metrics?: BenchmarkMetric | null;
+  track_metrics?: Record<string, BenchmarkMetric>;
+}
+
+export interface BenchmarkImageItem {
+  name: string;
+  url: string;
+}
+
+export interface BenchmarkLatestResponse extends SafetyEnvelope {
+  run_id: string | null;
+  generated_at?: string;
+  run_date?: string;
+  benchmark_id?: string;
+  mode?: string;
+  sample_count?: number;
+  git_sha?: string;
+  run_hash?: string;
+  tracks?: string[];
+  systems?: BenchmarkSystem[];
+  images?: BenchmarkImageItem[];
+  image_urls?: Record<string, string>;
+}
