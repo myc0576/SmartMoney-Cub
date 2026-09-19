@@ -21,5 +21,5 @@
   <text x="44" y="225" class="body">ECE: 0.1250  |  FPR: 0.0096  |  Coverage: 100.00%</text>
   <line x1="0" y1="432" x2="800" y2="432" stroke="#334155" stroke-width="1" />
   <text x="24" y="450" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="468" class="meta">Date: 2026-09-19T22:52:55 | Git: b24cd6ff | Run Hash: 80f898f4a49fb8a4... | Model: deterministic_rules_v1</text>
+  <text x="24" y="468" class="meta">Date: 2026-09-20T00:09:06 | Git: 1230d003 | Run Hash: 81c683fff1da4ae1... | Model: deterministic_rules_v1</text>
 </svg>

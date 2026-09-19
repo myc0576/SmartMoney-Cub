@@ -18,9 +18,9 @@
     <rect x="24" y="110" width="852" height="320" rx="8" fill="#1e293b" stroke="#334155" />
   <text x="44" y="145" class="heading">Ranked Systems — Overall Performance</text>
   <text x="44" y="190" class="body">#1  deterministic_baseline  |  Status: completed  |  Acc: 84.26%  |  F1: 0.7885  |  ECE: 0.1574  |  Cost: $0.0000</text>
-  <text x="44" y="225" class="body">#2  typesafe_direct  |  Status: not_run (missing_credential)  |  Acc: N/A  |  F1: N/A  |  ECE: N/A  |  Cost: $0.0000</text>
+  <text x="44" y="225" class="body">#2  typesafe_direct  |  Status: completed  |  Acc: 81.67%  |  F1: 0.7425  |  ECE: 0.2148  |  Cost: $0.0000</text>
   <text x="44" y="260" class="body">#3  openrouter_jev  |  Status: not_run (missing_credential)  |  Acc: N/A  |  F1: N/A  |  ECE: N/A  |  Cost: $0.0000</text>
   <line x1="0" y1="452" x2="900" y2="452" stroke="#334155" stroke-width="1" />
   <text x="24" y="470" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="488" class="meta">Date: 2026-09-19T22:52:55 | Git: b24cd6ff | Run Hash: 80f898f4a49fb8a4... | Model: deterministic_rules_v1</text>
+  <text x="24" y="488" class="meta">Date: 2026-09-20T00:09:06 | Git: 1230d003 | Run Hash: 81c683fff1da4ae1... | Model: deterministic_rules_v1</text>
 </svg>

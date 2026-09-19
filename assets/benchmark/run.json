@@ -1,8 +1,8 @@
 {
   "schema": "smartmoney_cub_benchmark_run.v1",
-  "run_id": "run_20260919_145255_240",
+  "run_id": "run_20260919_160906_240",
   "benchmark_id": "finance-jev-v1",
-  "run_date": "2026-09-19T22:52:55+08:00",
+  "run_date": "2026-09-20T00:09:06+08:00",
   "mode": "all",
   "tracks": [
     "trading-review",
@@ -11,7 +11,7 @@
     "macro-policy"
   ],
   "sample_count": 240,
-  "git_sha": "b24cd6ff80763c521d30ffe603c2fcf54fa6c87e",
+  "git_sha": "1230d0038979e227e87ce36f2c5342b95843d134",
   "systems": [
     {
       "system_id": "deterministic_baseline",
@@ -64,8 +64,8 @@
           "selective_risk": 0.2417,
           "stability": 1.0,
           "p50_latency_ms": 0.001,
-          "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.005,
+          "p95_latency_ms": 0.002,
+          "p99_latency_ms": 0.009,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -91,9 +91,9 @@
           "abstention_rate": 0.0,
           "selective_risk": 0.16,
           "stability": 1.0,
-          "p50_latency_ms": 0.001,
-          "p95_latency_ms": 0.002,
-          "p99_latency_ms": 0.005,
+          "p50_latency_ms": 0.0,
+          "p95_latency_ms": 0.001,
+          "p99_latency_ms": 0.003,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -121,7 +121,7 @@
           "stability": 1.0,
           "p50_latency_ms": 0.0,
           "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.031,
+          "p99_latency_ms": 0.005,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -149,7 +149,7 @@
           "stability": 1.0,
           "p50_latency_ms": 0.0,
           "p95_latency_ms": 0.001,
-          "p99_latency_ms": 0.002,
+          "p99_latency_ms": 0.003,
           "cost_per_case": 0.0,
           "retry_rate": 0.0,
           "confidence_interval_95": [
@@ -167,13 +167,6757 @@
     },
     {
       "system_id": "typesafe_direct",
-      "status": "not_run",
-      "reason": "missing_credential",
-      "model_requested": "typesafe-direct-latest",
-      "model_resolved": null,
+      "status": "completed",
+      "model_requested": "jev-latest",
+      "model_resolved": "jev-1.13.0",
       "cost_usd": 0.0,
-      "latency_p50_ms": 0.0,
-      "metrics": null
+      "latency_p50_ms": 1220.26,
+      "latency_p95_ms": 2096.32,
+      "latency_p99_ms": 2814.82,
+      "metrics": {
+        "schema_valid_rate": 1.0,
+        "accuracy": 0.8167,
+        "macro_f1": 0.7425,
+        "recall": 0.7997,
+        "fpr": 0.0035,
+        "brier": 0.2322,
+        "ece": 0.2148,
+        "coverage": 1.0,
+        "abstention_rate": 0.0,
+        "selective_risk": 0.1833,
+        "stability": 1.0,
+        "p50_latency_ms": 1220.26,
+        "p95_latency_ms": 2096.32,
+        "p99_latency_ms": 2814.82,
+        "cost_per_case": 0.0,
+        "retry_rate": 0.0,
+        "confidence_interval_95": [
+          0.7925,
+          0.8386
+        ],
+        "mcnemar_against_baseline": {
+          "statistic": 5.879,
+          "p_value": 0.0153,
+          "b": 48,
+          "c": 76
+        }
+      },
+      "track_metrics": {
+        "trading-review": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.6417,
+          "macro_f1": 0.5524,
+          "recall": 0.6187,
+          "fpr": 0.0243,
+          "brier": 0.4116,
+          "ece": 0.377,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.3583,
+          "stability": 1.0,
+          "p50_latency_ms": 1181.275,
+          "p95_latency_ms": 2224.963,
+          "p99_latency_ms": 4368.83,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.5792,
+            0.6997
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 9.5921,
+            "p_value": 0.002,
+            "b": 24,
+            "c": 52
+          }
+        },
+        "financial-filings": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.84,
+          "macro_f1": 0.6978,
+          "recall": 0.7294,
+          "fpr": 0.0136,
+          "brier": 0.2951,
+          "ece": 0.2818,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.16,
+          "stability": 1.0,
+          "p50_latency_ms": 1241.48,
+          "p95_latency_ms": 1950.444,
+          "p99_latency_ms": 2283.92,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.7943,
+            0.8771
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 24,
+            "c": 24
+          }
+        },
+        "industry-events": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.8867,
+          "macro_f1": 0.8854,
+          "recall": 0.9275,
+          "fpr": 0.0058,
+          "brier": 0.1129,
+          "ece": 0.1092,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.1133,
+          "stability": 1.0,
+          "p50_latency_ms": 1174.59,
+          "p95_latency_ms": 2234.589,
+          "p99_latency_ms": 2794.07,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.8458,
+            0.9178
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        },
+        "macro-policy": {
+          "schema_valid_rate": 1.0,
+          "accuracy": 0.875,
+          "macro_f1": 0.8089,
+          "recall": 0.9407,
+          "fpr": 0.0096,
+          "brier": 0.1234,
+          "ece": 0.1191,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "selective_risk": 0.125,
+          "stability": 1.0,
+          "p50_latency_ms": 1276.965,
+          "p95_latency_ms": 2020.369,
+          "p99_latency_ms": 3140.56,
+          "cost_per_case": 0.0,
+          "retry_rate": 0.0,
+          "confidence_interval_95": [
+            0.8272,
+            0.911
+          ],
+          "mcnemar_against_baseline": {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "b": 0,
+            "c": 0
+          }
+        }
+      },
+      "raw_evaluations": [
+        {
+          "case_id": "case_tr_dev_01",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.78,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.95,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_02",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.91,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.75,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_03",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.53,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "thesis",
+              "confidence": 0.37,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.72,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_04",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.66,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.85,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_05",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.84,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.98,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.66,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_06",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.62,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "thesis",
+              "confidence": 0.37,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.72,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_07",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.91,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_08",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.53,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.83,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.91,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.78,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_09",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.7,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.95,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.98,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_10",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.89,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.92,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.85,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_11",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.92,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.96,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.6,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_12",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.57,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.83,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "insufficient-evidence",
+              "confidence": 0.57,
+              "target": "insufficient-evidence"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.68,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_13",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.78,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 1.0,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.89,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_14",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.84,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.74,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_15",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.67,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 1.0,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.62,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_16",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.59,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.81,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.92,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_17",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.92,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.27,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_18",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.39,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.98,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.93,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_19",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.72,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.71,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_20",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.69,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.77,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.87,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_21",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.96,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.55,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.41,
+              "target": 1
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_22",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.63,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.56,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_23",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.94,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.27,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_24",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.39,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.78,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "insufficient-evidence",
+              "confidence": 0.6,
+              "target": "insufficient-evidence"
+            },
+            "review_priority": {
+              "value": 2,
+              "confidence": 0.2,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_25",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.8,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.91,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.75,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_26",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.95,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.0,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_27",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.29,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.98,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.9,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_28",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.82,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.94,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_29",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.95,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.19,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_dev_30",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.59,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 1.0,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.79,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_01",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.78,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.97,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_02",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.9,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.94,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.71,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_03",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.45,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "thesis",
+              "confidence": 0.46,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.66,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_04",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.55,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.85,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.93,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_05",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.84,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.97,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.71,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_06",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.45,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "thesis",
+              "confidence": 0.37,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.69,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_07",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.9,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_08",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.48,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.81,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.86,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.83,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_09",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.67,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.96,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.97,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_10",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.88,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.91,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.86,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_11",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.92,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.95,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.59,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_12",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.54,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.84,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "insufficient-evidence",
+              "confidence": 0.37,
+              "target": "insufficient-evidence"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.67,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_13",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.73,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.9,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_14",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.84,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.98,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.83,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_15",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.6,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 1.0,
+              "target": "thesis"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.62,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_16",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.51,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.81,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.89,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_17",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.95,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.14,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_18",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.38,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.97,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.93,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_19",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.69,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.82,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_20",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.61,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.79,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.87,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_21",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.96,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.36,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.37,
+              "target": 1
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_22",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.56,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.99,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.51,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_23",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.94,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.96,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.23,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_24",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.39,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.82,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "insufficient-evidence",
+              "confidence": 0.38,
+              "target": "insufficient-evidence"
+            },
+            "review_priority": {
+              "value": 2,
+              "confidence": 0.2,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_25",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.75,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 0.91,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.75,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_26",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.95,
+              "target": "insufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.96,
+              "target": "luck"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.26,
+              "target": 3
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_27",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.27,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "discipline",
+              "confidence": 0.98,
+              "target": "discipline"
+            },
+            "review_priority": {
+              "value": 5,
+              "confidence": 0.94,
+              "target": 5
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_28",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "contradictory",
+              "confidence": 0.84,
+              "target": "contradictory"
+            },
+            "major_counter_evidence": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.97,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.95,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_29",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "partial",
+              "confidence": 0.95,
+              "target": "partial"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "data-quality",
+              "confidence": 0.96,
+              "target": "data-quality"
+            },
+            "review_priority": {
+              "value": 3,
+              "confidence": 0.06,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_tr_holdout_30",
+          "answers": {
+            "evidence_sufficiency": {
+              "value": "insufficient",
+              "confidence": 0.51,
+              "target": "sufficient"
+            },
+            "major_counter_evidence": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "failure_mode": {
+              "value": "timing",
+              "confidence": 1.0,
+              "target": "timing"
+            },
+            "review_priority": {
+              "value": 4,
+              "confidence": 0.81,
+              "target": 4
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_01",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.84,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_02",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.86,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.45,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_03",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 1.0,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.76,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_04",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.86,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.93,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_05",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.51,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_06",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.95,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.86,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_07",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.84,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 2,
+              "confidence": 0.58,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_08",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.41,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_09",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.66,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_10",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.86,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.72,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 2,
+              "confidence": 0.59,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_11",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.85,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.8,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.73,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_12",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.48,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.99,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 0.98,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_13",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.89,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "low",
+              "confidence": 0.66,
+              "target": "immaterial"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_14",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.39,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 2,
+              "confidence": 0.69,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_15",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.25,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.89,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_16",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.45,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_17",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.52,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_18",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.39,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.85,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_19",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.86,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.66,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.79,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_20",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.61,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_21",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.09,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.68,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 0.99,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_22",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.89,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.91,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.29,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_23",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.69,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_24",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.87,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.99,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 0.98,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_25",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.89,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.7,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_26",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.89,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.97,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.23,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_27",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.08,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.81,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_28",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_29",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.94,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_dev_30",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.88,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_01",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.84,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_02",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.28,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_03",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 1.0,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.59,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_04",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.93,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_05",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.49,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_06",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.97,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.86,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_07",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.85,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.6,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_08",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.4,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_09",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.72,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_10",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.86,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.71,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.56,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_11",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.84,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.79,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.72,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_12",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.49,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.99,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 0.99,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_13",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "low",
+              "confidence": 0.69,
+              "target": "immaterial"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_14",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.4,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 2,
+              "confidence": 0.67,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_15",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.08,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.19,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.85,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_16",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.54,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_17",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.6,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_18",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.44,
+              "target": "low"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.83,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_19",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.88,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.65,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.7,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_20",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.63,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_21",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.09,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "medium",
+              "confidence": 0.67,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_22",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.89,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.93,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.24,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_23",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.87,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "medium"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.63,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_24",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.88,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.99,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 0.99,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_25",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.75,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_26",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.21,
+              "target": 2
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_27",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.08,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 1.0,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.73,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "critical",
+              "confidence": 1.0,
+              "target": "critical"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_28",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.91,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.03,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 3,
+              "confidence": 0.99,
+              "target": 3
+            },
+            "information_gap": {
+              "value": "none",
+              "confidence": 1.0,
+              "target": "none"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_29",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": true,
+              "confidence": 0.9,
+              "target": true
+            },
+            "internal_contradiction": {
+              "value": false,
+              "confidence": 0.04,
+              "target": false
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.93,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 4,
+              "confidence": 1.0,
+              "target": 4
+            },
+            "information_gap": {
+              "value": "minor",
+              "confidence": 1.0,
+              "target": "minor"
+            }
+          }
+        },
+        {
+          "case_id": "case_ff_holdout_30",
+          "answers": {
+            "disclosure_supports_conclusion": {
+              "value": false,
+              "confidence": 0.07,
+              "target": false
+            },
+            "internal_contradiction": {
+              "value": true,
+              "confidence": 0.97,
+              "target": true
+            },
+            "materiality_of_change": {
+              "value": "high",
+              "confidence": 0.99,
+              "target": "high"
+            },
+            "evidence_quality": {
+              "value": 1,
+              "confidence": 0.84,
+              "target": 1
+            },
+            "information_gap": {
+              "value": "significant",
+              "confidence": 1.0,
+              "target": "significant"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_01",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 1.0,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_02",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_03",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.98,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_04",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_05",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_06",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 1.0,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_07",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_08",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "firm-specific"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 1.0,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_09",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_10",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_11",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 1.0,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_12",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 1.0,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 1.0,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_13",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_14",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_15",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_16",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_17",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 1.0,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_18",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_19",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_20",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "firm-specific"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_21",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.98,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_22",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_23",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 1.0,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_24",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_25",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_26",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_27",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_28",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_29",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 1.0,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_dev_30",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 1.0,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_01",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_02",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_03",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.97,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_04",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_05",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_06",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_07",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_08",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "firm-specific"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_09",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.97,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_10",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.97,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_11",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_12",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_13",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_14",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_15",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.98,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_16",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.97,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_17",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_18",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_19",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_20",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "firm-specific"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_21",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.97,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_22",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.97,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_23",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 1.0,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_24",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_25",
+          "answers": {
+            "event_class": {
+              "value": "technological",
+              "confidence": 1.0,
+              "target": "technological"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_26",
+          "answers": {
+            "event_class": {
+              "value": "competitive",
+              "confidence": 1.0,
+              "target": "competitive"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_27",
+          "answers": {
+            "event_class": {
+              "value": "supply-chain",
+              "confidence": 1.0,
+              "target": "supply-chain"
+            },
+            "impact_scope": {
+              "value": "cross-industry",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.97,
+              "target": "direct"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_28",
+          "answers": {
+            "event_class": {
+              "value": "macroeconomic",
+              "confidence": 1.0,
+              "target": "macroeconomic"
+            },
+            "impact_scope": {
+              "value": "firm-specific",
+              "confidence": 1.0,
+              "target": "cross-industry"
+            },
+            "duration": {
+              "value": "transitory",
+              "confidence": 1.0,
+              "target": "transitory"
+            },
+            "epistemic_status": {
+              "value": "management-view",
+              "confidence": 0.98,
+              "target": "management-view"
+            },
+            "supply_chain_impact": {
+              "value": "indirect",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_29",
+          "answers": {
+            "event_class": {
+              "value": "other",
+              "confidence": 0.99,
+              "target": "other"
+            },
+            "impact_scope": {
+              "value": "subsector",
+              "confidence": 1.0,
+              "target": "subsector"
+            },
+            "duration": {
+              "value": "short-term",
+              "confidence": 1.0,
+              "target": "short-term"
+            },
+            "epistemic_status": {
+              "value": "inference",
+              "confidence": 0.99,
+              "target": "inference"
+            },
+            "supply_chain_impact": {
+              "value": "insufficient",
+              "confidence": 1.0,
+              "target": "insufficient"
+            }
+          }
+        },
+        {
+          "case_id": "case_ie_holdout_30",
+          "answers": {
+            "event_class": {
+              "value": "regulatory",
+              "confidence": 1.0,
+              "target": "regulatory"
+            },
+            "impact_scope": {
+              "value": "broad-industry",
+              "confidence": 1.0,
+              "target": "broad-industry"
+            },
+            "duration": {
+              "value": "medium-term",
+              "confidence": 1.0,
+              "target": "medium-term"
+            },
+            "epistemic_status": {
+              "value": "fact",
+              "confidence": 0.99,
+              "target": "fact"
+            },
+            "supply_chain_impact": {
+              "value": "direct",
+              "confidence": 0.99,
+              "target": "indirect"
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_01",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_02",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_03",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_04",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_05",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.99,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_06",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_07",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_08",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_09",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_10",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.99,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_11",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_12",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_13",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_14",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_15",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_16",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_17",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_18",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_19",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_20",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_21",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_22",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_23",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_24",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_25",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.98,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_26",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_27",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_28",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_29",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_dev_30",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_01",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_02",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_03",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_04",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_05",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_06",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_07",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_08",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_09",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_10",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_11",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_12",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_13",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.98,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_14",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_15",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_16",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_17",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_18",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.99,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_19",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_20",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_21",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.98,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_22",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_23",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_24",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_25",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.98,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_26",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_27",
+          "answers": {
+            "policy_stance": {
+              "value": "mixed",
+              "confidence": 1.0,
+              "target": "mixed"
+            },
+            "macro_direction": {
+              "value": "policy",
+              "confidence": 1.0,
+              "target": "policy"
+            },
+            "impact_horizon": {
+              "value": "structural",
+              "confidence": 1.0,
+              "target": "structural"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_28",
+          "answers": {
+            "policy_stance": {
+              "value": "hawkish",
+              "confidence": 1.0,
+              "target": "hawkish"
+            },
+            "macro_direction": {
+              "value": "inflation",
+              "confidence": 1.0,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "immediate",
+              "confidence": 1.0,
+              "target": "immediate"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_29",
+          "answers": {
+            "policy_stance": {
+              "value": "dovish",
+              "confidence": 1.0,
+              "target": "dovish"
+            },
+            "macro_direction": {
+              "value": "growth",
+              "confidence": 0.98,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "near",
+              "confidence": 1.0,
+              "target": "near"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        },
+        {
+          "case_id": "case_mp_holdout_30",
+          "answers": {
+            "policy_stance": {
+              "value": "neutral",
+              "confidence": 1.0,
+              "target": "neutral"
+            },
+            "macro_direction": {
+              "value": "liquidity",
+              "confidence": 0.99,
+              "target": "liquidity"
+            },
+            "impact_horizon": {
+              "value": "medium",
+              "confidence": 1.0,
+              "target": "medium"
+            },
+            "available_at_decision_time": {
+              "value": true,
+              "confidence": 0.98,
+              "target": true
+            }
+          }
+        }
+      ]
     },
     {
       "system_id": "openrouter_jev",
@@ -187,5 +6931,5 @@
     }
   ],
   "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE",
-  "run_hash": "80f898f4a49fb8a470c5717a79aabbf1a1431b801310850cbc1056804a66e88a"
+  "run_hash": "81c683fff1da4ae1a222502cb852b1b3d4fc971980683339e8d90337175c1eb4"
 }
