@@ -38,7 +38,7 @@ def test_jev_question_dataclass_validation():
     q_noul = JevQuestion("q2", "noul", "Yes or no")
     assert q_noul.kind == "noul"
 
-    q_score = JevQuestion("q3", "score", "Rate 1-5", scale_min=1, scale_max=5)
+    q_score = JevQuestion("q3", "score", "Rate 1-5", scale_min=1, scale_max=5, levels=("Low", "Medium", "High", "Very high", "Critical"))
     assert q_score.scale_min == 1
     assert q_score.scale_max == 5
 
@@ -190,6 +190,9 @@ def test_deterministic_temporality_check_fails_on_nested_source_future_leakage()
 def test_score_question_without_levels_raises():
     with pytest.raises(ValueError, match="must provide non-empty levels rubric"):
         JevQuestion("q_no_levels", "score", "Rate severity", scale_min=1, scale_max=5)
+
+    with pytest.raises(ValueError, match="must provide non-empty levels rubric"):
+        JevQuestion("q3", "score", "Rate severity", scale_min=1, scale_max=5)
 
     with pytest.raises(ValueError, match="levels count .* must match scale range"):
         JevQuestion(

@@ -57,14 +57,7 @@ class JevQuestion:
                     f"score question '{self.question_id}' must have scale_min < scale_max"
                 )
             if not self.levels:
-                if self.question_id == "q3":
-                    object.__setattr__(
-                        self,
-                        "levels",
-                        tuple(f"Level {lvl}" for lvl in range(int(self.scale_min), int(self.scale_max) + 1)),
-                    )
-                else:
-                    raise ValueError(f'score question {self.question_id!r} must provide non-empty levels rubric')
+                raise ValueError(f'score question {self.question_id!r} must provide non-empty levels rubric')
             expected_count = int(self.scale_max) - int(self.scale_min) + 1
             if len(self.levels) != expected_count:
                 raise ValueError(
