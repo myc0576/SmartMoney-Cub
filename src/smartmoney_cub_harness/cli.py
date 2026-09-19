@@ -13,6 +13,7 @@ from smartmoney_cub_harness.evidence_pack import build_evidence_pack, replay_evi
 from smartmoney_cub_harness.evaluator import evaluate_decision
 from smartmoney_cub_harness.evolution_ledger import append_ledger_event
 from smartmoney_cub_harness.launcher import launcher_diagnostics
+from smartmoney_cub_harness.jev.cli import register_jev_commands, run_jev_doctor
 from smartmoney_cub_harness.loop import run_agent_loop
 from smartmoney_cub_harness.manifest import validate_run_manifest
 from smartmoney_cub_harness.memory import save_memory_record
@@ -519,6 +520,8 @@ def build_parser() -> argparse.ArgumentParser:
     ws_reject.add_argument("--note", default="")
     ws_reject.add_argument("--db")
 
+    register_jev_commands(sub)
+
     return parser
 
 
@@ -992,6 +995,13 @@ def main(argv: list[str] | None = None) -> int:
             _print_json(result)
             return 0 if result["status"] == "ok" else 2
         parser.error(f"unknown workspace command: {args.workspace_command}")
+        return 2
+
+    if args.command == "jev":
+        if args.jev_command == "doctor":
+            _print_json(run_jev_doctor())
+            return 0
+        parser.error(f"unknown jev command: {args.jev_command}")
         return 2
 
     parser.error(f"unknown command: {args.command}")
