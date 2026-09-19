@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from smartmoney_cub_harness import __version__
+from smartmoney_cub_harness.benchmark.cli import handle_benchmark_cli, register_benchmark_commands
 from smartmoney_cub_harness.case_bank import collect_offline_case
 from smartmoney_cub_harness.evidence_pack import build_evidence_pack, replay_evidence_pack
 from smartmoney_cub_harness.evaluator import evaluate_decision
@@ -521,6 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
     ws_reject.add_argument("--db")
 
     register_jev_commands(sub)
+    register_benchmark_commands(sub)
 
     return parser
 
@@ -996,6 +998,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result["status"] == "ok" else 2
         parser.error(f"unknown workspace command: {args.workspace_command}")
         return 2
+
+    if args.command == "benchmark":
+        return handle_benchmark_cli(args)
 
     if args.command == "jev":
         if args.jev_command == "doctor":
