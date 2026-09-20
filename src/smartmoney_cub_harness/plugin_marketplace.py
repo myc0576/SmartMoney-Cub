@@ -22,6 +22,66 @@ def _now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
+# Upstream provenance for entries that have a public source repository.
+#
+# `source_commit` is the exact upstream commit this catalog was checked against, and
+# `source_checked_at` records when. Both matter: these are moving default-branch
+# heads, so a commit without a date cannot be told from a stale claim.
+#
+# `latest_release` is the newest upstream release observed at that same moment. It is
+# deliberately NOT called `source_tag`: in this repository's manifest vocabulary a
+# source tag means the tag you validated against, and for five of these six projects
+# the release tag points at an older commit than the pinned head. Keeping the names
+# distinct stops a reader from assuming the two correspond. Re-verify a pin before
+# relying on it, and update the date when you do.
+PROVENANCE_CHECKED_AT = "2026-09-20"
+
+PROVENANCE: dict[str, dict[str, str]] = {
+    "akshare": {
+        "source_repo": "https://github.com/akfamily/akshare",
+        "source_commit": "0191689d57c667b7c7a198fd0cf97316837ef311",
+        "latest_release": "release-v1.18.97",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "MIT",
+    },
+    "qlib-factor-evaluator": {
+        "source_repo": "https://github.com/microsoft/qlib",
+        "source_commit": "be725493eb1a6bbb42bf11b37aa7669f59610ff1",
+        "latest_release": "v0.9.7",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "MIT",
+    },
+    "chronos-forecasting": {
+        "source_repo": "https://github.com/amazon-science/chronos-forecasting",
+        "source_commit": "10afa9ebe016e514f9d7dc1aa873f66af57e116b",
+        "latest_release": "v2.3.2",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "Apache-2.0",
+    },
+    "timesfm": {
+        "source_repo": "https://github.com/google-research/timesfm",
+        "source_commit": "e31dadd84cb26bd5153fde6687502b8312e918fb",
+        "latest_release": "v3.0.0",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "Apache-2.0",
+    },
+    "neuralforecast": {
+        "source_repo": "https://github.com/Nixtla/neuralforecast",
+        "source_commit": "344aaffd504245ff661bd9e211f220f9214a1876",
+        "latest_release": "v3.2.2",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "Apache-2.0",
+    },
+    "finrobot": {
+        "source_repo": "https://github.com/AI4Finance-Foundation/FinRobot",
+        "source_commit": "6d6ccd32c1b8b1904dc656cf06897438aba3daec",
+        "latest_release": "desktop-v0.1.0",
+        "source_checked_at": PROVENANCE_CHECKED_AT,
+        "license": "Apache-2.0",
+    },
+}
+
+
 _RAW_ENTRIES = (
     ("akshare", "数据", "A 股公开数据适配器", False),
     ("tushare-pro", "数据", "TuShare Pro 历史行情与财务数据", True),
@@ -38,17 +98,23 @@ _RAW_ENTRIES = (
     ("pyportfolioopt", "绩效与风险", "组合优化结果评估", False),
     ("skfolio", "绩效与风险", "样本外风险评估", False),
     ("qlib-factor-evaluator", "研究与评估", "因子研究与 point-in-time 评估", False),
+    ("chronos-forecasting", "研究与评估", "时间序列预测模型，输出仅作为复盘证据", False),
+    ("timesfm", "研究与评估", "时间序列基础预测模型，输出仅作为复盘证据", False),
+    ("neuralforecast", "研究与评估", "深度学习时间序列预测与评估", False),
     ("vectorbt-evidence", "研究与评估", "回测证据与未来数据检查", False),
     ("pandas-ta-classic", "研究与评估", "技术指标特征计算", False),
     ("pandas-market-calendars", "研究与评估", "交易日历与时间语义", False),
     ("multi-agent-trade-review", "Agent", "多 Agent 交易复盘", False),
     ("challenger-rule-critic", "Agent", "反方规则质询与 Challenger 生成", False),
+    ("finrobot", "Agent", "金融开源 Agent 平台，用于研报解析与辅助复盘", False),
 )
 
 
 def official_catalog() -> list[dict[str, Any]]:
-    return [
-        {
+    catalog = []
+    for plugin_id, category, description, requires_credentials in _RAW_ENTRIES:
+        name = plugin_id.replace("-", " ").title()
+        entry: dict[str, Any] = {
             "plugin_id": plugin_id,
             "name": name,
             "category": category,
@@ -61,9 +127,10 @@ def official_catalog() -> list[dict[str, Any]]:
             "state": "AVAILABLE",
             "safety": SAFETY_DECLARATION,
         }
-        for plugin_id, category, description, requires_credentials in _RAW_ENTRIES
-        for name in [plugin_id.replace("-", " ").title()]
-    ]
+        if plugin_id in PROVENANCE:
+            entry.update(PROVENANCE[plugin_id])
+        catalog.append(entry)
+    return catalog
 
 
 class MarketplaceStore:

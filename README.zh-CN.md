@@ -374,6 +374,12 @@ AI 助手在这个仓库里只能扮演 reviewer、challenger、archivist、drif
 | --- | --- | --- | --- |
 | [wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | 推荐搭配 / 生态接入位 | 作为外部分析报告或 agent skill 灵感来源，输出只能作为本地复盘材料进入 reviewer / challenger 流程 | 不声明内置运行时集成；不把分析结论变成买卖指令 |
 | [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | optional documented adapter / 用户自选外部引擎 | 用户本地运行 TradingAgents 生成多智能体分析/候选报告，或显式开启 optional local bridge 生成只读 review packet；该 packet 进入 reviewer / challenger / D1-D3 outcome review / rule candidate 流程 | 用户自行配置 LLM/API key；harness 不保存、不收集、不上传 key；不连接券商；不下单；不把 TradingAgents 输出直接当交易指令 |
+| [AKShare](https://github.com/akfamily/akshare) | 预留 | 未来作为只读行情数据适配来源；toy loop 不需要它 | 只读输入，不接 broker execution，不写账户 |
+| [Microsoft Qlib](https://github.com/microsoft/qlib) | 预留 | 未来帮助评估 challenger 规则候选与样本质量 | 不跳过 D1/D3 provenance 与 future-leakage 检查 |
+| [Amazon Chronos](https://github.com/amazon-science/chronos-forecasting) | 预留 | 未来把预测输出作为只读证据进入复盘流程 | 预测只是证据，不是买卖指令；模型与权重由用户自行安装 |
+| [Google TimesFM](https://github.com/google-research/timesfm) | 预留 | 未来把预测输出作为只读证据进入复盘流程 | 预测只是证据，不是买卖指令；模型与权重由用户自行安装 |
+| [Nixtla NeuralForecast](https://github.com/Nixtla/neuralforecast) | 预留 | 未来把预测输出作为只读证据进入复盘流程 | 预测只是证据，不是买卖指令；模型与权重由用户自行安装 |
+| [FinRobot](https://github.com/AI4Finance-Foundation/FinRobot) | 预留 | 未来作为外部分析报告来源导入 review packet | 输出只做复盘证据，不做交易指令 |
 | 数据源适配项目 | 预留 | 只读导出、toy fixture、公开样例 schema | 不接 broker execution，不写账户，不下单 |
 | 报告生成项目 | 预留 | 把 `loop_report.md`、case record、ledger 转成更好的本地阅读材料 | 不上传私有复盘，不发布真实持仓 |
 | Agent skill 项目 | 预留 | 增强 reviewer、challenger、archivist、drift detector 的协作体验 | 不允许越权到交易执行 |

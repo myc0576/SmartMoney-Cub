@@ -217,6 +217,69 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         ),
         execution_risk="low",
     ),
+    # Registered at companion level because no runtime adapter exists here yet.
+    # Promoting any entry to adapter level requires dedicated provider code, test
+    # suites, and safety documentation.
+    _entry(
+        "amazon-science/chronos-forecasting",
+        "https://github.com/amazon-science/chronos-forecasting",
+        LEVEL_COMPANION,
+        [CapabilityName.CHALLENGER, CapabilityName.EVALUATOR],
+        license_name="Apache-2.0",
+        maintained="active",
+        boundary=(
+            "Read-only time-series foundation model. Output is review evidence or challenger "
+            "candidate only; never order intent or broker action. No automatic champion promotion "
+            "and no redistribution of upstream code or model weights."
+        ),
+        network_required=False,
+        execution_risk="low",
+    ),
+    _entry(
+        "google-research/timesfm",
+        "https://github.com/google-research/timesfm",
+        LEVEL_COMPANION,
+        [CapabilityName.CHALLENGER, CapabilityName.EVALUATOR],
+        license_name="Apache-2.0",
+        maintained="active",
+        boundary=(
+            "Read-only foundation time-series forecasting model. Output is review evidence or challenger "
+            "candidate only; never order intent or broker action. No automatic champion promotion "
+            "and no redistribution of upstream code or model weights."
+        ),
+        network_required=False,
+        execution_risk="low",
+    ),
+    _entry(
+        "Nixtla/neuralforecast",
+        "https://github.com/Nixtla/neuralforecast",
+        LEVEL_COMPANION,
+        [CapabilityName.CHALLENGER, CapabilityName.EVALUATOR],
+        license_name="Apache-2.0",
+        maintained="active",
+        boundary=(
+            "Read-only neural forecasting research library. Output is review evidence or challenger "
+            "candidate only; never order intent or broker action. No automatic champion promotion "
+            "and no redistribution of upstream code or model weights."
+        ),
+        network_required=False,
+        execution_risk="low",
+    ),
+    _entry(
+        "AI4Finance-Foundation/FinRobot",
+        "https://github.com/AI4Finance-Foundation/FinRobot",
+        LEVEL_COMPANION,
+        [CapabilityName.REVIEWER, CapabilityName.CHALLENGER],
+        license_name="Apache-2.0",
+        maintained="active",
+        boundary=(
+            "Read-only external financial LLM agent platform. External report import only; output "
+            "is review evidence or challenger candidate only, never order intent or broker action. "
+            "No automatic champion promotion and no redistribution of upstream code or model weights."
+        ),
+        network_required=True,
+        execution_risk="low",
+    ),
 )
 
 
