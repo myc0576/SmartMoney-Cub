@@ -108,9 +108,9 @@ def test_render_images_full_suite_and_exact_match(tmp_path: Path):
 
     # Verify numbers in SVG match run.json exactly
     base_metrics = res["systems"][0]["metrics"]
-    acc_pct = f"{base_metrics["accuracy"]:.2%}"
-    f1_val = f"{base_metrics["macro_f1"]:.4f}"
-    ece_val = f"{base_metrics["ece"]:.4f}"
+    acc_pct = f'{base_metrics["accuracy"]:.2%}'
+    f1_val = f'{base_metrics["macro_f1"]:.4f}'
+    ece_val = f'{base_metrics["ece"]:.4f}'
     safety_decl = SAFETY_DECLARATION
 
     hero_svg_text = (images_dir / "benchmark-hero-1200x630.svg").read_text(encoding="utf-8")
@@ -169,3 +169,47 @@ def test_render_images_raises_actionable_error_when_pillow_missing(tmp_path: Pat
     monkeypatch.setattr(render_mod, "_require_pillow", mock_require_pillow)
     with pytest.raises(RuntimeError, match=r'pip install -e "\.\[benchmark\]"'):
         render_mod.render_images(tmp_path)
+
+
+
+
+def test_no_pep701_only_fstring_syntax():
+    """Reject f-strings that only parse on Python 3.12+.
+
+    This project supports Python 3.10+ and CI runs 3.10. PEP 701 made nested
+    same-quote interpolation legal in 3.12, so such a literal compiles here on a
+    3.12 machine and then dies as a SyntaxError at collection time on 3.10.
+
+    Detection combines two cheap signals so it stays truthful: a line must show the
+    shape `f"...{ ... " ... }..."` AND the parsed tree must actually hold an f-string
+    on that line. The second condition is what stops prose that merely mentions the
+    pattern from being reported as a defect.
+    """
+    import ast
+    import re
+    from pathlib import Path
+
+    # Outer double quote, then an interpolation whose body itself contains a double
+    # quote before its closing brace. A single-quoted key inside is legal on 3.10 and
+    # deliberately does not match.
+    same_quote = re.compile(r'f"[^"\n]*\{[^}\n]*"[^}\n]*\}')
+
+    offenders = []
+    root = Path(__file__).resolve().parent.parent
+    for base in (root / "src", root / "tests"):
+        for path in sorted(base.rglob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            fstring_lines = {
+                node.lineno
+                for node in ast.walk(tree)
+                if isinstance(node, ast.JoinedStr)
+            }
+            for lineno, line in enumerate(source.splitlines(), 1):
+                if lineno in fstring_lines and same_quote.search(line):
+                    offenders.append(f"{path.relative_to(root)}:{lineno}: {line.strip()}")
+
+    assert not offenders, (
+        "PEP 701 f-string syntax is Python 3.12+ only and breaks the Python 3.10 CI job. "
+        "Use opposite quotes inside the interpolation:\n  " + "\n  ".join(offenders)
+    )
