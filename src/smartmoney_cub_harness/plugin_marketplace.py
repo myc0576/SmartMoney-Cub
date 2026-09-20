@@ -45,9 +45,31 @@ _RAW_ENTRIES = (
     ("challenger-rule-critic", "Agent", "反方规则质询与 Challenger 生成", False),
 )
 
+_TYPESAFE_SKILL_ENTRY: dict[str, Any] = {
+    "plugin_id": "typesafe-ai-skills",
+    "name": "TypeSafe AI Skills",
+    "category": "Agent",
+    "description": "TypeSafe 结构化判断与决策 Agent Skill (System One 决策模型)",
+    "version": "0.5.7",
+    "source": "smartmoney-cub/official-curated",
+    "bundle": "official://smartmoney-cub/typesafe-ai-skills/0.5.7",
+    "requires_credentials": True,
+    "permissions": ["journal:read", "evidence:write"],
+    "state": "AVAILABLE",
+    "safety": SAFETY_DECLARATION,
+    "kind": "skill",
+    "source_repo": "https://github.com/typesafe-ai/skills",
+    "source_commit": "65a39f393687675ce170e6094757de20370365b9",
+    "license": "MIT",
+    "provenance": {
+        "skills/typesafe-ai/SKILL.md": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52",
+        "skills/typesafe-ai/LICENSE": "835f233f1d6ed84a9b9a351aba0689b47644a4137d6316911fc7957bde523b02",
+    },
+}
+
 
 def official_catalog() -> list[dict[str, Any]]:
-    return [
+    entries = [
         {
             "plugin_id": plugin_id,
             "name": name,
@@ -64,6 +86,8 @@ def official_catalog() -> list[dict[str, Any]]:
         for plugin_id, category, description, requires_credentials in _RAW_ENTRIES
         for name in [plugin_id.replace("-", " ").title()]
     ]
+    entries.append(copy.deepcopy(_TYPESAFE_SKILL_ENTRY))
+    return entries
 
 
 class MarketplaceStore:

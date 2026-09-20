@@ -189,6 +189,22 @@ a patch keeps applying to the same logical slot even when providers change.
 Projects with high execution risk, such as vn.py, stay at `companion` level and are
 listed with no capabilities. A catalog entry is never a bundled dependency.
 
+### Agent-skill plugins
+
+The officially curated catalog includes an agent-skill plugin class, with the
+TypeSafe skill package as the first concrete entry:
+
+- Upstream repository: [typesafe-ai/skills](https://github.com/typesafe-ai/skills)
+- Pinned upstream commit: `65a39f393687675ce170e6094757de20370365b9` (plugin version `0.5.7`)
+- License: MIT
+- Credential requirement: `TYPESAFE_API_KEY` (name only; the secret value stays strictly in the user's environment)
+
+This entry sits at the marketplace / ecosystem-catalog (`companion`) level. It is
+never downloaded, mounted, or executed automatically by the harness runtime. In
+accordance with the harness safety contract, outputs from this skill may only become
+review evidence or a challenger candidate, never trading instructions or champion
+rules. A vendored copy is maintained at `.codex/skills/typesafe-ai/` and hash-pinned to the upstream commit.
+
 ## Schemas
 
 | Schema | Purpose |

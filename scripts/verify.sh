@@ -25,12 +25,15 @@ echo "✓ All tests passed."
 
 echo ""
 echo "=== [Gate 3] Leak & Safety Sanity Scan ==="
-# Ensure no unredacted absolute local paths or live order placement keywords slipped in
-if git status --porcelain | grep -q '^[MARCD]'; then
-  git diff HEAD -- ':(exclude)ledger.md' ':(exclude)*.json' | grep -iE '(api_key|secret_key|password|access_token|live_order)' && {
-    echo "FAIL: Suspicious secret or live order keyword in git diff" >&2
-    exit 1
-  } || true
+# Scan the diff for secret *values*, local absolute paths, and live order keywords.
+# It deliberately does not match bare field names: the plugin contract requires a
+# manifest to declare credential names, and the packaged settings form contains an
+# api_key field, so a keyword search reported both as leaks while never testing the
+# thing that matters. scripts/leak-scan.py matches value shapes instead;
+# tests/test_leak_scan.py holds it to that with positive and negative controls.
+if ! "$PYTHON_BIN" scripts/leak-scan.py; then
+  echo "FAIL: suspicious secret, local path, or live order keyword in git diff" >&2
+  exit 1
 fi
 echo "✓ Safety sanity check passed."
 
@@ -38,4 +41,3 @@ echo ""
 echo "========================================="
 echo "  Verification Loop: ALL GATES PASSED    "
 echo "========================================="
-

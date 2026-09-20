@@ -55,3 +55,22 @@ def test_networked_catalog_entries_are_flagged() -> None:
     networked = [entry for entry in CATALOG_ENTRIES if entry.project.startswith("akfamily")]
     assert networked
     assert networked[0].network_required is True
+
+
+def test_typesafe_skills_companion_entry() -> None:
+    payload = catalog_payload()
+    matches = [e for e in payload["entries"] if "typesafe" in e["repo"].lower()]
+    assert len(matches) == 1
+    entry = matches[0]
+    assert entry["project"] == "typesafe-ai/skills"
+    assert entry["level"] == LEVEL_COMPANION
+    assert entry["license"] == "MIT"
+    assert entry["boundary"].strip()
+    assert "TYPESAFE_API_KEY" in entry["boundary"]
+    assert "review evidence or a challenger candidate" in entry["boundary"]
+    assert "order intent" in entry["boundary"]
+    for capability in entry["capabilities"]:
+        lowered = capability.lower()
+        assert not any(fragment in lowered for fragment in FORBIDDEN_CAPABILITIES), (
+            f"TypeSafe entry declares forbidden capability: {capability}"
+        )
