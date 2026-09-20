@@ -296,3 +296,39 @@ def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
     assert sys_net["status"] == "not_run"
     assert sys_net["reason"] == "provider_unreachable"
     assert sys_net["reason"] != "no_client"
+
+def test_readme_benchmark_figures_match_published_run():
+    """Ensure headline benchmark figures in README.md stay strictly in sync with assets/benchmark/run.json."""
+    from pathlib import Path
+    import json
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    run_json_path = root / "assets" / "benchmark" / "run.json"
+    readme_path = root / "README.md"
+    readme_zh_path = root / "README.zh-CN.md"
+
+    assert run_json_path.exists(), "assets/benchmark/run.json missing"
+    assert readme_path.exists(), "README.md missing"
+    assert readme_zh_path.exists(), "README.zh-CN.md missing"
+
+    with run_json_path.open("r", encoding="utf-8") as f:
+        run_data = json.load(f)
+
+    baseline = next(s for s in run_data["systems"] if s["system_id"] == "deterministic_baseline")
+    typesafe = next(s for s in run_data["systems"] if s["system_id"] == "typesafe_direct")
+
+    expected_figures = {
+        "baseline_accuracy": f"{baseline['metrics']['accuracy']:.2%}",
+        "baseline_f1": f"{baseline['metrics']['macro_f1']:.4f}",
+        "jev_accuracy": f"{typesafe['metrics']['accuracy']:.2%}",
+        "jev_f1": f"{typesafe['metrics']['macro_f1']:.4f}",
+        "jev_ece": f"{typesafe['metrics']['ece']:.4f}",
+    }
+
+    en_text = readme_path.read_text(encoding="utf-8")
+    zh_text = readme_zh_path.read_text(encoding="utf-8")
+
+    for name, fig in expected_figures.items():
+        assert fig in en_text, f"Figure {fig} ({name}) not found in README.md"
+        assert fig in zh_text, f"Figure {fig} ({name}) not found in README.zh-CN.md"
