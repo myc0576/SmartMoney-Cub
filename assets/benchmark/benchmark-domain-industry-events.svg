@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #f8fafc; }
+    .subtitle { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 14px; fill: #94a3b8; }
+    .heading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; font-weight: bold; fill: #f8fafc; }
+    .body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #e2e8f0; }
+    .meta { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 11px; fill: #64748b; }
+    .safety { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #f43f5e; }
+  </style>
+  <rect width="800" height="480" fill="#0f172a" stroke="#334155" stroke-width="2" />
+  <rect width="800" height="85" fill="#1e293b" />
+  <line x1="0" y1="85" x2="800" y2="85" stroke="#475569" stroke-width="1" />
+  <rect x="480" y="20" width="300" height="26" rx="4" fill="#334155" />
+  <text x="490" y="38" class="body" font-weight="bold">DATASET: finance-jev-v1 | N=240</text>
+  <text x="24" y="40" class="title">Domain Evaluation: industry-events</text>
+  <text x="25" y="68" class="subtitle">Track breakdown metrics on 60 samples</text>
+    <rect x="24" y="110" width="752" height="300" rx="8" fill="#1e293b" stroke="#334155" />
+  <text x="44" y="145" class="heading">Track Performance: industry-events</text>
+  <text x="44" y="190" class="body">Accuracy: 96.67%  |  Macro F1: 0.9333  |  Recall: 0.9500</text>
+  <text x="44" y="225" class="body">ECE: 0.0333  |  FPR: 0.0017  |  Coverage: 100.00%</text>
+  <line x1="0" y1="432" x2="800" y2="432" stroke="#334155" stroke-width="1" />
+  <text x="24" y="450" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
+  <text x="24" y="468" class="meta">Date: 2026-09-20T10:50:46 | Git: bdc78e9c | Run Hash: 00e9ef2f5a9c919c... | Model: deterministic_rules_v1</text>
+</svg>

@@ -16,6 +16,31 @@
 
 External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
 
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+
+### Jev Reasoning Layer & Four-Track Financial Benchmark
+
+SmartMoney-Cub supports Jev ([TypeSafe](https://typesafe.ai/) | [OpenRouter](https://openrouter.ai/typesafe/jev)) as an optional typed-judgment layer with two pluggable backends: TypeSafe direct and OpenRouter. Jev evaluates only structured `noul`, `choice`, and `score` judgments, while all arithmetic, date comparisons, and strict temporal boundary validation (`available_at <= decision_time`) remain enforced in deterministic Python code.
+
+The repository ships `finance-jev-v1`, a frozen offline evaluation suite containing 240 cases across four tracks (`trading-review`, `financial-filings`, `industry-events`, `macro-policy`). Following full answerability auditing and the elimination of input label leakage, cases present realistic evidence narratives (post-trade logs, disclosure excerpts, wire dispatches, central bank communiques) evaluated against strictly typed questions without answer leakage. In the published reference run ([assets/benchmark/run.json](assets/benchmark/run.json)), the deterministic rule baseline achieves **83.33%** overall accuracy (95% Wilson confidence interval [80.92%, 85.49%]) and a macro F1 of **0.7792** across all 240 cases (1,020 evaluated items). The live TypeSafe Jev backend (`typesafe_direct`, evaluated against the real API resolving to model `jev-1.13.0`) achieves **78.43%** overall accuracy (95% Wilson confidence interval [75.80%, 80.85%]) and a macro F1 of **0.7319** with a median latency of 1034 ms and superior probabilistic calibration (ECE of 0.1464 vs 0.1667). On `financial-filings`, Jev achieves **77.00%** accuracy (F1: 0.6990) outperforming the baseline (73.33%), while achieving **93.33%** accuracy (F1: 0.9215) on `industry-events` and **74.44%** (F1: 0.7148) on `macro-policy`. These figures reflect empirical performance on this frozen toy suite and do not imply generalization to production market regimes. The OpenRouter backend (`openrouter_jev`) remains reported as `not_run` due to unconfigured credentials.
+
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+
+### 30-Second Quickstart
+
+```bash
+# 1. Install harness and dev dependencies
+pip install -e ".[dev]"
+
+# 2. Verify environment and strict read-only safety boundary
+smcub doctor
+
+# 3. Shortest review loop (capture offline toy run & replay)
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+```
+
+
 It has **no embedded LLM** in its core, **no broker connection**, and
 **no automatic trading**: the control plane runs entirely offline. The review assistant
 is a separate, opt-in surface that calls the provider you configure and sends only

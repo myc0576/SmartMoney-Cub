@@ -1,0 +1,31 @@
+{
+  "name": "smartmoney-cub-dsh-plugin",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness (DSH) stdio sidecar plugin for SmartMoney-Cub review workbench. Read-only review lifecycle integration with teardown support.",
+  "license": "MIT",
+  "main": "index.js",
+  "bin": {
+    "smartmoney-cub-dsh-plugin": "bin/dsh-plugin.js"
+  },
+  "files": [
+    "bin/",
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "smartmoney-cub",
+    "trading-journal",
+    "review-assistant",
+    "read-only"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myc0576/Smartmoney-Cub.git"
+  }
+}

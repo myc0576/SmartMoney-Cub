@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360" viewBox="0 0 600 360">
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #f8fafc; }
+    .subtitle { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 14px; fill: #94a3b8; }
+    .heading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; font-weight: bold; fill: #f8fafc; }
+    .body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; fill: #e2e8f0; }
+    .meta { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 11px; fill: #64748b; }
+    .safety { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: bold; fill: #f43f5e; }
+  </style>
+  <rect width="600" height="360" fill="#0f172a" stroke="#334155" stroke-width="2" />
+  <rect width="600" height="85" fill="#1e293b" />
+  <line x1="0" y1="85" x2="600" y2="85" stroke="#475569" stroke-width="1" />
+  <rect x="280" y="20" width="300" height="26" rx="4" fill="#334155" />
+  <text x="290" y="38" class="body" font-weight="bold">DATASET: finance-jev-v1 | N=240</text>
+  <text x="24" y="40" class="title">Benchmark Card</text>
+  <text x="25" y="68" class="subtitle">finance-jev-v1 • Summary</text>
+    <rect x="24" y="100" width="552" height="190" rx="8" fill="#1e293b" stroke="#334155" />
+  <text x="40" y="130" class="heading">Model: deterministic_rules_v1</text>
+  <text x="40" y="160" class="body" fill="#3b82f6" font-weight="bold">Accuracy: 83.33% (95% CI: [80.92%, 85.49%])</text>
+  <text x="40" y="190" class="body">Macro F1: 0.7792  |  ECE: 0.1667</text>
+  <text x="40" y="220" class="body">P50 Latency: 0.0 ms  |  Cost: $0.0000/case</text>
+  <text x="40" y="250" class="meta">Sample Count: 240 across 4 tracks</text>
+  <line x1="0" y1="312" x2="600" y2="312" stroke="#334155" stroke-width="1" />
+  <text x="24" y="330" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
+  <text x="24" y="348" class="meta">Date: 2026-09-20T10:50:46 | Git: bdc78e9c | Run Hash: 00e9ef2f5a9c919c... | Model: deterministic_rules_v1</text>
+</svg>

@@ -108,6 +108,35 @@ case "$cmd" in
     esac
     ;;
 
+  benchmark)
+    sub="${2:-publish}"
+    case "$sub" in
+      publish)
+        run_arg="${3:-artifacts/benchmark/run_20260919_133157_240}"
+        echo "[dev-env] 发布评测跑分图像到 tracked assets/benchmark/ ..."
+        python3 scripts/publish_benchmark_images.py "$run_arg"
+        ;;
+      run)
+        echo "[dev-env] 执行金融推理基准评测 (finance-jev-v1)..."
+        python3 -m smartmoney_cub_harness.cli benchmark run "${@:3}"
+        ;;
+      verify)
+        run_arg="${3:-assets/benchmark}"
+        echo "[dev-env] 验证评测运行产物完整性与防篡改哈希..."
+        python3 -m smartmoney_cub_harness.cli benchmark verify "$run_arg"
+        ;;
+      render)
+        run_arg="${3:-assets/benchmark}"
+        echo "[dev-env] 重新渲染基准评测 SVG/PNG 图像..."
+        python3 -m smartmoney_cub_harness.cli benchmark render "$run_arg"
+        ;;
+      *)
+        echo "未知 benchmark 子命令: $sub (支持: publish | run | verify | render)"
+        exit 1
+        ;;
+    esac
+    ;;
+
   rtk)
     sub="${2:-gain}"
     case "$sub" in
@@ -150,6 +179,7 @@ case "$cmd" in
   graph query <关键词> - 使用 AST 语义图谱检索代码符号与依赖关系
   graph update         - 重新扫描并更新代码图谱 (graphify extract)
   graph status         - 查看图谱与 Git 自动化钩子状态
+  benchmark [cmd]      - 评测流程操作 (publish | run | verify | render)
   rtk gain             - 查看 CLI 命令 Token 压缩节省量统计
   help                 - 显示本帮助信息
 HELP

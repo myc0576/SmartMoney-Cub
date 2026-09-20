@@ -18,6 +18,8 @@ import { PlaybookView } from './views/PlaybookView';
 import { BacktestView } from './views/BacktestView';
 import { ReplayView } from './views/ReplayView';
 import { PropFirmView } from './views/PropFirmView';
+import { JevView } from './views/JevView';
+import { BenchmarkView } from './views/BenchmarkView';
 
 // A-plan layout: navigation and portfolio switch on the left, the working page
 // in the middle, and the review assistant docked on the right.
@@ -25,7 +27,7 @@ import { PropFirmView } from './views/PropFirmView';
 type TabKey =
   | 'overview' | 'tradelog' | 'calendar' | 'reports' | 'analytics'
   | 'playbooks' | 'backtest' | 'replay' | 'propfirm'
-  | 'trades' | 'rules' | 'import' | 'settings';
+  | 'trades' | 'rules' | 'import' | 'settings' | 'jev' | 'benchmark';
 
 // The sidebar is grouped by what a trader is doing, not by which subsystem
 // answers the call: review the journal, study what it says, plan and test the
@@ -45,6 +47,7 @@ const NAV: { section: string; items: { key: TabKey; label: string; hint: string 
       { key: 'reports', label: '报告', hint: '绩效、风险、标的与日时段' },
       { key: 'analytics', label: '绩效分析', hint: '归因与样本量' },
       { key: 'playbooks', label: 'Playbook', hint: '计划、规则与单计划盈亏' },
+      { key: 'benchmark', label: '基准评测', hint: 'finance-jev-v1 评测与排行榜' },
     ],
   },
   {
@@ -58,6 +61,7 @@ const NAV: { section: string; items: { key: TabKey; label: string; hint: string 
   {
     section: '系统',
     items: [
+      { key: 'jev', label: 'Jev 引擎', hint: '四赛道离线审方与模型状态' },
       { key: 'trades', label: '成交台账', hint: '已确认的平仓交易' },
       { key: 'rules', label: '规则库', hint: 'challenger / champion' },
       { key: 'import', label: '数据导入', hint: 'Excel / CSV / PDF / 截图' },
@@ -251,6 +255,8 @@ export function App() {
             {tab === 'backtest' ? <BacktestView scheme={scheme} /> : null}
             {tab === 'replay' ? <ReplayView scheme={scheme} /> : null}
             {tab === 'propfirm' ? <PropFirmView scheme={scheme} /> : null}
+            {tab === 'jev' ? <JevView /> : null}
+            {tab === 'benchmark' ? <BenchmarkView /> : null}
             {tab === 'rules' ? <RulesView /> : null}
             {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}
             {tab === 'settings' ? (
