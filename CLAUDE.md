@@ -26,19 +26,24 @@ small, offline Python package; hosted tenant mode is opt-in:
 ## Commands
 
 ```bash
-pip install -e ".[dev]"
-smcub doctor
-pytest -q
+./scripts/dev-env.sh status
+./scripts/dev-env.sh test [all|unit|doctor|gui]
+./scripts/dev-env.sh graph query '<symbol>'
+./scripts/dev-env.sh verify
 ```
 
 ## Mandatory Agent Loops
-
-Any AI agent operating in this repository MUST strictly follow these two skills (configured in `.codex/skills/`):
 
 1. **`goal-loop`**:
    - Freeze Goal, Non-Goals, and Definition of Done (DoD) checklist before writing code.
    - Disallow goal drift, scope reduction, or self-serving completion claims.
 
 2. **`verification-loop`**:
-   - Mandatory gate: Run `./scripts/verify.sh` (or `python -m smartmoney_cub_harness.cli doctor` and `python -m pytest tests/ -q`).
+   - Mandatory gate: Run `./scripts/verify.sh` (or `./scripts/dev-env.sh verify`).
    - No completion claims without fresh, passing execution logs.
+
+3. **`workflow-cost-optimizer`**:
+   - Enforce the 3 core principles (need-only context, zero irrelevant context, deduplicated context).
+   - Query code graph via `./scripts/dev-env.sh graph query` before broad grep.
+   - Prefix commands with `rtk` to compress command output.
+   - Externalize progress state to `ledger.md`.

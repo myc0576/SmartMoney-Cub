@@ -24,12 +24,13 @@ the company gateway and the offline fallback:
 | Provider | Purpose |
 | --- | --- |
 | `alphatech` | The preconfigured company gateway at `https://alphatech.net.cn/v1` |
-| `offline` | Local template review with no network request at all |
+| `commandcode-api` | Optional local OpenAI-compatible gateway at `http://127.0.0.1:10100/v1`, with DeepSeek V4.1 Flash |
+| `offline` | Legacy migration record; no assistant answer route is offered |
 
 **Settings → Models** manages everything else:
 
 - **Add provider** installs an entry from the built-in catalog (DeepSeek, OpenAI,
-  Moonshot/Kimi, Zhipu GLM, and the company gateway). Installing one copies its
+  Moonshot/Kimi, Zhipu GLM, CommandCode, and the company gateway). Installing one copies its
   endpoint, protocol, and model list, all of which stay editable.
 - **Add a custom provider** covers a company gateway or a self-hosted server. It
   takes a permanent lowercase Provider ID, a display name, a base URL, and one
@@ -63,8 +64,9 @@ credentials file second. The credentials file is written with owner-only
 permissions, and no response ever returns the key. The settings page reports only
 whether a key exists and where it came from.
 
-When no usable key is configured, the turn is answered from local data. The harness
-never sends an unauthenticated request to a provider.
+When no usable key is configured, the turn stops with visible setup guidance and
+the Settings → Models entry point. The harness never sends an unauthenticated
+request to a provider and never silently substitutes a local template answer.
 
 ## What leaves the machine
 

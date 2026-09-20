@@ -10,7 +10,6 @@ import { AnalyticsView } from './views/AnalyticsView';
 import { RulesView } from './views/RulesView';
 import { ImportView } from './views/ImportView';
 import { SettingsView } from './views/SettingsView';
-import { PluginsView } from './views/PluginsView';
 import { TradeDrawer } from './views/TradeDrawer';
 import { formatMoney, toneOf } from './components/common';
 import { TradeLogView } from './views/TradeLogView';
@@ -26,7 +25,7 @@ import { PropFirmView } from './views/PropFirmView';
 type TabKey =
   | 'overview' | 'tradelog' | 'calendar' | 'reports' | 'analytics'
   | 'playbooks' | 'backtest' | 'replay' | 'propfirm'
-  | 'trades' | 'rules' | 'import' | 'plugins' | 'settings';
+  | 'trades' | 'rules' | 'import' | 'settings';
 
 // The sidebar is grouped by what a trader is doing, not by which subsystem
 // answers the call: review the journal, study what it says, plan and test the
@@ -62,7 +61,6 @@ const NAV: { section: string; items: { key: TabKey; label: string; hint: string 
       { key: 'trades', label: '成交台账', hint: '已确认的平仓交易' },
       { key: 'rules', label: '规则库', hint: 'challenger / champion' },
       { key: 'import', label: '数据导入', hint: 'Excel / CSV / PDF / 截图' },
-      { key: 'plugins', label: '插件', hint: '只读数据来源' },
       { key: 'settings', label: '设置', hint: '模型、隐私与诊断' },
     ],
   },
@@ -255,7 +253,6 @@ export function App() {
             {tab === 'propfirm' ? <PropFirmView scheme={scheme} /> : null}
             {tab === 'rules' ? <RulesView /> : null}
             {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}
-            {tab === 'plugins' ? <PluginsView /> : null}
             {tab === 'settings' ? (
               <SettingsView
                 meta={meta}
@@ -264,7 +261,6 @@ export function App() {
                 theme={theme}
                 onToggleScheme={toggleScheme}
                 onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
-                onGoToPlugins={() => setTab('plugins')}
               />
             ) : null}
           </div>
@@ -273,8 +269,6 @@ export function App() {
             <AssistantPanel
               meta={meta}
               context={assistantContext}
-              className="drawer open"
-              onClose={() => setAssistantOpen(false)}
               onMetaReload={() => void loadMeta()}
             />
           ) : null}
