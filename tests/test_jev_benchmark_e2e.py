@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import pytest
+
+pytest.importorskip("PIL", reason="Pillow is required for benchmark render tests")
 from PIL import Image
 
 from smartmoney_cub_harness.benchmark.cases import TRACK_IDS

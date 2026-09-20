@@ -41,6 +41,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+benchmark = ["Pillow>=10"]
 dev = ["pytest>=8"]
 hosted = ["psycopg[binary]>=3.2"]
 ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pypdfium2>=4.30", "pypdf>=4.0"]

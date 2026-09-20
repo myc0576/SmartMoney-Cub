@@ -5,11 +5,22 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from PIL import Image, ImageDraw, ImageFont
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 
-def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _require_pillow() -> tuple[Any, Any, Any]:
+    """Import Pillow lazily or raise an actionable error naming the benchmark extra."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        return Image, ImageDraw, ImageFont
+    except ImportError as e:
+        raise RuntimeError(
+            "Pillow is required for benchmark image rendering. "
+            'Install it with: pip install -e ".[benchmark]"'
+        ) from e
+
+
+def _load_font(ImageFont: Any, size: int, bold: bool = False) -> Any:
     """Load a clean system TrueType font or fall back gracefully to default."""
     font_candidates = [
         "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -84,15 +95,17 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     b_cost = float(b_metrics.get("cost_per_case", 0.0))
     b_model = str(baseline.get("model_resolved") or baseline.get("model_requested") or "v1")
 
-    font_title = _load_font(28, bold=True)
-    font_subtitle = _load_font(16, bold=False)
-    font_heading = _load_font(20, bold=True)
-    font_body = _load_font(14, bold=False)
-    font_bold = _load_font(14, bold=True)
-    font_meta = _load_font(11, bold=False)
-    font_badge = _load_font(12, bold=True)
+    Image, ImageDraw, ImageFont = _require_pillow()
 
-    def draw_card(width: int, height: int, title: str, subtitle: str) -> tuple[Image.Image, ImageDraw.ImageDraw]:
+    font_title = _load_font(ImageFont, 28, bold=True)
+    font_subtitle = _load_font(ImageFont, 16, bold=False)
+    font_heading = _load_font(ImageFont, 20, bold=True)
+    font_body = _load_font(ImageFont, 14, bold=False)
+    font_bold = _load_font(ImageFont, 14, bold=True)
+    font_meta = _load_font(ImageFont, 11, bold=False)
+    font_badge = _load_font(ImageFont, 12, bold=True)
+
+    def draw_card(width: int, height: int, title: str, subtitle: str) -> tuple[Any, Any]:
         img = Image.new("RGB", (width, height), (15, 23, 42))
         draw = ImageDraw.Draw(img)
         draw.rectangle([(0, 0), (width - 1, height - 1)], outline=(51, 65, 85), width=2)

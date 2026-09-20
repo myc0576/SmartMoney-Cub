@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import pytest
+
+pytest.importorskip("PIL", reason="Pillow is required for benchmark render tests")
 from PIL import Image
 
 from smartmoney_cub_harness.benchmark.render import render_images
@@ -141,3 +143,29 @@ def test_svg_renders_unmeasured_systems_matching_png(tmp_path: Path):
 
     assert "not_run" in hero_svg_text
     assert "not_run" in lead_svg_text
+
+
+def test_render_images_raises_actionable_error_when_pillow_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import smartmoney_cub_harness.benchmark.render as render_mod
+
+    run_file = tmp_path / "run.json"
+    run_file.write_text(
+        json.dumps({
+            "run_id": "test_run_no_pillow",
+            "run_hash": "abcdef123456",
+            "sample_count": 60,
+            "systems": [{"system_id": "s1", "model_resolved": "m1"}],
+            "safety": SAFETY_DECLARATION,
+        }),
+        encoding="utf-8",
+    )
+
+    def mock_require_pillow():
+        raise RuntimeError(
+            "Pillow is required for benchmark image rendering. "
+            'Install it with: pip install -e ".[benchmark]"'
+        )
+
+    monkeypatch.setattr(render_mod, "_require_pillow", mock_require_pillow)
+    with pytest.raises(RuntimeError, match=r'pip install -e "\.\[benchmark\]"'):
+        render_mod.render_images(tmp_path)
