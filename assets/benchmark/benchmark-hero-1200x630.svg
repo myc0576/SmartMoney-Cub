@@ -17,26 +17,26 @@
   <text x="25" y="68" class="subtitle">Autonomous financial reasoning evaluation across 4 frozen tracks</text>
     <rect x="24" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="2" />
   <text x="40" y="140" class="subtitle">Accuracy</text>
-  <text x="40" y="180" class="heading" font-size="28px">82.16%</text>
-  <text x="40" y="220" class="meta">95% CI: [79.69%, 84.38%]</text>
+  <text x="40" y="180" class="heading" font-size="28px">83.33%</text>
+  <text x="40" y="220" class="meta">95% CI: [80.92%, 85.49%]</text>
   <rect x="314" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="2" />
   <text x="330" y="140" class="subtitle">Macro F1</text>
-  <text x="330" y="180" class="heading" font-size="28px">0.7276</text>
-  <text x="330" y="220" class="meta">Recall: 0.7756</text>
+  <text x="330" y="180" class="heading" font-size="28px">0.7792</text>
+  <text x="330" y="220" class="meta">Recall: 0.8125</text>
   <rect x="604" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="2" />
   <text x="620" y="140" class="subtitle">Calibration ECE</text>
-  <text x="620" y="180" class="heading" font-size="28px">0.1784</text>
-  <text x="620" y="220" class="meta">Brier: 0.1784</text>
+  <text x="620" y="180" class="heading" font-size="28px">0.1667</text>
+  <text x="620" y="220" class="meta">Brier: 0.1667</text>
   <rect x="894" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="2" />
   <text x="910" y="140" class="subtitle">Latency &amp; Cost</text>
   <text x="910" y="180" class="heading" font-size="28px">0.0 ms</text>
   <text x="910" y="220" class="meta">Cost: $0.0000/case</text>
   <rect x="24" y="265" width="1152" height="295" rx="8" fill="#1e293b" stroke="#334155" />
   <text x="44" y="295" class="heading">Systems Summary &amp; McNemar Significance Against Baseline</text>
-  <text x="44" y="340" class="body">System: deterministic_baseline | Status: completed | Accuracy: 82.16% | Macro F1: 0.7276 | ECE: 0.1784 | Latency: 0.0ms</text>
-  <text x="44" y="375" class="body">System: typesafe_direct | Status: completed | Accuracy: 73.63% | Macro F1: 0.6684 | ECE: 0.1412 | Latency: 1176.0ms</text>
+  <text x="44" y="340" class="body">System: deterministic_baseline | Status: completed | Accuracy: 83.33% | Macro F1: 0.7792 | ECE: 0.1667 | Latency: 0.0ms</text>
+  <text x="44" y="375" class="body">System: typesafe_direct | Status: completed | Accuracy: 78.43% | Macro F1: 0.7319 | ECE: 0.1464 | Latency: 1034.4ms</text>
   <text x="44" y="410" class="body">System: openrouter_jev | Status: not_run (missing_credential) | Accuracy: N/A | Macro F1: N/A | ECE: N/A | Latency: —</text>
   <line x1="0" y1="582" x2="1200" y2="582" stroke="#334155" stroke-width="1" />
   <text x="24" y="600" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="618" class="meta">Date: 2026-09-20T00:27:09 | Git: e0a33361 | Run Hash: f9fe47c901db81fd... | Model: deterministic_rules_v1</text>
+  <text x="24" y="618" class="meta">Date: 2026-09-20T10:50:46 | Git: bdc78e9c | Run Hash: 00e9ef2f5a9c919c... | Model: deterministic_rules_v1</text>
 </svg>

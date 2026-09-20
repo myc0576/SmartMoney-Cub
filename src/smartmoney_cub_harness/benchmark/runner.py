@@ -415,7 +415,11 @@ def _evaluate_jev_system(
                 }
             except JevUnavailable as exc:
                 exc_str = str(exc).lower()
-                if "timeout" in exc_str or "timed out" in exc_str:
+                if "no client" in exc_str:
+                    reason = "no_client"
+                elif "missing credential" in exc_str:
+                    reason = "missing_credential"
+                elif "timeout" in exc_str or "timed out" in exc_str:
                     reason = "timeout"
                 else:
                     reason = "provider_unreachable"

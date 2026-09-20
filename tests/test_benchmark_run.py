@@ -253,3 +253,46 @@ def test_typesafe_direct_reports_truthful_reason_on_failure():
     assert sys_res["reason"] == "timeout"
     assert sys_res["metrics"] is None
 
+
+def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
+    from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
+
+    # Local configuration: client explicitly None
+    local_backend = TypeSafeDirectJevBackend(
+        api_key="mock-key",
+        http_client=None,
+    )
+
+    res = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=local_backend,
+        limit_per_track=2,
+    )
+    sys_res = res["systems"][0]
+    assert sys_res["status"] == "not_run"
+    assert sys_res["reason"] == "no_client"
+    assert sys_res["reason"] != "provider_unreachable"
+
+    # Outside network failure
+    def unreachable_client(req):
+        raise ConnectionResetError("network peer dropped connection")
+
+    net_backend = TypeSafeDirectJevBackend(
+        api_key="mock-key",
+        http_client=unreachable_client,
+    )
+    res_net = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=net_backend,
+        limit_per_track=2,
+    )
+    sys_net = res_net["systems"][0]
+    assert sys_net["status"] == "not_run"
+    assert sys_net["reason"] == "provider_unreachable"
+    assert sys_net["reason"] != "no_client"

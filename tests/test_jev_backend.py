@@ -344,17 +344,13 @@ def test_typesafe_direct_backend_live_smoke_skipped_without_key():
     if not key:
         pytest.skip("empty key file")
 
-    os.environ["TYPESAFE_LIVE_ENABLED"] = "1"
-    try:
-        backend = TypeSafeDirectJevBackend(api_key=key)
-        questions = (
-            JevQuestion("major_counter_evidence", "noul", "Does major counter-evidence appear in the record?"),
-        )
-        decision = backend.evaluate({"notes": "smoke test"}, questions, decision_time="2026-06-01T15:00:00Z")
-        assert decision.model_resolved.startswith("jev-")
-        assert len(decision.answers) == 1
-        assert isinstance(decision.answers[0].value, bool)
-        assert 0.0 <= decision.answers[0].confidence <= 1.0
-    finally:
-        os.environ.pop("TYPESAFE_LIVE_ENABLED", None)
+    backend = TypeSafeDirectJevBackend(api_key=key)
+    questions = (
+        JevQuestion("major_counter_evidence", "noul", "Does major counter-evidence appear in the record?"),
+    )
+    decision = backend.evaluate({"notes": "smoke test"}, questions, decision_time="2026-06-01T15:00:00Z")
+    assert decision.model_resolved.startswith("jev-")
+    assert len(decision.answers) == 1
+    assert isinstance(decision.answers[0].value, bool)
+    assert 0.0 <= decision.answers[0].confidence <= 1.0
 
