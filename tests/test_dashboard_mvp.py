@@ -268,7 +268,12 @@ def test_dashboard_extended_api_endpoints() -> None:
         assert "audit" in data
         assert data["audit"]["status"] == "ok"
 
-    # 9. POST /api/plugins/install (测试远程阻止)
+    # 9. POST /api/plugins/install (来源不在目录白名单内 -> 拒绝)
+    #
+    # The install channel used to refuse anything with a remote scheme. It now
+    # installs curated projects by id through a whitelist, so the equivalent
+    # guarantee is that an arbitrary URL is not a valid install target: it
+    # resolves to nothing in the catalog and is reported as not found.
     install_req = urllib.request.Request(
         f"{base_url}/api/plugins/install",
         data=json.dumps({"source": "https://github.com/malicious/remote"}).encode("utf-8"),
@@ -277,11 +282,11 @@ def test_dashboard_extended_api_endpoints() -> None:
     try:
         with urllib.request.urlopen(install_req) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            assert data["status"] == "refused"
+            assert data["status"] in ("not_found", "refused")
     except urllib.error.HTTPError as err:
         assert err.code == 400
         data = json.loads(err.read().decode("utf-8"))
-        assert data["status"] == "refused"
+        assert data["status"] in ("not_found", "refused")
 
     server.shutdown()
     server.server_close()

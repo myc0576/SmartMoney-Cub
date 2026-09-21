@@ -1,28 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { PluginCatalogEntry, PluginCatalogResponse, PluginDetailResponse, PluginItem } from '../types';
+import type {
+  PluginDetailResponse,
+  PluginItem,
+  PluginMarketEntry,
+  PluginMarketResponse,
+} from '../types';
 import { Badge, Empty, Panel } from '../components/common';
+import { PluginSetupWizard } from '../components/PluginSetupWizard';
 
-type PluginTab = 'market' | 'inventory' | 'config' | 'catalog';
+type PluginTab = 'market' | 'inventory';
 
 export function PluginsView() {
   const [tab, setTab] = useState<PluginTab>('market');
   const [plugins, setPlugins] = useState<PluginItem[]>([]);
-  const [catalogData, setCatalogData] = useState<PluginCatalogResponse | null>(null);
-  const [marketData, setMarketData] = useState<Record<string, any> | null>(null);
+  const [marketData, setMarketData] = useState<PluginMarketResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [marketCategory, setMarketCategory] = useState('全部');
 
-  // Drawer / modal for plugin inspection & events
+  // Wizard state
+  const [wizardEntry, setWizardEntry] = useState<PluginMarketEntry | null>(null);
+
+  // Detail modal state
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PluginDetailResponse | null>(null);
+  const [uninstalling, setUninstalling] = useState(false);
 
-  // Configuration draft state: pluginId -> config dict
-  const [configDrafts, setConfigDrafts] = useState<Record<string, Record<string, any>>>({});
-  const [savingConfig, setSavingConfig] = useState<string | null>(null);
+  // Copy feedback state: plugin_id -> boolean
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Action pending state
+  const [actionPendingId, setActionPendingId] = useState<string | null>(null);
 
   const loadPlugins = async () => {
     setLoading(true);
@@ -38,27 +49,21 @@ export function PluginsView() {
     }
   };
 
-  const loadCatalog = async () => {
-    try {
-      const res = await api.pluginCatalog();
-      setCatalogData(res);
-    } catch {
-      // Catalog error is non-fatal
-    }
-  };
-
   const loadMarket = async () => {
     try {
-      setMarketData(await api.pluginMarket());
+      const res = await api.pluginMarket();
+      setMarketData(res);
     } catch {
       // The official market is additive; local inventory remains usable.
     }
   };
 
+  const refreshAll = async () => {
+    await Promise.all([loadPlugins(), loadMarket()]);
+  };
+
   useEffect(() => {
-    void loadPlugins();
-    void loadCatalog();
-    void loadMarket();
+    void refreshAll();
   }, []);
 
   const openDetail = async (pluginId: string) => {
@@ -66,9 +71,6 @@ export function PluginsView() {
     try {
       const res = await api.pluginDetail(pluginId);
       setDetail(res);
-      if (res.config && !configDrafts[pluginId]) {
-        setConfigDrafts((prev) => ({ ...prev, [pluginId]: { ...res.config } }));
-      }
     } catch {
       setDetail(null);
     }
@@ -79,15 +81,18 @@ export function PluginsView() {
     const action = isServing ? api.disablePlugin : api.enablePlugin;
     setError('');
     setNotice('');
+    setActionPendingId(plugin.plugin_id);
     try {
       await action(plugin.plugin_id);
-      setNotice("插件「" + (plugin.name || plugin.plugin_id) + "」已" + (isServing ? "停用" : "启用"));
-      await loadPlugins();
+      setNotice('插件「' + (plugin.name || plugin.plugin_id) + '」已' + (isServing ? '停用' : '启用'));
+      await refreshAll();
       if (activePluginId === plugin.plugin_id) {
         await openDetail(plugin.plugin_id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionPendingId(null);
     }
   };
 
@@ -97,7 +102,7 @@ export function PluginsView() {
     try {
       await api.reloadPlugins();
       setNotice('已重新扫描本地插件目录');
-      await loadPlugins();
+      await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -105,37 +110,62 @@ export function PluginsView() {
     }
   };
 
-  const saveConfig = async (pluginId: string) => {
-    const config = configDrafts[pluginId] || {};
-    setSavingConfig(pluginId);
+  const handleUninstall = async (pluginId: string) => {
+    if (!window.confirm('确认卸载插件「' + pluginId + '」吗？此操作将移除本地运行时挂载及配置。')) {
+      return;
+    }
+    setUninstalling(true);
     setError('');
     try {
-      await api.configurePlugin(pluginId, config);
-      setNotice("插件「" + pluginId + "」配置已保存");
-      if (activePluginId === pluginId) {
-        await openDetail(pluginId);
+      const res = await api.pluginUninstall(pluginId);
+      if (res.status === 'ok') {
+        setNotice('插件「' + pluginId + '」已成功卸载');
+        setActivePluginId(null);
+        setDetail(null);
+        await refreshAll();
+      } else {
+        setError(res.error || '卸载失败');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSavingConfig(null);
+      setUninstalling(false);
     }
   };
 
-  const installMarket = async (pluginId: string) => {
-    setError('');
-    setNotice('');
-    try {
-      const entry = ((marketData?.catalog || []) as Record<string, any>[]).find((item) => item.plugin_id === pluginId);
-      const config = entry && !entry.requires_credentials ? { permissions_confirmed: true } : {};
-      const result = await api.installMarketPlugin(pluginId, config);
-      setNotice(result.status === 'configuration_required'
-        ? '插件已进入配置向导：请先确认权限、密钥与健康检查。'
-        : '官方插件已启用。');
-      await loadMarket();
-      await loadPlugins();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+  const copyCommand = (id: string, cmd: string) => {
+    if (!cmd) return;
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopiedId(id);
+      setTimeout(() => {
+        setCopiedId((curr) => (curr === id ? null : curr));
+      }, 2000);
+    }).catch(() => {
+      // ignore clipboard error
+    });
+  };
+
+  const handleMarketAction = (entry: PluginMarketEntry) => {
+    if (entry.state === 'AVAILABLE' || entry.state === 'ERROR') {
+      setWizardEntry(entry);
+    } else if (entry.state === 'INSTALLED' || entry.state === 'DISABLED') {
+      // Call enable
+      void (async () => {
+        setActionPendingId(entry.plugin_id);
+        setError('');
+        try {
+          await api.enablePlugin(entry.plugin_id);
+          setNotice('插件「' + (entry.name || entry.plugin_id) + '」已启用');
+          await refreshAll();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        } finally {
+          setActionPendingId(null);
+        }
+      })();
+    } else if (entry.state === 'ENABLED') {
+      // Configure or disable
+      setWizardEntry(entry);
     }
   };
 
@@ -157,14 +187,25 @@ export function PluginsView() {
 
   const marketEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ((marketData?.catalog || []) as Record<string, any>[]).filter((item) => {
+    const catalog = marketData?.catalog || [];
+    return catalog.filter((item) => {
       const categoryMatch = marketCategory === '全部' || item.category === marketCategory;
       const searchMatch = !q || [item.plugin_id, item.name, item.description, item.category]
         .some((value) => String(value || '').toLowerCase().includes(q));
       return categoryMatch && searchMatch;
     });
   }, [marketData, marketCategory, search]);
-  const marketCategories = ['全部', ...Array.from(new Set(((marketData?.catalog || []) as Record<string, any>[]).map((item) => String(item.category || '其他'))))];
+
+  const marketCategories = useMemo(() => {
+    const fromApi = marketData?.categories || [];
+    if (fromApi.length > 0) {
+      return ['全部', ...fromApi];
+    }
+    const set = new Set((marketData?.catalog || []).map((item) => String(item.category || '其他')));
+    return ['全部', ...Array.from(set)];
+  }, [marketData]);
+
+  const totalMarketCount = marketData?.counts?.total ?? (marketData?.catalog?.length || 0);
 
   return (
     <div className="grid" style={{ gap: 14 }}>
@@ -184,7 +225,7 @@ export function PluginsView() {
           onClick={() => setTab('market')}
         >
           官方插件市场
-          <span className="dsh-tab-badge">{marketData?.catalog?.length || 20}</span>
+          <span className="dsh-tab-badge">{totalMarketCount}</span>
         </button>
         <button
           className={'dsh-subtab' + (tab === 'inventory' ? ' active' : '')}
@@ -192,19 +233,6 @@ export function PluginsView() {
         >
           已安装插件
           <span className="dsh-tab-badge">{plugins.length}</span>
-        </button>
-        <button
-          className={'dsh-subtab' + (tab === 'config' ? ' active' : '')}
-          onClick={() => setTab('config')}
-        >
-          插件配置
-        </button>
-        <button
-          className={'dsh-subtab' + (tab === 'catalog' ? ' active' : '')}
-          onClick={() => setTab('catalog')}
-        >
-          开源生态目录
-          <span className="dsh-tab-badge">{catalogData?.entries?.length || 0}</span>
         </button>
       </div>
 
@@ -244,12 +272,14 @@ export function PluginsView() {
             <div className="dsh-cards-grid">
               {filteredPlugins.map((plugin) => {
                 const isServing = plugin.state === 'ACTIVE' || plugin.enabled;
+                const isPending = actionPendingId === plugin.plugin_id;
                 return (
                   <div className="dsh-plugin-card" key={plugin.plugin_id}>
                     <div className="dsh-plugin-card-head">
                       <div className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
                         <span
                           className={'dsh-status-dot ' + (isServing ? 'active' : 'inactive')}
+                          aria-label={isServing ? '已启用 (Serving)' : '已停用 (Disabled)'}
                           title={isServing ? '已启用 (Serving)' : '已停用 (Disabled)'}
                         />
                         <strong className="dsh-plugin-title" title={plugin.plugin_id}>
@@ -259,17 +289,20 @@ export function PluginsView() {
                       </div>
 
                       <button
+                        role="switch"
+                        aria-checked={isServing}
                         className={'dsh-switch-btn ' + (isServing ? 'active' : '')}
+                        disabled={isPending}
                         onClick={() => void togglePlugin(plugin)}
                         title={isServing ? '点击停用' : '点击启用'}
                       >
-                        {isServing ? '已启用' : '已停用'}
+                        {isPending ? '切换中…' : isServing ? '停用' : '启用'}
                       </button>
                     </div>
 
                     <div className="dsh-plugin-card-body">
                       <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
-                        标识符：<code>{plugin.plugin_id}</code> · 隔离：{plugin.isolation || 'subprocess'}
+                        标识符：<code className="mono">{plugin.plugin_id}</code> · 隔离：{plugin.isolation || 'subprocess'}
                       </div>
 
                       <div className="row" style={{ gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -279,7 +312,7 @@ export function PluginsView() {
                       </div>
 
                       {plugin.last_error ? (
-                        <div className="notice" style={{ padding: '4px 8px', fontSize: 11, margin: '4px 0' }}>
+                        <div className="notice" style={{ padding: '4px 8px', fontSize: 11, margin: '4px 0', borderLeftColor: 'var(--neg)' }}>
                           错误：{plugin.last_error}
                         </div>
                       ) : null}
@@ -293,143 +326,12 @@ export function PluginsView() {
                       >
                         详情与日志
                       </button>
-                      <button
-                        className="ghost"
-                        style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => {
-                          setTab('config');
-                          void openDetail(plugin.plugin_id);
-                        }}
-                      >
-                        配置参数
-                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </Panel>
-      ) : null}
-
-      {tab === 'config' ? (
-        <Panel title="插件配置与参数调优">
-          <div className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
-            配置各项插件的运行参数（如阈值、抽样率、本地数据路径等）。参数持久化在本机插件数据库中，运行时即刻生效。
-          </div>
-
-          <div className="grid" style={{ gap: 14 }}>
-            {plugins.map((plugin) => {
-              const pId = plugin.plugin_id;
-              const draft = configDrafts[pId] || {};
-              return (
-                <div className="provider-card" key={pId}>
-                  <div className="provider-head">
-                    <div>
-                      <span className="provider-title">{plugin.name || pId}</span>
-                      <span className="provider-id">{pId}</span>
-                    </div>
-                    <span className={'dsh-status-dot ' + (plugin.state === 'ACTIVE' || plugin.enabled ? 'active' : 'inactive')} />
-                  </div>
-
-                  <div className="provider-meta">
-                    声明能力：{(plugin.capabilities || []).join(', ') || '—'} · 隔离：{plugin.isolation}
-                  </div>
-
-                  <div className="dsh-field-group">
-                    <div className="dsh-field">
-                      <label>配置参数 JSON (Key-Value 键值对)</label>
-                      <textarea
-                        style={{ fontFamily: 'monospace', fontSize: 12, minHeight: 80 }}
-                        value={JSON.stringify(draft, null, 2)}
-                        placeholder={"{threshold: 0.8}"}
-                        onChange={(e) => {
-                          try {
-                            const parsed = JSON.parse(e.target.value);
-                            setConfigDrafts((prev) => ({ ...prev, [pId]: parsed }));
-                          } catch {
-                            // allow typing
-                          }
-                        }}
-                      />
-                      <span className="muted" style={{ fontSize: 11 }}>
-                        输入合法的 JSON 对象。修改后点击保存即持久化至插件状态库。
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="row" style={{ gap: 8, marginTop: 10 }}>
-                    <button
-                      className="primary"
-                      disabled={savingConfig === pId}
-                      onClick={() => void saveConfig(pId)}
-                    >
-                      {savingConfig === pId ? '保存中...' : '保存配置'}
-                    </button>
-                    <button
-                      className="ghost"
-                      onClick={() => setConfigDrafts((prev) => ({ ...prev, [pId]: {} }))}
-                    >
-                      恢复默认
-                    </button>
-                    <button
-                      className="ghost"
-                      onClick={() => void openDetail(pId)}
-                    >
-                      查看事件审计
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-      ) : null}
-
-      {tab === 'catalog' ? (
-        <Panel title="推荐外部插件与适配器生态">
-          <div className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
-            {catalogData?.policy || '生态目录收录经过安全与只读契约审核的外部量化与分析组件。安装后作为只读证据来源使用，禁止下单或修改账户。'}
-          </div>
-
-          <div className="grid" style={{ gap: 12 }}>
-            {(catalogData?.entries || []).map((item: PluginCatalogEntry) => (
-              <div className="provider-card" key={item.project}>
-                <div className="provider-head">
-                  <div>
-                    <span className="provider-title">{item.project}</span>
-                    <a
-                      href={item.repo}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="provider-id"
-                      style={{ textDecoration: 'underline' }}
-                    >
-                      {item.repo}
-                    </a>
-                  </div>
-                  <Badge kind={item.execution_risk === 'low' ? 'ok' : item.execution_risk === 'medium' ? 'warn' : 'error'}>
-                    风险：{item.execution_risk.toUpperCase()}
-                  </Badge>
-                </div>
-
-                <div className="provider-meta">
-                  级别：<strong>{item.level}</strong> · 许可证：{item.license} · 维护状态：{item.maintained} · 联网：{item.network_required ? '需要' : '离线'}
-                </div>
-
-                <div style={{ fontSize: 12, marginTop: 6 }}>
-                  <strong>安全边界与限制：</strong>
-                  <span className="muted">{item.boundary}</span>
-                </div>
-
-                <div className="row" style={{ gap: 6, marginTop: 8 }}>
-                  {(item.capabilities || []).map((c) => (
-                    <span className="dsh-cap-tag" key={c}>{c}</span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
         </Panel>
       ) : null}
 
@@ -444,40 +346,206 @@ export function PluginsView() {
           <div className="plugin-toolbar" style={{ marginTop: 12 }}>
             <div className="segmented" role="tablist" aria-label="插件市场分类">
               {marketCategories.map((category) => (
-                <button key={category} className={marketCategory === category ? 'active' : ''} onClick={() => setMarketCategory(category)}>
+                <button
+                  key={category}
+                  className={marketCategory === category ? 'active' : ''}
+                  onClick={() => setMarketCategory(category)}
+                >
                   {category}
                 </button>
               ))}
             </div>
-            <span className="muted" style={{ fontSize: 11 }}>已收录 {marketData?.catalog?.length || 0} 个精选插件</span>
+            <span className="muted" style={{ fontSize: 11 }}>已收录 {totalMarketCount} 个精选插件</span>
           </div>
           <div className="plugin-card-grid">
-            {marketEntries.map((item) => (
-              <div className="plugin-card" key={item.plugin_id}>
-                <div className="plugin-card-top">
-                  <div className="plugin-icon">✦</div>
-                  <div className="grow">
-                    <strong>{item.name || item.plugin_id}</strong>
-                    <div className="mono muted">{item.plugin_id} · v{item.version}</div>
+            {marketEntries.map((item) => {
+              const isActionPending = actionPendingId === item.plugin_id;
+              const installKind = item.install?.kind === 'pypi'
+                ? 'PyPI'
+                : item.install?.kind === 'git'
+                ? '源码'
+                : '内置';
+              const isCopied = copiedId === item.plugin_id;
+
+              return (
+                <div className="plugin-card" key={item.plugin_id}>
+                  <div className="plugin-card-top">
+                    <div className="plugin-icon">✦</div>
+                    <div className="grow" style={{ minWidth: 0 }}>
+                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                        <strong title={item.name || item.plugin_id}>{item.name || item.plugin_id}</strong>
+                        <Badge kind={item.execution_risk === 'high' ? 'error' : item.execution_risk === 'medium' ? 'warn' : 'ok'}>
+                          {item.execution_risk.toUpperCase()} 风险
+                        </Badge>
+                      </div>
+                      <div className="mono muted" style={{ fontSize: 11, marginTop: 2 }}>
+                        {item.plugin_id} · v{item.install?.version || '最新'} · {item.level}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p style={{ margin: '8px 0', fontSize: 12, lineHeight: 1.5 }}>{item.description}</p>
+
+                  <div className="plugin-tags" style={{ marginBottom: 8 }}>
+                    <span className="tag">{item.category}</span>
+                    <span className="tag">{installKind}</span>
+                    <span className="tag">{item.license}</span>
+                    {item.requires_credentials ? <span className="tag warn">需要密钥</span> : <span className="tag">免密钥</span>}
+                  </div>
+
+                  <div style={{ fontSize: 11, marginBottom: 8 }}>
+                    <span className="muted">上游地址：</span>
+                    <a
+                      href={item.repo}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        textDecoration: 'underline',
+                        color: 'var(--color-accent)',
+                        // A repository URL is one long token with no spaces, so
+                        // it has to be allowed to break or it widens the card.
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {item.repo}
+                    </a>
+                  </div>
+
+                  {item.manual_command ? (
+                    <div style={{ marginBottom: 8 }}>
+                      <div className="muted" style={{ fontSize: 10.5, marginBottom: 2 }}>上游原生安装命令：</div>
+                      <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                        <code className="mono" style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'var(--inset)', padding: '2px 6px', borderRadius: 4 }}>
+                          {item.manual_command}
+                        </code>
+                        <button
+                          className="ghost"
+                          style={{ fontSize: 10.5, padding: '2px 6px', whiteSpace: 'nowrap' }}
+                          onClick={() => copyCommand(item.plugin_id, item.manual_command)}
+                        >
+                          {isCopied ? '已复制！' : '复制'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {item.last_error ? (
+                    <div className="notice" style={{ padding: '4px 8px', fontSize: 11, margin: '4px 0', borderLeftColor: 'var(--neg)' }}>
+                      错误：{item.last_error}
+                    </div>
+                  ) : null}
+
+                  <div className="plugin-card-foot">
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      {item.installed ? '已安装 · ' + item.state : '未安装'}
+                    </span>
+
+                    <div className="row" style={{ gap: 6 }}>
+                      {item.state === 'AVAILABLE' ? (
+                        item.execution_risk === 'high' ? (
+                          // A disabled install button still reads as "you could
+                          // install this". For a project that ships order
+                          // placement, the honest control is no control: say
+                          // why, and offer nothing to click.
+                          <span className="muted" style={{ fontSize: 11 }} title={item.boundary}>
+                            永不安装 · 自带下单能力
+                          </span>
+                        ) : (
+                          <button
+                            className="primary"
+                            disabled={isActionPending}
+                            onClick={() => handleMarketAction(item)}
+                          >
+                            {isActionPending ? '正在安装…' : '安装'}
+                          </button>
+                        )
+                      ) : null}
+
+                      {item.state === 'INSTALLED' ? (
+                        <>
+                          <button
+                            className="primary"
+                            disabled={isActionPending}
+                            onClick={() => handleMarketAction(item)}
+                          >
+                            {isActionPending ? '正在启用…' : '启用'}
+                          </button>
+                          <button
+                            className="ghost"
+                            onClick={() => setWizardEntry(item)}
+                          >
+                            配置
+                          </button>
+                        </>
+                      ) : null}
+
+                      {item.state === 'ENABLED' ? (
+                        <>
+                          <button
+                            className="ghost"
+                            onClick={() => setWizardEntry(item)}
+                          >
+                            配置
+                          </button>
+                          <button
+                            className="ghost"
+                            disabled={isActionPending}
+                            onClick={() => void (async () => {
+                              setActionPendingId(item.plugin_id);
+                              try {
+                                await api.disablePlugin(item.plugin_id);
+                                setNotice('插件「' + (item.name || item.plugin_id) + '」已停用');
+                                await refreshAll();
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : String(err));
+                              } finally {
+                                setActionPendingId(null);
+                              }
+                            })()}
+                          >
+                            {isActionPending ? '正在停用…' : '停用'}
+                          </button>
+                        </>
+                      ) : null}
+
+                      {item.state === 'DISABLED' ? (
+                        <button
+                          className="primary"
+                          disabled={isActionPending}
+                          onClick={() => handleMarketAction(item)}
+                        >
+                          {isActionPending ? '正在启用…' : '启用'}
+                        </button>
+                      ) : null}
+
+                      {item.state === 'ERROR' ? (
+                        <button
+                          className="primary"
+                          disabled={isActionPending}
+                          onClick={() => handleMarketAction(item)}
+                        >
+                          重试安装
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-                <p>{item.description}</p>
-                <div className="plugin-tags">
-                  <span className="tag">{item.category}</span>
-                  {item.requires_credentials ? <span className="tag">需要密钥</span> : <span className="tag">免密钥</span>}
-                </div>
-                <div className="plugin-card-foot">
-                  <span className="muted">{item.installed ? '已安装 · ' + item.state : '官方精选 · 只读沙箱'}</span>
-                  <button className={item.installed ? 'ghost' : 'primary'} onClick={() => void installMarket(item.plugin_id)}>
-                    {item.installed ? '继续配置' : '安装'}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Panel>
       ) : null}
 
+      {/* Setup Wizard Modal */}
+      {wizardEntry ? (
+        <PluginSetupWizard
+          entry={wizardEntry}
+          onClose={() => setWizardEntry(null)}
+          onSuccess={() => void refreshAll()}
+        />
+      ) : null}
+
+      {/* Detail & Audit Modal */}
       {activePluginId && detail ? (
         <div className="dsh-modal-backdrop" onClick={() => setActivePluginId(null)}>
           <div className="dsh-modal" onClick={(e) => e.stopPropagation()}>
@@ -537,7 +605,14 @@ export function PluginsView() {
               </div>
             </div>
 
-            <div className="dsh-modal-actions">
+            <div className="dsh-modal-actions" style={{ justifyContent: 'space-between' }}>
+              <button
+                className="ghost danger"
+                disabled={uninstalling}
+                onClick={() => void handleUninstall(detail.plugin_id)}
+              >
+                {uninstalling ? '正在卸载…' : '卸载插件'}
+              </button>
               <button className="primary" onClick={() => setActivePluginId(null)}>完成</button>
             </div>
           </div>

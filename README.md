@@ -344,10 +344,62 @@ smcub profile show a-share-review
 
 Discovery, validation, dependency injection, activation, and evidence wrapping are
 automatic. Installation, network access, external models, and credentials are never
-automatic. Every plugin output is wrapped in an evidence envelope that records the
+automatic. The workbench can perform installations on the user's behalf into a dedicated virtual environment upon explicit per-item confirmation, and high-risk projects are never installed; network access and external model access are never automatic or silent. Every plugin output is wrapped in an evidence envelope that records the
 plugin version, source reference, input and output hashes, time semantics, and data
 quality, and an output whose data became available after the decision time is
 refused as future leakage.
+
+## Curated Open-Source Projects
+
+> This table shares the same source as the workbench "Plugin Marketplace". Installation is triggered only after per-item user confirmation in the workbench.
+> The workbench can perform installations on the user's behalf into a dedicated virtual environment upon explicit per-item confirmation, and high-risk projects are never installed; network access and external model access are never automatic or silent.
+
+### 数据
+
+| 项目 | 上游 | 安装方式 | 许可证 | 安全边界 |
+| --- | --- | --- | --- | --- |
+| AKShare | [https://github.com/akfamily/akshare](https://github.com/akfamily/akshare) | `pip install akshare` | MIT | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| TuShare Pro | [https://tushare.pro](https://tushare.pro) | `pip install tushare` | BSD-3-Clause | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| BaoStock | [http://www.baostock.com](http://www.baostock.com) | `pip install baostock` | Apache-2.0 | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| 东方财富行情 | [https://github.com/Micro-sheep/efinance](https://github.com/Micro-sheep/efinance) | `pip install efinance` | MIT | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| Yahoo Finance | [https://github.com/ranaroussi/yfinance](https://github.com/ranaroussi/yfinance) | `pip install yfinance` | Apache-2.0 | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| Stooq 行情 | [https://github.com/pydata/pandas-datareader](https://github.com/pydata/pandas-datareader) | `pip install pandas-datareader` | BSD-3-Clause | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| FRED 宏观数据 | [https://github.com/mortada/fredapi](https://github.com/mortada/fredapi) | `pip install fredapi` | Apache-2.0 | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| 腾讯行情快照 | [https://gu.qq.com/](https://gu.qq.com/) | Built-in | builtin | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+
+### 绩效与风险
+
+| 项目 | 上游 | 安装方式 | 许可证 | 安全边界 |
+| --- | --- | --- | --- | --- |
+| QuantStats | [https://github.com/ranaroussi/quantstats](https://github.com/ranaroussi/quantstats) | `pip install quantstats` | Apache-2.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| Empyrical Reloaded | [https://github.com/stefan-jansen/empyrical-reloaded](https://github.com/stefan-jansen/empyrical-reloaded) | `pip install empyrical-reloaded` | Apache-2.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| Pyfolio Reloaded | [https://github.com/stefan-jansen/pyfolio-reloaded](https://github.com/stefan-jansen/pyfolio-reloaded) | `pip install pyfolio-reloaded` | Apache-2.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| Riskfolio-Lib | [https://github.com/dcajasn/Riskfolio-Lib](https://github.com/dcajasn/Riskfolio-Lib) | `pip install riskfolio-lib` | BSD-3-Clause | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| PyPortfolioOpt | [https://github.com/pyportfolio/pyportfolioopt](https://github.com/pyportfolio/pyportfolioopt) | `pip install pyportfolioopt` | MIT | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| skfolio | [https://github.com/skfolio/skfolio](https://github.com/skfolio/skfolio) | `pip install skfolio` | BSD-3-Clause | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+
+### 研究与评估
+
+| 项目 | 上游 | 安装方式 | 许可证 | 安全边界 |
+| --- | --- | --- | --- | --- |
+| pandas-ta-classic | [https://github.com/xgboosted/pandas-ta-classic](https://github.com/xgboosted/pandas-ta-classic) | `pip install pandas-ta-classic` | MIT | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| pandas-market-calendars | [https://github.com/rsheftel/pandas_market_calendars](https://github.com/rsheftel/pandas_market_calendars) | `pip install pandas-market-calendars` | MIT | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| Qlib 因子评估 | [https://github.com/microsoft/qlib](https://github.com/microsoft/qlib) | `pip install pyqlib` | MIT | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| vectorbt 证据检查 | [https://github.com/polakowo/vectorbt](https://github.com/polakowo/vectorbt) | `pip install vectorbt` | Apache-2.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| backtesting.py | [https://github.com/kernc/backtesting.py](https://github.com/kernc/backtesting.py) | `pip install backtesting` | AGPL-3.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| Backtrader | [https://github.com/mementum/backtrader](https://github.com/mementum/backtrader) | `pip install backtrader` | GPL-3.0 | 只读计算结果与报表；不产生买卖指令，不写入账户与订单。 |
+| ZVT | [https://github.com/zvtvz/zvt](https://github.com/zvtvz/zvt) | `pip install zvt` | MIT | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+
+### Agent
+
+| 项目 | 上游 | 安装方式 | 许可证 | 安全边界 |
+| --- | --- | --- | --- | --- |
+| 多 Agent 复盘 | harness built-in | Built-in | builtin | 只生成 challenger 候选与复盘观察；champion 变更必须人工确认。 |
+| 反方规则质询 | harness built-in | Built-in | builtin | 只提出候选与反例；不自动晋级 champion，不改写规则库。 |
+| TradingAgents | [https://github.com/TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | `git clone --depth 1 https://github.com/TauricResearch/TradingAgents` | Apache-2.0 | 用户自备 LLM/API key 并在本仓库之外配置；harness 不保存、不收集、不上传密钥；其输出只能作为复盘证据，不得转成订单意图或执行计划。 |
+| UZI-Skill | [https://github.com/wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | `git clone --depth 1 https://github.com/wbh604/UZI-Skill` | unverified | 只能描述为推荐搭配与生态接入位；不得称为内置依赖，不得把结论变成买卖指令。 |
+| tick-stock-panel | [https://github.com/shy3130/tick-stock-panel](https://github.com/shy3130/tick-stock-panel) | `git clone --depth 1 https://github.com/shy3130/tick-stock-panel` | unverified | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
+| vn.py | [https://github.com/vnpy/vnpy](https://github.com/vnpy/vnpy) | `git clone --depth 1 https://github.com/vnpy/vnpy` | MIT | 本项目自带下单与账户能力，因此 harness 绝不安装、挂载或调用它；仅作为对照参考记录在册。执行禁令绝对不变。 |
 
 ## Review Workspace and Share Pack
 

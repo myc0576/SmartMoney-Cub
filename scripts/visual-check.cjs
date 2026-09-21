@@ -24,7 +24,6 @@ const VIEWS = [
   ['绩效分析', 'analytics'],
   ['规则库', 'rules'],
   ['数据导入', 'import'],
-  ['插件', 'plugins'],
   ['设置', 'settings'],
   ['报告', 'reports'],
   ['Playbook', 'playbooks'],
@@ -351,6 +350,54 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
       await record('设置 · 模型', 'settings-models',
         navClicked && settings.rows >= 1 && settings.verify, navClicked,
         { provider_rows: settings.rows, verify_button: settings.verify }, mark);
+
+      /* 5. The plugin marketplace with the assistant still docked.
+       *
+       *    The marketplace is the 插件 sub-tab inside 设置, not a top-level nav
+       *    item, so the nav pass cannot reach it and it needs this step. Two
+       *    defects are worth guarding and both only appear once the dock takes
+       *    its 400px: the card grid used to drop to a single full-width column,
+       *    and the missing stylesheet rules made the category chips and cards
+       *    render with the browser's default white button background. */
+      mark = errs.length;
+      /* Find the settings page first, then its plugin sub-tab. The sub-tab is
+       *  only in the DOM while 设置 is open. */
+      const settingsOpened = await page.evaluate(() => {
+        const items = [...document.querySelectorAll('button, a, .nav-item')];
+        const hit = items.find(el => (el.innerText || '').trim() === '设置');
+        if (!hit) return false;
+        hit.click();
+        return true;
+      });
+      if (settingsOpened) await page.waitForTimeout(1500);
+      const marketNav = await page.evaluate(() => {
+        const items = [...document.querySelectorAll('.dsh-nav-tab, button')];
+        const hit = items.find(el => (el.innerText || '').trim() === '插件');
+        if (!hit) return false;
+        hit.click();
+        return true;
+      });
+      if (marketNav) await page.waitForTimeout(2000);
+      const market = await page.evaluate(() => {
+        const grid = document.querySelector('.plugin-card-grid');
+        const dock = document.querySelector('.assistant');
+        const page_ = document.querySelector('.page');
+        const columns = grid ? getComputedStyle(grid).gridTemplateColumns : '';
+        const white = [...document.querySelectorAll('.plugin-card, .segmented, .segmented button, .plugin-card button')]
+          .filter(el => getComputedStyle(el).backgroundColor === 'rgb(255, 255, 255)').length;
+        return {
+          cards: document.querySelectorAll('.plugin-card').length,
+          columns: columns.split(' ').filter(Boolean).length,
+          dockWidth: dock ? Math.round(dock.getBoundingClientRect().width) : 0,
+          overflow: page_ ? page_.scrollWidth - page_.clientWidth : 0,
+          whiteControls: white,
+        };
+      });
+      await record('插件 · 助手下市场', 'plugins-with-assistant',
+        settingsOpened && marketNav && market.cards > 0 && market.dockWidth > 0 && market.whiteControls === 0,
+        marketNav,
+        { market_cards: market.cards, market_columns: market.columns, dock_width: market.dockWidth,
+          market_overflow: market.overflow, white_controls: market.whiteControls }, mark);
     }
   } catch (e) {
     phaseSkipReason = 'assistant phase stopped early: ' + String(e.message).replace(/\s+/g, ' ').slice(0, 140);
@@ -540,7 +587,24 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
      *    as "no plugins are installed", which is a claim this deployment cannot
      *    make: the 403 says only that the surface is closed here. */
     mark = errs.length;
-    const pluginsClicked = await clickNav('插件');
+    /* The marketplace lives under 设置 as a sub-tab now, so the boundary pass
+     * reaches it the same way the docked pass does. */
+    const settingsForBoundary = await page.evaluate(() => {
+      const items = [...document.querySelectorAll('button, a, .nav-item')];
+      const hit = items.find(el => (el.innerText || '').trim() === '设置');
+      if (!hit) return false;
+      hit.click();
+      return true;
+    });
+    if (settingsForBoundary) await page.waitForTimeout(1500);
+    const pluginsClicked = await page.evaluate(() => {
+      const items = [...document.querySelectorAll('.dsh-nav-tab, button')];
+      const hit = items.find(el => (el.innerText || '').trim() === '插件');
+      if (!hit) return false;
+      hit.click();
+      return true;
+    });
+    if (pluginsClicked) await page.waitForTimeout(1600);
     const plugins = await readPage();
     await record('插件 · 边界关闭', 'boundary-plugins',
       pluginsClicked && plugins.failed && !/还没有发现插件/.test(plugins.text), pluginsClicked,

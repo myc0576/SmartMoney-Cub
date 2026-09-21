@@ -15,3 +15,4 @@
     "test:e2e:report": "playwright show-report"
   }
 }
+

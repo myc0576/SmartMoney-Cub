@@ -422,6 +422,78 @@ class WorkbenchService:
     def plugin_market(self) -> dict[str, Any]:
         return {"status": "ok", **self.marketplace.view(), "safety": SAFETY_DECLARATION}
 
+    def install_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_installer import PluginInstaller
+        from smartmoney_cub_harness.plugins.catalog import catalog_index
+
+        plugin_id = str(payload.get("plugin_id") or "").strip()
+        if not plugin_id:
+            raise ApiError("plugin_id is required", status=400, code="missing_parameter")
+        whitelist = catalog_index()
+        entry = whitelist.get(plugin_id)
+        if entry is None:
+            raise ApiError(f"unknown plugin: {plugin_id!r}", status=404, code="not_found")
+
+        permissions_confirmed = bool(payload.get("permissions_confirmed", False))
+        credentials = payload.get("credentials") if isinstance(payload.get("credentials"), dict) else None
+        config = payload.get("config") if isinstance(payload.get("config"), dict) else None
+
+        installer = PluginInstaller(self.root)
+        result = installer.install(
+            entry,
+            permissions_confirmed=permissions_confirmed,
+            credentials=credentials,
+            config=config,
+        )
+        if result.get("status") != "ok":
+            return result
+
+        rec = self.marketplace.install_record(
+            entry,
+            health=result.get("health", {"healthy": True}),
+            config_keys=sorted(config.keys()) if config else [],
+        )
+        return {
+            "status": "ok",
+            "plugin": rec,
+            "steps": result.get("steps", []),
+            "health": result.get("health", {}),
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def probe_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_installer import PluginInstaller
+        from smartmoney_cub_harness.plugins.catalog import catalog_index
+
+        plugin_id = str(payload.get("plugin_id") or "").strip()
+        if not plugin_id:
+            raise ApiError("plugin_id is required", status=400, code="missing_parameter")
+        whitelist = catalog_index()
+        entry = whitelist.get(plugin_id)
+        if entry is None:
+            raise ApiError(f"unknown plugin: {plugin_id!r}", status=404, code="not_found")
+
+        installer = PluginInstaller(self.root)
+        probe_res = installer.probe(entry)
+        return {"status": "ok", "probe": probe_res, "safety": SAFETY_DECLARATION}
+
+    def uninstall_plugin(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.plugin_installer import PluginInstaller
+
+        plugin_id = str(payload.get("plugin_id") or "").strip()
+        if not plugin_id:
+            raise ApiError("plugin_id is required", status=400, code="missing_parameter")
+
+        self.marketplace.revoke_record(plugin_id)
+        installer = PluginInstaller(self.root)
+        uninst_res = installer.uninstall(plugin_id)
+        return {
+            "status": "ok",
+            "plugin_id": plugin_id,
+            "detail": uninst_res,
+            "safety": SAFETY_DECLARATION,
+        }
+
     def install_market_plugin(self, plugin_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             return self.marketplace.install(plugin_id, payload.get("config") if isinstance(payload.get("config"), dict) else None)
@@ -439,85 +511,6 @@ class WorkbenchService:
             return self.marketplace.set_enabled(plugin_id, bool(payload.get("enabled", True)))
         except KeyError as error:
             raise ApiError(f"plugin {plugin_id!r} is not installed", status=404, code="not_found") from error
-
-    def plugin_enable(self, plugin_id: str) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import plugin_enable  # noqa: PLC0415
-
-        try:
-            return plugin_enable(plugin_id, state_db=self._plugin_state_db())
-        except Exception as error:
-            raise ApiError(f"failed to enable plugin: {error}") from error
-
-    def plugin_disable(self, plugin_id: str) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import plugin_disable  # noqa: PLC0415
-
-        try:
-            return plugin_disable(plugin_id, state_db=self._plugin_state_db())
-        except Exception as error:
-            raise ApiError(f"failed to disable plugin: {error}") from error
-
-    def plugin_catalog(self) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import plugin_catalog  # noqa: PLC0415
-
-        try:
-            return plugin_catalog()
-        except Exception as error:
-            raise ApiError(f"failed to read plugin catalog: {error}") from error
-
-    def plugin_detail(self, plugin_id: str) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import plugin_detail  # noqa: PLC0415
-
-        try:
-            return plugin_detail(plugin_id, state_db=self._plugin_state_db())
-        except Exception as error:
-            raise ApiError(f"failed to read plugin detail: {error}") from error
-
-    def plugin_configure(self, plugin_id: str, config: dict[str, Any]) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import plugin_configure  # noqa: PLC0415
-
-        try:
-            return plugin_configure(plugin_id, config, state_db=self._plugin_state_db())
-        except Exception as error:
-            raise ApiError(f"failed to configure plugin: {error}") from error
-
-    def plugin_reload(self) -> dict[str, Any]:
-        from smartmoney_cub_harness.plugin_cli import profile_reload  # noqa: PLC0415
-
-        try:
-            return profile_reload(state_db=self._plugin_state_db())
-        except Exception as error:
-            raise ApiError(f"failed to reload plugins: {error}") from error
-
-    def open_config_file(self) -> dict[str, Any]:
-        # DSH style openDocument: opens the configuration file in native desktop editor
-        providers_file = settings_path(self.root)
-        if not providers_file.is_file():
-            providers_file.parent.mkdir(parents=True, exist_ok=True)
-            providers_file.write_text(
-                json.dumps(default_settings(), ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-
-        resolved = providers_file.resolve()
-        try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", "-t", str(resolved)])
-            elif sys.platform == "win32":
-                os.startfile(str(resolved))  # type: ignore[attr-defined]
-            else:
-                subprocess.Popen(["xdg-open", str(resolved)])
-            return {
-                "status": "ok",
-                "path": str(resolved),
-                "safety": SAFETY_DECLARATION,
-            }
-        except Exception as error:
-            return {
-                "status": "error",
-                "error": f"无法打开配置文件: {error}",
-                "path": str(resolved),
-                "safety": SAFETY_DECLARATION,
-            }
 
     def plugin_enable(self, plugin_id: str) -> dict[str, Any]:
         from smartmoney_cub_harness.plugin_cli import plugin_enable  # noqa: PLC0415
@@ -1736,9 +1729,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/plugins/market":
                 self._json(self.service.plugin_market())
                 return
-            if path == "/api/plugins/catalog":
-                self._json(self.service.plugin_catalog())
-                return
+
             if path == "/api/plugins/detail":
                 plugin_id = _one(query, "plugin_id") or ""
                 if not plugin_id:
@@ -1953,16 +1944,16 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     raise ApiError("plugin_id is required")
                 self._json(self.service.plugin_disable(plugin_id))
                 return
-            if path == "/api/plugins/configure":
-                payload = self._read_json()
-                plugin_id = str(payload.get("plugin_id") or "")
-                if not plugin_id:
-                    raise ApiError("plugin_id is required")
-                config = payload.get("config") or {}
-                if not isinstance(config, dict):
-                    raise ApiError("config must be a dictionary")
-                self._json(self.service.plugin_configure(plugin_id, config))
+            if path == "/api/plugins/install":
+                self._json(self.service.install_plugin(self._read_json()))
                 return
+            if path == "/api/plugins/probe":
+                self._json(self.service.probe_plugin(self._read_json()))
+                return
+            if path == "/api/plugins/uninstall":
+                self._json(self.service.uninstall_plugin(self._read_json()))
+                return
+
             if path.startswith("/api/plugins/market/"):
                 rest = path[len("/api/plugins/market/"):]
                 plugin_id, _, action = rest.partition("/")
