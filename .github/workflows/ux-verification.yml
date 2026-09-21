@@ -1,0 +1,31 @@
+name: UX verification snapshot
+on:
+  push:
+    branches: [codex/settings-assistant-ux]
+    paths: [.github/workflows/ux-verification.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix gui
+      - run: npm ci
+      - name: Export public source and locked development dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/ux-snapshot"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/ux-snapshot"
+          cp -a gui/node_modules "$RUNNER_TEMP/ux-snapshot/gui/"
+          cp -a node_modules "$RUNNER_TEMP/ux-snapshot/"
+          tar -czf "$RUNNER_TEMP/ux-source.tgz" -C "$RUNNER_TEMP/ux-snapshot" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ux-source-snapshot
+          path: ${{ runner.temp }}/ux-source.tgz
+          retention-days: 1
