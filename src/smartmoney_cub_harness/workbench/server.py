@@ -1194,11 +1194,32 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def jev_connection(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import connection_settings
+        try:
+            return connection_settings(self.root)
+        except ValueError as error:
+            raise ApiError(str(error)) from None
+
+    def update_jev_connection(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import save_connection
+        try:
+            with self._lock:
+                return save_connection(self.root, payload)
+        except ValueError as error:
+            raise ApiError(str(error)) from None
+        except OSError:
+            raise ApiError("无法保存 JEV 凭据，请检查本机文件权限。", status=500) from None
+
+    def test_jev_connection(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import probe_connection
+        return probe_connection(self.root)
+
     def jev_status(self) -> dict[str, Any]:
         """Diagnostic state of the Jev reasoning engine and configured backends."""
         try:
             from smartmoney_cub_harness.jev.cli import run_jev_doctor  # noqa: PLC0415
-            doc = run_jev_doctor()
+            doc = run_jev_doctor(root=self.root)
         except ImportError as err:
             return {
                 "engine": "jev",
@@ -1772,6 +1793,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/doctor":
                 self._json(self.service.doctor())
                 return
+            if path == "/api/settings/jev":
+                self._json(self.service.jev_connection())
+                return
             if path == "/api/jev/status":
                 self._json(self.service.jev_status())
                 return
@@ -1933,6 +1957,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
+                return
+            if path == "/api/settings/jev":
+                self._json(self.service.update_jev_connection(self._read_json()))
+                return
+            if path == "/api/settings/jev/test":
+                self._read_json()
+                self._json(self.service.test_jev_connection())
                 return
             if path == "/api/settings/open-file":
                 if not is_loopback(self.client_address[0]):

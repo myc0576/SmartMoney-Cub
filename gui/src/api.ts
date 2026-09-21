@@ -1,3 +1,5 @@
+import { consumeStream, type StreamHandlers } from './stream';
+export type { StreamHandlers } from './stream';
 import type {
   AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
@@ -245,6 +247,12 @@ export const api = {
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/package',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
+  jevConnection: () => request<import('./types').JevConnection>('/api/settings/jev'),
+  saveJevConnection: (payload: { api_key?: string; clear_key?: boolean }) =>
+    request<import('./types').JevConnection>('/api/settings/jev', { method: 'POST', body: JSON.stringify(payload) }),
+  testJevConnection: () => request<import('./types').JevConnectionTest>('/api/settings/jev/test', {
+    method: 'POST', body: JSON.stringify({}),
+  }),
   jevStatus: () => request<JevStatusResponse>('/api/jev/status'),
   jevTracks: () => request<JevTracksResponse>('/api/jev/tracks'),
   agents: () => request<AgentsResponse>('/api/agents'),
@@ -265,10 +273,10 @@ export const api = {
     }),
   benchmarkLatest: () => request<BenchmarkLatestResponse>('/api/benchmark/latest'),
 
-  cancelTurn: (id: string) =>
+  cancelTurn: (id: string, signal?: AbortSignal) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',
-      { method: 'POST', body: JSON.stringify({}) },
+      { method: 'POST', body: JSON.stringify({}), signal },
     ),
   resumeTurn: (id: string, text = '', handlers?: StreamHandlers) =>
     handlers
@@ -284,77 +292,12 @@ function clean(params: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
-export interface StreamHandlers {
-  onEvent: (event: Record<string, any>) => void;
-  onError: (message: string) => void;
-  onDone: () => void;
-  signal?: AbortSignal;
-}
-
-// The assistant turn is a server-sent event stream. The same events are stored
-// locally, so a dropped stream can be recovered by reloading the session.
 export async function streamTurn(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
-  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-    signal: handlers.signal,
-  });
-  if (!response.ok || !response.body) {
-    const detail = await response.text().catch(() => '');
-    handlers.onError(detail || 'stream failed: ' + response.status);
-    return;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() || '';
-    for (const frame of frames) {
-      const line = frame.split('\n').find((item) => item.startsWith('data:'));
-      if (!line) continue;
-      try {
-        handlers.onEvent(JSON.parse(line.slice(5).trim()));
-      } catch {
-        // A partial frame is not worth failing the whole turn over.
-      }
-    }
-  }
-  handlers.onDone();
+  await consumeStream(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages'), { text }, handlers);
 }
 
 export async function streamResume(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
-  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/resume'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-    signal: handlers.signal,
-  });
-  if (!response.ok || !response.body) {
-    const detail = await response.text().catch(() => '');
-    handlers.onError(detail || 'resume failed: ' + response.status);
-    return;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() || '';
-    for (const frame of frames) {
-      const line = frame.split('\n').find((item) => item.startsWith('data:'));
-      if (!line) continue;
-      try { handlers.onEvent(JSON.parse(line.slice(5).trim())); } catch { /* ignore partial frame */ }
-    }
-  }
-  handlers.onDone();
+  await consumeStream(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/resume'), { text }, handlers);
 }
 
 export function readFileAsBase64(file: File): Promise<string> {

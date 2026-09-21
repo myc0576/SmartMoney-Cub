@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, streamTurn } from '../api';
 import { Markdown } from './common';
+import { AssistantActivity, type Activity, type ToolCall } from './AssistantActivity';
 import { ModelPicker, effortLabel, findModel } from './ModelPicker';
 import type { Meta, SessionEvent, SessionSummary } from '../types';
 
@@ -10,7 +11,7 @@ import type { Meta, SessionEvent, SessionSummary } from '../types';
 
 interface TurnState {
   text: string;
-  toolCalls: { callId: string; name: string; arguments: string; result?: unknown }[];
+  toolCalls: ToolCall[];
   error?: string;
 }
 
@@ -28,7 +29,12 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [currentAction, setCurrentAction] = useState('');
+  const [activity, setActivity] = useState<Activity | null>(null);
+  const [lastTools, setLastTools] = useState<ToolCall[]>([]);
+  const [panelError, setPanelError] = useState('');
+  const [showJump, setShowJump] = useState(false);
+  const [navigationPending, setNavigationPending] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(true);
   const [liveArtifacts, setLiveArtifacts] = useState<Record<string, any>[]>([]);
   const [promotionDraft, setPromotionDraft] = useState<Record<string, { promotionId?: string; note: string; status: string }>>({});
   // Set when the assistant surface cannot be reached at all. On a shared host the
@@ -46,14 +52,28 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   });
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const aliveRef = useRef(true);
+  const requestRef = useRef(0);
+  const busyRef = useRef(false);
+  const runSessionRef = useRef<string | null>(null);
+  const followRef = useRef(true);
+
+  const chooseSession = (id: string) => {
+    ++requestRef.current;
+    setActiveId(id); setShowSessions(false); setTurn(null); setActivity(null);
+    setLiveArtifacts([]); setLastTools([]); setPanelError('');
+    followRef.current = true; setShowJump(false);
+  };
 
   const loadSessions = async () => {
     try {
       const result = await api.sessions();
+      if (!aliveRef.current) return [];
       setSessions(result.sessions);
       setUnavailable('');
       return result.sessions;
     } catch (failure) {
+      if (!aliveRef.current) return [];
       setSessions([]);
       setUnavailable(failure instanceof Error ? failure.message : String(failure));
       return [];
@@ -61,9 +81,20 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   };
 
   useEffect(() => {
-    void loadSessions().then((list) => {
+    aliveRef.current = true;
+    const version = requestRef.current;
+    void loadSessions().then(list => {
+      if (!aliveRef.current || requestRef.current !== version) return;
       if (list.length) setActiveId(list[0].session_id);
+      setLoadingSessions(false);
     });
+    return () => {
+      aliveRef.current = false; ++requestRef.current;
+      abortRef.current?.abort();
+      if (busyRef.current && runSessionRef.current) {
+        void api.cancelTurn(runSessionRef.current, AbortSignal.timeout(5000)).catch(() => {});
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -80,30 +111,26 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   }, [meta]);
 
   const applySelection = async (next: { provider_id: string; model: string; reasoning: string }) => {
-    setSelection(next);
-    if (activeId) {
-      // An existing session keeps its own log, so the choice is recorded on it.
-      await api.updateSession(activeId, {
-        provider_id: next.provider_id,
-        model: next.model,
-        reasoning: next.reasoning,
-      });
-      await loadSessions();
-    }
-    await api.updateSettings({
-      default_provider_id: next.provider_id,
-      default_model: next.model,
-      default_reasoning: next.reasoning,
-    });
-    onMetaReload?.();
+    if (busyRef.current) return;
+    busyRef.current = true; setNavigationPending(true); setPanelError('');
+    try {
+      if (activeId) await api.updateSession(activeId, next);
+      await api.updateSettings({ default_provider_id: next.provider_id, default_model: next.model, default_reasoning: next.reasoning });
+      if (aliveRef.current) { setSelection(next); await loadSessions(); onMetaReload?.(); }
+    } catch (error) { if (aliveRef.current) setPanelError(error instanceof Error ? error.message : '模型切换失败'); }
+    finally { busyRef.current = false; if (aliveRef.current) setNavigationPending(false); }
   };
 
   useEffect(() => {
+    let cancelled = false;
+    const version = requestRef.current;
+    if (busyRef.current) return;
     if (!activeId) {
       setEvents([]);
       return;
     }
     void api.sessionDetail(activeId).then((detail) => {
+      if (cancelled || !aliveRef.current || busyRef.current || requestRef.current !== version) return;
       setEvents(detail.events);
       const session = detail.session;
       if (session) {
@@ -117,113 +144,151 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
           reasoning: session.reasoning || meta?.default_reasoning || 'off',
         });
       }
+    }).catch(error => {
+      if (!cancelled && aliveRef.current && requestRef.current === version) setPanelError(error instanceof Error ? error.message : '读取会话失败');
     });
-  }, [activeId, meta]);
+    return () => { cancelled = true; };
+  }, [activeId, meta, navigationPending]);
 
   useEffect(() => {
     const node = bodyRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [events, turn]);
+    if (node && followRef.current) node.scrollTop = node.scrollHeight;
+    else if (node) setShowJump(true);
+  }, [events, turn, activity?.phase]);
 
   const startSession = async () => {
-    const created = await api.createSession({
-      title: '复盘 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      context,
-      provider_id: meta?.default_provider || 'alphatech',
-    });
-    await loadSessions();
-    setActiveId(created.session.session_id);
-    setShowSessions(false);
+    if (busyRef.current || unavailable) return;
+    busyRef.current = true; setNavigationPending(true); setPanelError('');
+    try {
+      const created = await api.createSession({ title: '新的复盘', context, ...selection });
+      if (aliveRef.current) { chooseSession(created.session.session_id); await loadSessions(); }
+    } catch (error) { if (aliveRef.current) setPanelError(error instanceof Error ? error.message : '创建会话失败'); }
+    finally { busyRef.current = false; if (aliveRef.current) setNavigationPending(false); }
   };
 
   const send = async () => {
     const text = input.trim();
-    if (!text || busy) return;
-    let sessionId = activeId;
-    if (!sessionId) {
-      const created = await api.createSession({
-        title: text.slice(0, 18),
-        context,
-        provider_id: selection.provider_id,
-        model: selection.model,
-        reasoning: selection.reasoning,
-      });
-      sessionId = created.session.session_id;
-      setActiveId(sessionId);
-      await loadSessions();
-    }
-    setInput('');
-    setBusy(true);
-    setCurrentAction('正在连接模型');
-    setTurn({ text: '', toolCalls: [] });
-    setLiveArtifacts([]);
+    if (!text || busyRef.current || unavailable || !hasRoutableModel || loadingSessions) return;
+    // Lock synchronously, before the first await (React state alone can race).
+    busyRef.current = true;
+    const version = ++requestRef.current;
+    const current = () => aliveRef.current && requestRef.current === version;
     const controller = new AbortController();
     abortRef.current = controller;
-    setEvents((prev) => [
-      ...prev,
-      {
-        event_id: -1, seq: -1, kind: 'user_message', role: 'user',
-        payload: { text }, created_at: new Date().toISOString(),
-      },
-    ]);
-
-    await streamTurn(sessionId, text, {
-      signal: controller.signal,
-      onEvent: (event) => {
-        if (event.kind === 'delta') {
-          setTurn((prev) => ({ text: (prev?.text || '') + event.text, toolCalls: prev?.toolCalls || [] }));
-        } else if (event.kind === 'tool_call') {
-          setCurrentAction('正在调用 ' + String(event.name || '工具'));
-          setTurn((prev) => ({
-            text: prev?.text || '',
-            toolCalls: [...(prev?.toolCalls || []), { callId: event.call_id, name: event.name, arguments: event.arguments }],
-          }));
-        } else if (event.kind === 'tool_result') {
-          setCurrentAction('证据已返回，正在整理');
-          setTurn((prev) => ({
-            text: prev?.text || '',
-            toolCalls: (prev?.toolCalls || []).map((call) =>
-              call.callId === event.call_id ? { ...call, result: event.result } : call,
-            ),
-          }));
-        } else if (event.kind === 'error') {
-          setCurrentAction('本轮未完成');
-          setTurn((prev) => ({ text: prev?.text || '', toolCalls: prev?.toolCalls || [], error: event.error }));
-        } else if (event.kind === 'artifact') {
-          const artifact = event.artifact || event.payload?.artifact;
-          if (artifact) setLiveArtifacts((prev) => [...prev, artifact]);
-          setCurrentAction('已生成 Challenger，等待评估');
-          window.dispatchEvent(new CustomEvent('smcub:rules-updated'));
-        }
-      },
-      onError: (message) => {
-        setCurrentAction('连接中断');
-        setTurn((prev) => ({ text: prev?.text || '', toolCalls: prev?.toolCalls || [], error: message }));
-      },
-      onDone: () => {
-        setBusy(false);
-        setCurrentAction('');
-        setTurn(null);
-        void api.sessionDetail(sessionId!).then((detail) => setEvents(detail.events));
-        setLiveArtifacts([]);
-        void loadSessions();
-        window.dispatchEvent(new CustomEvent('smcub:rules-updated'));
-      },
+    runSessionRef.current = activeId;
+    let sessionId = activeId;
+    let failed = false;
+    let completed = false;
+    let cancelled = false;
+    let calls: ToolCall[] = [];
+    setBusy(true); setInput(''); setPanelError(''); setLastTools([]);
+    setActivity({ phase: 'connecting', startedAt: Date.now() });
+    followRef.current = true; setShowJump(false);
+    setEvents(previous => {
+      // Keep an interrupted reply visible when the next turn starts, even if
+      // the server did not persist the last delta before the connection broke.
+      const extra: SessionEvent[] = [];
+      const now = new Date().toISOString();
+      if (turn?.text) extra.push({ event_id: -Date.now() - 1, seq: -1, kind: 'assistant_message', role: 'assistant', payload: { text: turn.text }, created_at: now });
+      if (turn?.error) extra.push({ event_id: -Date.now() - 2, seq: -1, kind: 'error', role: 'assistant', payload: { error: turn.error }, created_at: now });
+      return [...previous, ...extra, { event_id: -Date.now(), seq: -1, kind: 'user_message', role: 'user', payload: { text }, created_at: now }];
     });
+    setTurn({ text: '', toolCalls: [] }); setLiveArtifacts([]);
+    const fail = (message: string) => {
+      if (!current() || failed) return;
+      failed = true;
+      setTurn(previous => ({ text: previous?.text || '', toolCalls: previous?.toolCalls || [], error: message }));
+      setActivity(previous => previous && { ...previous, phase: 'error', finishedAt: Date.now() });
+    };
+    const phase = (value: Activity['phase']) => {
+      if (!failed) setActivity(previous => previous && { ...previous, phase: value });
+    };
+    try {
+      if (!sessionId) {
+        const created = await api.createSession({ title: text.slice(0, 18), context, ...selection });
+        if (!current()) return; // Stopped while session creation was in flight.
+        sessionId = created.session.session_id;
+        runSessionRef.current = sessionId;
+        setActiveId(sessionId);
+        setSessions(previous => [created.session, ...previous]);
+      }
+      await streamTurn(sessionId, text, {
+        signal: controller.signal,
+        onEvent: event => {
+          if (!current()) return;
+          if (event.kind === 'delta') {
+            phase('responding');
+            setTurn(previous => ({ ...previous, text: (previous?.text || '') + String(event.text || ''), toolCalls: previous?.toolCalls || [] }));
+          } else if (event.kind === 'tool_call') {
+            phase('tools');
+            calls = [...calls, { callId: String(event.call_id), name: String(event.name || '工具'), arguments: event.arguments }];
+            setTurn(previous => ({ ...previous, text: previous?.text || '', toolCalls: calls }));
+          } else if (event.kind === 'tool_result') {
+            calls = calls.map(call => call.callId === String(event.call_id) ? { ...call, result: event.result ?? null } : call);
+            phase(calls.some(call => call.result === undefined) ? 'tools' : 'thinking');
+            setTurn(previous => ({ ...previous, text: previous?.text || '', toolCalls: calls }));
+          } else if (event.kind === 'error') {
+            fail(String(event.error || '本轮未完成'));
+          } else if (event.kind === 'cancelled' || (event.kind === 'done' && event.cancelled)) {
+            cancelled = true;
+          } else if (event.kind === 'artifact') {
+            const artifact = event.artifact || event.payload?.artifact;
+            if (artifact) setLiveArtifacts(previous => [...previous, artifact]);
+            window.dispatchEvent(new CustomEvent('smcub:rules-updated'));
+          }
+        },
+        onError: fail,
+        onDone: () => { completed = true; },
+      });
+      if (current() && !completed && !failed && !controller.signal.aborted) fail('响应未完成，请重试。');
+    } catch (error) {
+      if (!controller.signal.aborted) fail(error instanceof Error ? error.message : '无法启动本轮复盘，请重试。');
+    } finally {
+      if (current()) {
+        busyRef.current = false; setBusy(false); abortRef.current = null; runSessionRef.current = null;
+        setLastTools(calls);
+        setActivity(previous => previous && { ...previous, phase: failed ? 'error' : cancelled ? 'stopped' : 'complete', finishedAt: Date.now() });
+        if (completed && !failed && !cancelled && sessionId) {
+          try {
+            const detail = await api.sessionDetail(sessionId);
+            if (current() && !busyRef.current) {
+              setEvents(detail.events); setTurn(null); setLiveArtifacts([]);
+            }
+          } catch {
+            if (current()) setPanelError('回复已完成，但历史记录刷新失败；当前内容已保留。');
+          }
+        }
+        if (current()) { void loadSessions(); window.dispatchEvent(new CustomEvent('smcub:rules-updated')); }
+      }
+    }
   };
 
-  const stop = () => {
-    abortRef.current?.abort();
-    setBusy(false);
-    setTurn(null);
-    setCurrentAction('已停止');
+  const stop = async () => {
+    if (!busyRef.current || activity?.phase === 'stopping') return;
+    const version = ++requestRef.current;
+    const sessionId = runSessionRef.current;
+    abortRef.current?.abort(); abortRef.current = null;
+    setActivity(previous => previous && { ...previous, phase: 'stopping' });
+    try {
+      if (sessionId) await api.cancelTurn(sessionId, AbortSignal.timeout(5000));
+    } catch {
+      if (aliveRef.current && requestRef.current === version) setPanelError('已停止接收回复，但后端取消未确认；请稍后检查会话状态。');
+    } finally {
+      if (aliveRef.current && requestRef.current === version) {
+        busyRef.current = false; runSessionRef.current = null; setBusy(false);
+        setActivity(previous => previous && { ...previous, phase: 'stopped', finishedAt: Date.now() });
+      }
+    }
   };
 
   const fork = async () => {
-    if (!activeId) return;
-    const result = await api.forkSession(activeId, {});
-    await loadSessions();
-    setActiveId(result.session.session_id);
+    if (!activeId || busyRef.current) return;
+    busyRef.current = true; setNavigationPending(true); setPanelError('');
+    try {
+      const result = await api.forkSession(activeId, {});
+      if (aliveRef.current) { chooseSession(result.session.session_id); await loadSessions(); }
+    } catch (error) { if (aliveRef.current) setPanelError(error instanceof Error ? error.message : '分叉失败'); }
+    finally { busyRef.current = false; if (aliveRef.current) setNavigationPending(false); }
   };
 
   const activeSession = sessions.find((session) => session.session_id === activeId) || null;
@@ -278,10 +343,10 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       <strong>{strategy.title || strategy.name || '新规则候选'}</strong>
       <div className="muted">{evaluation.status === 'passed' ? '评估已通过，可以发起人工确认。' : '评估未通过，先补齐门禁条件再考虑晋级。'}</div>
       <div className="row" style={{ marginTop: 8 }}><span className="tag accent">{strategy.status || 'challenger'}</span><span className="tag">{strategyId}</span></div>
-      {evaluation.status === 'passed' && !draft ? <button className="ghost" style={{ marginTop: 8 }} onClick={() => requestPromotion(strategyId)}>申请晋级 Champion</button> : null}
+      {evaluation.status === 'passed' && !draft ? <button className="ghost" style={{ marginTop: 8 }} disabled={busy} onClick={() => requestPromotion(strategyId)}>申请晋级 Champion</button> : null}
       {draft && draft.status !== '已成为 Champion' ? <div className="promotion-inline">
         <input aria-label="晋级确认说明" placeholder="写下你的确认依据" value={draft.note} onChange={(event) => setPromotionDraft((prev) => ({ ...prev, [strategyId]: { ...draft, note: event.target.value } }))} />
-        <button className="primary" disabled={!draft.note.trim()} onClick={() => void confirmPromotion(strategyId)}>确认晋级</button>
+        <button className="primary" disabled={busy || !draft.note.trim()} onClick={() => void confirmPromotion(strategyId)}>确认晋级</button>
         <span className="muted">{draft.status}</span>
       </div> : null}
       {draft?.status === '已成为 Champion' ? <div className="status-line ok">✓ 已成为 Champion</div> : null}
@@ -297,11 +362,11 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
         </span>
         <div style={{ flex: 1 }} />
         <span className={'assistant-live-dot' + (busy ? ' busy' : '')} title={busy ? '正在处理' : '已就绪'} />
-        <button className="ghost" onClick={() => setShowSessions((prev) => !prev)} title="会话列表">
+        <button className="ghost" onClick={() => setShowSessions((prev) => !prev)} disabled={busy || navigationPending} title="会话列表">
           会话
         </button>
-        <button className="ghost" onClick={startSession} title="新建会话">新建</button>
-        {activeId ? <button className="ghost" onClick={fork} title="分叉会话">分叉</button> : null}
+        <button className="ghost" onClick={() => void startSession()} disabled={busy || navigationPending || loadingSessions || Boolean(unavailable)} title="新建会话">新建</button>
+        {activeId ? <button className="ghost" onClick={() => void fork()} disabled={busy || navigationPending} title="分叉会话">分叉</button> : null}
         <button className="ghost" onClick={() => setExpanded((prev) => !prev)} title={expanded ? '恢复停靠' : '展开助手'}>{expanded ? '恢复' : '展开'}</button>
         {onClose ? <button className="ghost" onClick={onClose}>收起</button> : null}
       </div>
@@ -313,7 +378,8 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
             <button
               key={session.session_id}
               className={'nav-item' + (session.session_id === activeId ? ' active' : '')}
-              onClick={() => { setActiveId(session.session_id); setShowSessions(false); }}
+              disabled={busy || navigationPending}
+              onClick={() => chooseSession(session.session_id)}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
               <span className="muted" style={{ fontSize: 10 }}>{session.status}</span>
@@ -322,7 +388,13 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
         </div>
       ) : null}
 
-      <div className="assistant-body" ref={bodyRef}>
+      <div className="assistant-body" ref={bodyRef} onScroll={() => {
+        const node = bodyRef.current;
+        if (!node) return;
+        followRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
+        setShowJump(!followRef.current);
+      }}>
+        {panelError ? <div className="notice" role="alert">{panelError}</div> : null}
         {expanded ? (
           <div className="assistant-context-rail">
             <span className="eyebrow">LIVE CONTEXT</span>
@@ -387,46 +459,43 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
 
         {turn ? (
           <>
-            {turn.toolCalls.map((call) => (
-              <details key={call.callId} className="tool-card" open>
-                <summary>
-                  工具调用 · {call.name} {call.result === undefined ? <span className="muted">（进行中）</span> : null}
-                </summary>
-                <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
-              </details>
-            ))}
             {turn.text ? <div className="bubble assistant"><Markdown text={turn.text} /></div> : null}
-            {turn.error ? <div className="bubble error">{turn.error}</div> : null}
-            {busy ? <div className="assistant-progress"><span className="breathing-dot" /><span>{currentAction || '正在分析本地证据'}</span><span className="muted">可随时停止</span></div> : null}
+            {turn.error ? <div className="bubble error" role="alert">{turn.error}</div> : null}
           </>
         ) : null}
+        {activity ? <AssistantActivity activity={activity} calls={turn?.toolCalls || lastTools} /> : null}
         {liveArtifacts.map((artifact, index) => renderArtifact(artifact, 'live-' + index))}
       </div>
 
+      {showJump ? <button className="ghost assistant-jump" onClick={() => {
+        followRef.current = true; setShowJump(false);
+        if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+      }}>回到最新回复 ↓</button> : null}
       <div className="assistant-foot">
         <textarea
+          aria-label="复盘问题"
           value={input}
           disabled={Boolean(unavailable)}
           placeholder="描述你想复盘的问题（回车发送，Shift+回车换行）"
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
               event.preventDefault();
               void send();
             }
           }}
         />
         <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-          <ModelPicker
+          {busy || navigationPending ? <span className="muted">本轮模型已锁定</span> : <ModelPicker
             providers={providers}
             selection={selection}
             onSelect={(next) => void applySelection(next)}
-          />
+          />}
           <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             {busy ? (
-              <button className="ghost" onClick={stop}>停止</button>
+              <button className="ghost" disabled={activity?.phase === 'stopping'} onClick={() => void stop()}>停止</button>
             ) : (
-              <button className="primary" onClick={send} disabled={!input.trim() || Boolean(unavailable) || !hasRoutableModel}>发送</button>
+              <button className="primary" onClick={() => void send()} disabled={!input.trim() || Boolean(unavailable) || !hasRoutableModel || navigationPending || loadingSessions}>发送</button>
             )}
           </div>
         </div>
