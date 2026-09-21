@@ -9,9 +9,14 @@ from smartmoney_cub_harness.jev.questions import available_tracks
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 
-def run_jev_doctor() -> dict[str, Any]:
+def run_jev_doctor(*, credentials_root: Any = None) -> dict[str, Any]:
     """Inspect Jev backend availability, supported tracks, and safety declarations."""
-    direct_backend = TypeSafeDirectJevBackend()
+    if credentials_root is None:
+        direct_backend = TypeSafeDirectJevBackend()
+    else:
+        from smartmoney_cub_harness.jev.configuration import JevConnectionSettings
+
+        direct_backend = JevConnectionSettings(credentials_root).backend()
     openrouter_backend = OpenRouterJevBackend()
 
     return {
