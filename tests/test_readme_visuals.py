@@ -225,6 +225,48 @@ def test_readme_gateway_mount_is_additive() -> None:
             "README.zh-CN.md contains link [alphatech.net.cn](https://alphatech.net.cn/)")
 
 
+
+
+def test_gateway_banner_is_clickable() -> None:
+    """The gateway banner is a click target rather than decoration.
+
+    This guard exists so a future edit cannot silently unwrap it back into a
+    non-clickable image.
+    """
+    en = read(README_EN)
+    zh = read(README_ZH)
+
+    # 1. README.md contains the exact linked form
+    assert_("[![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)" in en,
+            "README.md wraps official API gateway banner in clickable link")
+
+    # 2. README.zh-CN.md contains the exact linked form
+    assert_("[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)" in zh,
+            "README.zh-CN.md wraps official API gateway banner in clickable link")
+
+    # 3. Neither README leaves the banner as a bare unlinked image
+    for path, text in ((README_EN, en), (README_ZH, zh)):
+        for line in text.splitlines():
+            stripped = line.strip()
+            if "assets/smartmoney-cub-alphatech-banner.png" in stripped:
+                assert_(not (stripped.startswith("![") and not stripped.startswith("[![")),
+                        f"{path.name} banner line is wrapped in link rather than bare image")
+
+    # 4. Both READMEs link the banner to clean gateway URL without tracking
+    assert_("https://alphatech.net.cn/)" in en and "https://alphatech.net.cn/)" in zh,
+            "both READMEs link banner to https://alphatech.net.cn/)")
+    assert_("?aff=" not in en and "utm_" not in en,
+            "README.md does not contain tracking markers")
+    assert_("?aff=" not in zh and "utm_" not in zh,
+            "README.zh-CN.md does not contain tracking markers")
+
+    # 5. Asset exists and is exactly 1600x400
+    banner_path = ASSETS / BANNER
+    assert_(banner_path.exists(), f"asset exists: {banner_path}")
+    bw, bh = png_size(banner_path)
+    assert_((bw, bh) == (1600, 400), f"{BANNER} is 1600x400 (got {bw}x{bh})")
+
+
 if __name__ == "__main__":
     # The suite finds these checks by name, and the file is also meant to be run
     # directly: the reporting helpers above print one line per item instead of
@@ -235,3 +277,4 @@ if __name__ == "__main__":
     test_wordmark_never_ships()
     test_readme_carries_official_gateway()
     test_readme_gateway_mount_is_additive()
+    test_gateway_banner_is_clickable()
