@@ -40,6 +40,7 @@ from smartmoney_cub_harness.agent.providers import (
 )
 from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime, ReviewLifecycleError
 from smartmoney_cub_harness.governance import GovernanceStore, profile_facts_from_trades
+from smartmoney_cub_harness.jev.configuration import JevConnectionSettings
 from smartmoney_cub_harness.local_state import LOCAL_STATE_DIR
 from smartmoney_cub_harness.plugin_marketplace import MarketplaceStore
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
@@ -114,6 +115,7 @@ class WorkbenchService:
         self.governance = GovernanceStore(self.root)
         self.marketplace = MarketplaceStore(self.root)
         self._lock = threading.Lock()
+        self.jev_connection = JevConnectionSettings(self.root)
 
     def close(self) -> None:
         self.store.close()
@@ -1194,11 +1196,28 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def jev_settings(self) -> dict[str, Any]:
+        try:
+            return self.jev_connection.view()
+        except (ValueError, OSError) as error:
+            raise ApiError("无法读取 JEV 凭据文件，请重新保存密钥。") from error
+
+    def update_jev_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.jev_connection.save(payload)
+        except ValueError as error:
+            raise ApiError(str(error)) from error
+        except OSError as error:
+            raise ApiError("无法保存 JEV 密钥，请检查本机文件权限。") from error
+
+    def test_jev_connection(self) -> dict[str, Any]:
+        return self.jev_connection.test_connection()
+
     def jev_status(self) -> dict[str, Any]:
         """Diagnostic state of the Jev reasoning engine and configured backends."""
         try:
             from smartmoney_cub_harness.jev.cli import run_jev_doctor  # noqa: PLC0415
-            doc = run_jev_doctor()
+            doc = run_jev_doctor(credentials_root=self.root)
         except ImportError as err:
             return {
                 "engine": "jev",
@@ -1760,6 +1779,11 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 session_id = urllib.parse.unquote(rest)
                 self._json(self.service.session_detail(session_id, query))
                 return
+            if path == "/api/settings/jev":
+                if not is_loopback(self.client_address[0]):
+                    raise ApiError("JEV settings are local-only", status=403, code="forbidden")
+                self._json(self.service.jev_settings())
+                return
             if path == "/api/settings":
                 self._json(self.service.settings())
                 return
@@ -1931,6 +1955,17 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 if action == "" or action == "update":
                     self._json(self.service.update_session(session_id, self._read_json()))
                     return
+            if path in {"/api/settings/jev", "/api/settings/jev/test"}:
+                if not is_loopback(self.client_address[0]):
+                    raise ApiError("JEV settings are local-only", status=403, code="forbidden")
+                payload = self._read_json()
+                if path.endswith("/test"):
+                    if payload:
+                        raise ApiError("connection tests accept no journal data")
+                    self._json(self.service.test_jev_connection())
+                else:
+                    self._json(self.service.update_jev_settings(payload))
+                return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
                 return

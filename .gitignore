@@ -81,3 +81,7 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+
+# Optional local JEV credentials, including atomic-write temporary files.
+jev-credentials.json
+.jev-*

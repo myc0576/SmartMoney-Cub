@@ -9,7 +9,7 @@ import { CalendarView } from './views/CalendarView';
 import { AnalyticsView } from './views/AnalyticsView';
 import { RulesView } from './views/RulesView';
 import { ImportView } from './views/ImportView';
-import { SettingsView } from './views/SettingsView';
+import { ConnectionSettings as SettingsView } from './views/ConnectionSettings';
 import { TradeDrawer } from './views/TradeDrawer';
 import { formatMoney, toneOf } from './components/common';
 import { TradeLogView } from './views/TradeLogView';
@@ -18,7 +18,6 @@ import { PlaybookView } from './views/PlaybookView';
 import { BacktestView } from './views/BacktestView';
 import { ReplayView } from './views/ReplayView';
 import { PropFirmView } from './views/PropFirmView';
-import { JevView } from './views/JevView';
 import { BenchmarkView } from './views/BenchmarkView';
 
 // A-plan layout: navigation and portfolio switch on the left, the working page
@@ -27,7 +26,7 @@ import { BenchmarkView } from './views/BenchmarkView';
 type TabKey =
   | 'overview' | 'tradelog' | 'calendar' | 'reports' | 'analytics'
   | 'playbooks' | 'backtest' | 'replay' | 'propfirm'
-  | 'trades' | 'rules' | 'import' | 'settings' | 'jev' | 'benchmark';
+  | 'trades' | 'rules' | 'import' | 'settings' | 'benchmark';
 
 // The sidebar is grouped by what a trader is doing, not by which subsystem
 // answers the call: review the journal, study what it says, plan and test the
@@ -61,11 +60,10 @@ const NAV: { section: string; items: { key: TabKey; label: string; hint: string 
   {
     section: '系统',
     items: [
-      { key: 'jev', label: 'Jev 引擎', hint: '四赛道离线审方与模型状态' },
       { key: 'trades', label: '成交台账', hint: '已确认的平仓交易' },
       { key: 'rules', label: '规则库', hint: 'challenger / champion' },
       { key: 'import', label: '数据导入', hint: 'Excel / CSV / PDF / 截图' },
-      { key: 'settings', label: '设置', hint: '模型、隐私与诊断' },
+      { key: 'settings', label: '设置', hint: '模型、连接与 Agent 集成' },
     ],
   },
 ];
@@ -255,7 +253,6 @@ export function App() {
             {tab === 'backtest' ? <BacktestView scheme={scheme} /> : null}
             {tab === 'replay' ? <ReplayView scheme={scheme} /> : null}
             {tab === 'propfirm' ? <PropFirmView scheme={scheme} /> : null}
-            {tab === 'jev' ? <JevView /> : null}
             {tab === 'benchmark' ? <BenchmarkView /> : null}
             {tab === 'rules' ? <RulesView /> : null}
             {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}

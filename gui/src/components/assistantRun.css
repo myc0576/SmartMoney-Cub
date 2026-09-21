@@ -1,0 +1,12 @@
+.assistant-run-status { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.assistant-run-title { display: flex; align-items: center; gap: 9px; font-size: 12px; line-height: 1.6; }
+.assistant-run-meta { display: flex; flex-wrap: wrap; gap: 12px; margin: 5px 0 0 22px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.assistant-run-status p { margin: 7px 0 0 22px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.assistant-run-indicator { width: 12px; height: 12px; flex: 0 0 12px; display: inline-flex; align-items: center; justify-content: center; }
+.running .assistant-run-indicator { border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; animation: assistant-run-spin 1s linear infinite; }
+.assistant-run-status.error { border-style: dashed; }
+.assistant-jump { position: sticky; bottom: 8px; display: block; margin: 8px auto; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 3px 12px #0001; }
+.assistant .tool-card pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant .tool-card summary { cursor: pointer; line-height: 1.7; }
+@keyframes assistant-run-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .running .assistant-run-indicator { animation: none; border-style: dotted; } }
