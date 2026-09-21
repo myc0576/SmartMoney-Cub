@@ -18,12 +18,15 @@
 [![Agent-ready](https://img.shields.io/badge/agent--ready-loop%20artifacts-blueviolet)](docs/agent-loop.md)
 [![UZI-Skill](https://img.shields.io/badge/ecosystem-UZI--Skill-orange)](docs/integrations.md)
 [![TradingAgents-ready](https://img.shields.io/badge/TradingAgents--ready-optional--adapter-informational)](docs/tradingagents-adapter.md)
+[![官方 API 网关](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%20API%20%E7%BD%91%E5%85%B3-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
 
 只读 AI 复盘与规则进化 harness · 决策记录 · D1/D3 结果验证 · 本地 Markdown 记忆 · challenger -> champion 治理
 
 [30 秒上手](#30-秒上手) · [5 秒体验闭环](#5-秒体验复盘闭环) · [核心理念](#核心理念系统--感觉) · [AI 助手接入](#给-ai-助手只读复盘协作) · [开源生态矩阵](#优秀开源项目集成矩阵) · [安全边界](#安全边界你的系统只属于你) · [CLI](#cli-commands)
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+
+![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)
 
 ![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
@@ -79,6 +82,16 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`enforcement: declarative`、`verified: false`），不是子进程沙箱。CLI 的 `--sandbox` 只选择一次性的 `tmp/sandbox` 输出目录，并不隔离进程；不可信命令必须放在操作系统或容器沙箱中运行。`evidence_pack.sha256` 用于本地篡改检测，不是经过身份认证的数字签名；任何不一致只会进入 `pending_review` 或 `blocked`，绝不会自动晋级。
+
+## 官方 API 网关
+
+[alphatech.net.cn](https://alphatech.net.cn/) 是本项目自建的官方网关，提供 OpenAI 兼容的模型访问入口。若希望使用托管中转而不是自行配置上游，可把 Provider 指向它的端点：
+
+```text
+https://alphatech.net.cn/v1
+```
+
+该网关是可选的。核心 harness 完全离线只读运行，也可以指向任何你自己配置的 Provider；使用网关不授予交易权限，也不改变执行禁令。Provider 与自定义网关的设置见 [docs/review-agent.md](docs/review-agent.md)。
 
 ## 🧭 复盘工作台（1.0 · 本地优先）
 
@@ -136,6 +149,8 @@ smcub workspace promote-rule RULE-1 --note "样本 24 笔，误报率 0.12，确
 （[alphatech.net.cn/trader](https://alphatech.net.cn/trader)）的一个平级入口，与 Alpha Canvas、
 Commerce Workbench 并列。它导入你自己的成交、计算绩效分析、为 Playbook 打分、
 回测一套 JSON 策略 DSL，并回放历史 K 线。
+
+托管产品的模型访问由官方网关提供：[alphatech.net.cn](https://alphatech.net.cn/)。
 
 一条命令用同一个进程、同一个端口同时提供两个产品：
 
@@ -519,3 +534,5 @@ The public repo must not include real trades, real watchlists, account data, pri
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+官方服务：[API 网关](https://alphatech.net.cn/) · [Trader 托管产品](https://alphatech.net.cn/trader)

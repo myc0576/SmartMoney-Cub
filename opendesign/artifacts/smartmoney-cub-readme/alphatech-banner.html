@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SmartMoney-Cub — Official Gateway Banner 1600x400</title>
+<style>
+  /* SmartMoney-Cub Editorial System — API gateway banner 1600x400. READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE */
+  :root {
+    --paper: #F5F0E8;
+    --paper-light: #FBF8F2;
+    --ink: #24211D;
+    --ink-muted: #625D56;
+    --terracotta: #C96F4A;
+    --terracotta-dark: #9F4F34;
+    --clay-light: #E9D8CC;
+    --stone: #B7AEA4;
+    --sage: #7D8A78;
+    --line: #D4CCC2;
+    --white: #FFFDFC;
+    --font-display: ui-serif, Georgia, "Noto Serif SC", "Songti SC", serif;
+    --font-body: Inter, ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width:1600px; height:400px; overflow:hidden; }
+  body {
+    position: relative;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+  }
+  body::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+  }
+
+  /* ---------- Left column ---------- */
+  .left {
+    position: absolute;
+    left: 84px; top: 48px; width: 780px;
+  }
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--terracotta-dark);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 68px;
+    line-height: 1.0;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .pos-en {
+    margin-top: 18px;
+    font-size: 28px;
+    line-height: 1.25;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pos-zh {
+    margin-top: 6px;
+    font-size: 23px;
+    line-height: 1.3;
+    color: var(--ink-muted);
+    font-weight: 400;
+  }
+
+  /* ---------- Right column ---------- */
+  .right {
+    position: absolute;
+    left: 920px; top: 48px; width: 596px;
+  }
+  .card {
+    position: relative;
+    background: var(--paper-light);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 22px 18px 22px;
+    box-shadow: 0 1px 3px rgba(36, 33, 29, 0.04);
+  }
+  .card::after {
+    content: "";
+    position: absolute; top: -1.5px; right: -1.5px;
+    width: 22px; height: 22px;
+    background: var(--paper);
+    border-left: 1.5px solid var(--line);
+    border-bottom: 1.5px solid var(--line);
+    border-radius: 0 10px 0 8px;
+  }
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--terracotta);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .card-url {
+    font-family: var(--font-mono);
+    font-size: 23px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  .note {
+    margin-top: 20px;
+    border-left: 3px solid var(--line);
+    padding-left: 16px;
+  }
+  .note-en {
+    font-size: 22px;
+    line-height: 1.32;
+    color: var(--ink-muted);
+    font-weight: 500;
+  }
+  .note-zh {
+    margin-top: 4px;
+    font-size: 21px;
+    line-height: 1.32;
+    color: var(--stone);
+    font-weight: 400;
+  }
+
+  /* ---------- Safety footer (fixed band at bottom) ---------- */
+  .safety {
+    position: absolute;
+    left: 84px; right: 84px; bottom: 28px;
+    border-top: 1.5px solid var(--line);
+    padding-top: 14px;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .safety .human { display: flex; align-items: baseline; gap: 14px; }
+  .safety .lock { color: var(--sage); font-size: 18px; position: relative; top: -1px; }
+  .safety .en { font-size: 21px; font-weight: 700; letter-spacing: 0.05em; color: var(--sage); }
+  .safety .zh { font-size: 21px; color: var(--ink-muted); }
+  .safety .mono {
+    font-family: var(--font-mono);
+    font-size: 17px; color: var(--stone); letter-spacing: 0.03em;
+  }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="kicker">OFFICIAL SERVICE · API GATEWAY</div>
+    <h1>alphatech.net.cn</h1>
+    <div class="pos-en">Official OpenAI-compatible API gateway</div>
+    <div class="pos-zh">官方 API 中转网关</div>
+  </div>
+
+  <div class="right">
+    <div class="card">
+      <div class="card-label">BASE URL</div>
+      <div class="card-url">https://alphatech.net.cn/v1</div>
+    </div>
+    <div class="note">
+      <div class="note-en">Optional — the core harness runs fully offline and read-only.</div>
+      <div class="note-zh">可选 · 核心离线只读运行</div>
+    </div>
+  </div>
+
+  <div class="safety">
+    <div class="human">
+      <span class="lock">◆</span>
+      <span class="en">NO ORDER · NO CANCEL · NO TRADE</span>
+      <span class="zh">不下单 · 不撤单 · 不自动交易</span>
+    </div>
+    <span class="mono">READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</span>
+  </div>
+</body>
+</html>
+

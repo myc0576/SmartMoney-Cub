@@ -20,6 +20,8 @@ README_ZH = REPO / "README.zh-CN.md"
 COVER = "smartmoney-cub-harness-cover.png"
 FLOW = "smartmoney-cub-system-flow-bilingual.png"
 MARK = "smartmoney-cub-mark.png"
+BANNER = "smartmoney-cub-alphatech-banner.png"
+GATEWAY_URL = "https://alphatech.net.cn/"
 
 # The company name burned into the source artwork below the mark. This test is
 # the one place the string is allowed to appear, because a guard has to name what
@@ -154,6 +156,75 @@ def test_wordmark_never_ships() -> None:
                 f"{path.name} does not carry the source artwork's company wordmark")
 
 
+def test_readme_carries_official_gateway() -> None:
+    """The official API gateway mount must not silently drop out of either README.
+
+    This guard exists so the official gateway mount cannot silently drop out of
+    either README, and that the 1600x400 check pins the banner canvas to the
+    Editorial System's 4:1 slot.
+    """
+    banner_path = ASSETS / BANNER
+    assert_(banner_path.exists(), f"asset exists: {banner_path}")
+
+    bw, bh = png_size(banner_path)
+    assert_((bw, bh) == (1600, 400), f"{BANNER} is 1600x400 (got {bw}x{bh})")
+
+    banner_kb = banner_path.stat().st_size / 1024
+    assert_(banner_kb <= 400, f"{BANNER} <= 400KB (got {banner_kb:.0f}KB)")
+
+    en = read(README_EN)
+    zh = read(README_ZH)
+
+    assert_("![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)" in en,
+            "README.md embeds official API gateway banner")
+    assert_("![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)" in zh,
+            "README.zh-CN.md embeds official API gateway banner")
+
+    assert_(GATEWAY_URL in en and GATEWAY_URL in zh,
+            "both READMEs contain GATEWAY_URL")
+    assert_("https://alphatech.net.cn/v1" in en and "https://alphatech.net.cn/v1" in zh,
+            "both READMEs contain the endpoint https://alphatech.net.cn/v1")
+
+    assert_("## Official API Gateway" in en, "README.md carries ## Official API Gateway heading")
+    assert_("## 官方 API 网关" in zh, "README.zh-CN.md carries ## 官方 API 网关 heading")
+
+    assert_("The gateway is optional" in en, "README.md states the gateway is optional")
+    assert_("该网关是可选的" in zh, "README.zh-CN.md states the gateway is optional")
+
+    assert_("grants no trading authority" in en, "README.md asserts gateway grants no trading authority")
+    assert_("不授予交易权限" in zh, "README.zh-CN.md asserts gateway grants no trading authority")
+
+
+def test_readme_gateway_mount_is_additive() -> None:
+    """Mounting the official gateway must be strictly additive to existing content."""
+    en = read(README_EN)
+    zh = read(README_ZH)
+
+    assert_(en.count("assets/smartmoney-cub-harness-cover.png") == 1,
+            "README.md references assets/smartmoney-cub-harness-cover.png exactly once")
+    assert_("![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)" in en,
+            "README.md preserves bilingual cover image markdown")
+    assert_("![SmartMoney-Cub bilingual system flow](assets/smartmoney-cub-system-flow-bilingual.png)" in en,
+            "README.md preserves bilingual system flow image markdown")
+    assert_("assets/benchmark/benchmark-hero-1200x630.png" in zh,
+            "README.zh-CN.md still contains benchmark hero image")
+
+    assert_("READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" in en,
+            "README.md still contains READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE")
+    assert_("READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE" in zh,
+            "README.zh-CN.md still contains READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE")
+
+    assert_("?aff=" not in en and "utm_" not in en,
+            "README.md does not contain referral or tracking markers (?aff=, utm_)")
+    assert_("?aff=" not in zh and "utm_" not in zh,
+            "README.zh-CN.md does not contain referral or tracking markers (?aff=, utm_)")
+
+    assert_("[alphatech.net.cn](https://alphatech.net.cn/)" in en,
+            "README.md contains link [alphatech.net.cn](https://alphatech.net.cn/)")
+    assert_("[alphatech.net.cn](https://alphatech.net.cn/)" in zh,
+            "README.zh-CN.md contains link [alphatech.net.cn](https://alphatech.net.cn/)")
+
+
 if __name__ == "__main__":
     # The suite finds these checks by name, and the file is also meant to be run
     # directly: the reporting helpers above print one line per item instead of
@@ -162,3 +233,5 @@ if __name__ == "__main__":
     # checks, and pass without checking anything at all.
     test_readme_visuals()
     test_wordmark_never_ships()
+    test_readme_carries_official_gateway()
+    test_readme_gateway_mount_is_additive()
