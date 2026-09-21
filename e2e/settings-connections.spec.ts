@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const safety = 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE';
 
-test('JEV save is offline, test is explicit, and the key is cleared from the form', async ({ page }) => {
+test('JEV save is offline, test is explicit, and the key is cleared from the form', async ({ page }, testInfo) => {
   let configured = false;
   let probes = 0;
   await page.route('**/api/settings/jev**', async route => {
@@ -24,9 +24,10 @@ test('JEV save is offline, test is explicit, and the key is cleared from the for
   await page.getByRole('button', { name: '测试连接' }).click();
   await expect(page.getByText('本次测试通过', { exact: true })).toBeVisible();
   expect(probes).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('jev-settings.png'), fullPage: true });
 });
 
-test('Agent read failures are visible and recoverable', async ({ page }) => {
+test('Agent read failures are visible and recoverable', async ({ page }, testInfo) => {
   let requests = 0;
   await page.route('**/api/agents', route => {
     requests++;
@@ -41,7 +42,7 @@ test('Agent read failures are visible and recoverable', async ({ page }) => {
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('IME, double submit, folded tools, and stop preserve real streamed output', async ({ page }) => {
+test('IME, double submit, folded tools, and stop preserve real streamed output', async ({ page }, testInfo) => {
   let created = 0;
   let cancelled = 0;
   await page.route('**/api/assistant/sessions**', async route => {
@@ -66,6 +67,7 @@ test('IME, double submit, folded tools, and stop preserve real streamed output',
           const events = [
             { kind: 'tool_call', call_id: 'toy-call', name: 'toy_evidence', arguments: '{}' },
             { kind: 'tool_result', call_id: 'toy-call', result: { source: 'toy' } },
+            { kind: 'tool_call', call_id: 'pending-call', name: 'toy_pending', arguments: '{}' },
             { kind: 'delta', text: '已收到的部分回复' },
           ];
           for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -84,9 +86,13 @@ test('IME, double submit, folded tools, and stop preserve real streamed output',
   await input.press('Enter');
   await expect(page.getByText('已收到的部分回复', { exact: true })).toBeVisible();
   expect(created).toBe(1);
-  await expect(page.locator('.tool-card')).not.toHaveAttribute('open', '');
+  await expect(page.locator('.tool-card[open]')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('assistant-running.png'), fullPage: true });
   await page.getByRole('button', { name: '停止', exact: true }).click();
   await expect(page.getByText('已停止接收 · 保留本轮内容', { exact: true })).toBeVisible();
   await expect(page.getByText('已收到的部分回复', { exact: true })).toBeVisible();
   expect(cancelled).toBe(1);
+  await expect(page.locator('summary').filter({ hasText: 'toy_pending' })).toContainText('未返回结果');
+  await expect(page.getByText('（进行中）', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('assistant-stopped.png'), fullPage: true });
 });

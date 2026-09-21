@@ -431,7 +431,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
             {turn.toolCalls.map((call) => (
               <details key={call.callId} className="tool-card">
                 <summary>
-                  工具调用 · {call.name} {call.result === undefined ? <span className="muted">（进行中）</span> : null}
+                  工具调用 · {call.name} {call.result === undefined ? <span className="muted">{busy && phase !== 'stopped' && !turn.error ? '（进行中）' : '（未返回结果）'}</span> : null}
                 </summary>
                 <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
               </details>

@@ -23,7 +23,7 @@ export function AssistantRunStatus({ phase, startedAt, endedAt, calls, returned 
         <span aria-label={`已用时 ${elapsed} 秒`}>{elapsed} 秒</span>
         <span>{running ? '可随时停止' : '可展开工具卡查看本轮记录'}</span>
       </div>
-      {running && calls === 0 ? <p>等待模型响应；此处仅展示运行状态，不模拟分析过程。</p> : null}
+      {phase === 'connecting' && calls === 0 ? <p>等待模型响应；此处仅展示运行状态，不模拟分析过程。</p> : null}
     </div>
   );
 }
