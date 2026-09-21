@@ -24,6 +24,7 @@
 | 数据隐私保护 | [privacy.md](privacy.md) (3.8KB) | 用户个人交易日志本地化、凭据隔离与脱敏机制 | 处理用户敏感数据或审计数据泄露时 |
 | 公开与私有知识库边界 | [public-vs-private-quantkb.md](public-vs-private-quantkb.md) (0.9KB) | 开源核心与专有策略知识库的隔离准则 | 涉及敏感策略或知识库分类时 |
 | 复盘智能体规范 | [review-agent.md](review-agent.md) (6.1KB) | Review Agent 决策循环、提示词与多模态复盘交互规则 | 优化或调试 AI 对话复盘引擎时 |
+| 设置与助手交互 | [settings-assistant-review.md](settings-assistant-review.md) | JEV/Agent 设置、流式运行状态与验证来源 | 修改连接配置或复盘助手交互时 |
 | 复盘工作台规范 | [review-workspace.md](review-workspace.md) (4.8KB) | 本地工作台 Web 服务、API 端点、组件通信与离线持久化 | 开发前后端交互或工作台功能时 |
 | 复盘工作台中文规范 | [review-workspace.zh-CN.md](review-workspace.zh-CN.md) (4.9KB) | 工作台前端与后端通信规范的中文说明 | 中文查阅工作台协议时 |
 | 安全与风控规范 | [safety.md](safety.md) (1.5KB) | READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE 强制声明与前置拦截 | 添加新工具、新市场源或模型集成时 |

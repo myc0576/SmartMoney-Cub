@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Any
 
 from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
@@ -9,9 +10,9 @@ from smartmoney_cub_harness.jev.questions import available_tracks
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 
-def run_jev_doctor() -> dict[str, Any]:
+def run_jev_doctor(root: str | Path | None = None) -> dict[str, Any]:
     """Inspect Jev backend availability, supported tracks, and safety declarations."""
-    direct_backend = TypeSafeDirectJevBackend()
+    direct_backend = TypeSafeDirectJevBackend(credentials_root=root)
     openrouter_backend = OpenRouterJevBackend()
 
     return {

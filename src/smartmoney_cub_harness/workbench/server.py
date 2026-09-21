@@ -1194,11 +1194,29 @@ class WorkbenchService:
             "safety": SAFETY_DECLARATION,
         }
 
+    def jev_connection(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import describe
+        return describe(self.root)
+
+    def update_jev_connection(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import save
+        try:
+            with self._lock:
+                return save(self.root, payload)
+        except ValueError as error:
+            raise ApiError(str(error), code="jev_settings_error") from error
+        except OSError as error:
+            raise ApiError("本地凭据保存失败；请检查目录权限。", status=500) from error
+
+    def test_jev_connection(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.jev.connection import probe
+        return probe(self.root)
+
     def jev_status(self) -> dict[str, Any]:
         """Diagnostic state of the Jev reasoning engine and configured backends."""
         try:
             from smartmoney_cub_harness.jev.cli import run_jev_doctor  # noqa: PLC0415
-            doc = run_jev_doctor()
+            doc = run_jev_doctor(self.root)
         except ImportError as err:
             return {
                 "engine": "jev",
@@ -1760,6 +1778,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 session_id = urllib.parse.unquote(rest)
                 self._json(self.service.session_detail(session_id, query))
                 return
+            if path == "/api/settings/jev":
+                self._json(self.service.jev_connection())
+                return
             if path == "/api/settings":
                 self._json(self.service.settings())
                 return
@@ -1931,6 +1952,13 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 if action == "" or action == "update":
                     self._json(self.service.update_session(session_id, self._read_json()))
                     return
+            if path == "/api/settings/jev":
+                self._json(self.service.update_jev_connection(self._read_json()))
+                return
+            if path == "/api/settings/jev/test":
+                self._read_json()
+                self._json(self.service.test_jev_connection())
+                return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
                 return

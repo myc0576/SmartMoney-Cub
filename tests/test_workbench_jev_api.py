@@ -258,3 +258,36 @@ def test_benchmark_image_path_traversal_defence(tmp_path: Path):
         assert service.benchmark_image("run_safe", "valid*.png") is None
     finally:
         service.close()
+
+
+def test_jev_settings_http_contract(http_server, monkeypatch):
+    base, service = http_server
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    status, body = _get(f"{base}/api/settings/jev")
+    assert status == 200 and not body["has_key"]
+    status, body = _post(f"{base}/api/settings/jev", {"api_key": "toy-http-secret"})
+    assert status == 200 and body["has_key"] and not body["connection_verified"]
+    assert "toy-http-secret" not in json.dumps(body)
+    status, body = _post(f"{base}/api/settings/jev", {"api_key": "BAD\nKEY"})
+    assert status == 400 and body["safety"] == SAFETY_DECLARATION
+    monkeypatch.setattr(service, "test_jev_connection", lambda: {"connection_verified": True, "safety": SAFETY_DECLARATION})
+    assert _post(f"{base}/api/settings/jev/test", {})[1]["connection_verified"]
+    assert _post(f"{base}/api/settings/jev", {"clear_key": True})[1]["has_key"] is False
+
+
+def test_jev_settings_require_the_existing_access_token(tmp_path):
+    service = _service(tmp_path)
+    handler = type("TokenHandler", (WorkbenchHandler,), {"service": service, "asset_dir": None, "access_token": "toy-workbench-token"})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        assert _get(base + "/api/settings/jev")[0] == 401
+        assert _post(base + "/api/settings/jev", {"api_key": "toy-key"})[0] == 401
+        assert _post(base + "/api/settings/jev/test", {})[0] == 401
+        assert not service.jev_connection()["has_local_key"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.close()

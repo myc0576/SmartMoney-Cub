@@ -776,3 +776,42 @@ th.num .th-sort { text-align: right; }
   border-color: var(--color-accent);
   text-decoration: none;
 }
+
+/* Connection controls stay in Settings; use the existing theme tokens. */
+.connection-settings { display: grid; gap: 14px; max-width: 820px; }
+.connection-settings p { margin: 0; line-height: 1.7; }
+.connection-settings .field { display: grid; gap: 8px; }
+.connection-settings .field input { width: 100%; }
+.connection-settings small { line-height: 1.7; }
+.connection-actions { flex-wrap: wrap; gap: 8px; }
+.integration-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: grid; gap: 12px; background: var(--panel-2); min-width: 0; }
+.integration-card details { font-size: 12px; overflow-wrap: anywhere; }
+.integration-card summary { cursor: pointer; color: var(--muted); }
+.assistant-model-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.assistant-model-fieldset:disabled { opacity: .6; }
+.assistant-latest { align-self: center; margin: 6px; font-size: 11px; }
+.assistant-run { margin: 12px 0 4px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--panel-2); }
+.assistant-run.is-running { border-color: var(--color-accent); }
+.assistant-run-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.assistant-run-heading strong { font-size: 12px; line-height: 1.5; font-weight: 550; }
+.run-indicator { display: inline-flex; gap: 3px; align-items: center; color: var(--color-accent); flex: none; }
+.run-indicator i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: run-pulse 1.5s ease-in-out infinite; }
+.run-indicator i:nth-child(2) { animation-delay: .15s; }
+.run-indicator i:nth-child(3) { animation-delay: .3s; }
+.run-elapsed { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.run-stages { display: flex; align-items: center; gap: 9px; margin-top: 14px; color: var(--muted); font-size: 10px; }
+.run-stages .active { color: var(--color-accent); }
+.run-stage-line { flex: 1; height: 1px; background: var(--border); }
+.run-caption { margin-top: 9px; font-size: 10px; color: var(--muted); line-height: 1.6; }
+.assistant-run[data-phase="failed"] { border-color: var(--neg); }
+.assistant-run[data-phase="failed"] .run-indicator { color: var(--neg); }
+.tool-card summary { display: flex; align-items: center; gap: 8px; }
+.tool-card summary::after { content: '⌄'; margin-left: auto; color: var(--muted); }
+.tool-card[open] summary::after { transform: rotate(180deg); }
+.tool-state { color: var(--color-accent); }
+.tool-state.running { animation: run-pulse 1.5s ease-in-out infinite; }
+.tool-card pre { max-height: 240px; overflow: auto; }
+@keyframes run-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .run-indicator i, .tool-state.running { animation: none; } }
+
+.tool-state.failed { color: var(--neg); }
