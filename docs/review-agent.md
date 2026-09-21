@@ -44,6 +44,12 @@ the company gateway and the offline fallback:
 Each model may declare its own reasoning levels. The composer's model seat then
 offers only those levels, and selecting a model applies its default effort.
 
+The `alphatech` row above is this project's own gateway,
+[alphatech.net.cn](https://alphatech.net.cn/), which speaks `openai-chat` at
+`https://alphatech.net.cn/v1`. It is one provider among others and carries no
+privilege: any endpoint you configure works the same way, and using it grants no
+trading authority and does not change the read-only execution ban.
+
 ### Selecting a model
 
 The composer's model seat switches provider, model, and reasoning effort for the

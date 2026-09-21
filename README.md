@@ -9,6 +9,9 @@
 [![No financial advice](https://img.shields.io/badge/no-financial%20advice-critical)](docs/safety.md)
 [![Human-in-the-loop](https://img.shields.io/badge/human--in--the--loop-required-blueviolet)](docs/harness-contract.md)
 [![Agent-ready](https://img.shields.io/badge/agent--ready-offline%20artifacts-success)](docs/agent-integration.md)
+[![Official API gateway](https://img.shields.io/badge/official%20API%20gateway-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
+
+![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)
 
 ![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
 
@@ -49,6 +52,16 @@ select stocks; mutate accounts; run a background autonomous trading Agent; or
 automatically mutate core rules.
 
 [简体中文](README.zh-CN.md)
+
+## Official API Gateway
+
+[alphatech.net.cn](https://alphatech.net.cn/) is this project's own hosted gateway for OpenAI-compatible model access. Point a provider at its endpoint when you prefer a managed relay over configuring an upstream yourself:
+
+```text
+https://alphatech.net.cn/v1
+```
+
+The gateway is optional. The core harness runs fully offline and read-only, and it works with any provider you configure yourself; using the gateway grants no trading authority and does not change the execution ban. Provider and custom-gateway settings are documented in [docs/review-agent.md](docs/review-agent.md).
 
 ## Bilingual System Flow
 
@@ -445,6 +458,8 @@ and the Commerce Workbench. It imports your own executions, computes performance
 analytics, scores your playbooks, backtests a JSON strategy DSL, and replays
 historical bars.
 
+Model access for the hosted product is served by the gateway at [alphatech.net.cn](https://alphatech.net.cn/).
+
 One command serves both products from one process and one port:
 
 ```bash
@@ -486,6 +501,8 @@ Contributions are welcome when they preserve the safety contract. Keep examples 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Official services: [API gateway](https://alphatech.net.cn/) · [Hosted trader product](https://alphatech.net.cn/trader)
 
 ## Safety & Disclaimer
 
