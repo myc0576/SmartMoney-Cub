@@ -186,6 +186,10 @@ jobs:
         working-directory: gui
         run: npm ci
 
+      - name: Test stream transport regressions
+        working-directory: gui
+        run: npm run test:unit
+
       - name: Typecheck the interface
         working-directory: gui
         run: npm run typecheck
@@ -261,3 +265,26 @@ jobs:
             exit 1
           fi
           echo "the committed interface matches a fresh build"
+
+  interface-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            gui/package-lock.json
+      - run: npm ci && npm ci --prefix gui
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interface-e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
