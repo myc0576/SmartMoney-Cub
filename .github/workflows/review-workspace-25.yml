@@ -1,0 +1,36 @@
+name: Review workspace 25
+on:
+  push:
+    branches: [codex/settings-assistant-25]
+    paths: [.github/workflows/review-workspace-25.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare locked frontend dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --ignore-scripts --prefix gui
+          mkdir -p /tmp/review-workspace
+          git archive HEAD > /tmp/review-workspace/source.tar
+          tar -czf /tmp/review-workspace/node-deps.tar.gz node_modules gui/node_modules
+      - name: Prepare offline Python dependencies
+        run: |
+          python -m pip wheel '.[dev,hosted]' crossplane pyyaml -w /tmp/review-workspace/wheels
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-workspace-25
+          path: /tmp/review-workspace
+          retention-days: 1
