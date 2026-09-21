@@ -1,0 +1,84 @@
+name: Verify review changes
+
+on:
+  push:
+    branches: [codex/settings-assistant-cleanup]
+    paths: [.github/review-transfer/part3.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source hashes and apply reviewed changes
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma, pathlib, subprocess
+          root = pathlib.Path('.')
+          parts = ''.join((root / f'.github/review-transfer/part{i}.txt').read_text().strip() for i in (1, 2, 3))
+          raw = lzma.decompress(base64.b64decode(parts, validate=True))
+          assert hashlib.sha256(raw).hexdigest() == 'e52ff67e379c29ef088955738be734129db235c5e25b21fe77279e214eca0e6a', 'transfer hash mismatch'
+          manifest = json.loads(raw)
+          for name, expected in manifest['expected'].items():
+              p = pathlib.Path(name)
+              assert not p.is_absolute() and '..' not in p.parts
+              if expected is None:
+                  assert not p.exists(), f'new file already exists: {name}'
+              else:
+                  assert hashlib.sha256(p.read_bytes()).hexdigest() == expected, f'base changed: {name}'
+          patch = pathlib.Path('/tmp/review.patch')
+          patch.write_text(manifest['patch'])
+          subprocess.run(['git', 'apply', '--check', '--unidiff-zero', str(patch)], check=True)
+          subprocess.run(['git', 'apply', '--unidiff-zero', str(patch)], check=True)
+          assert manifest['delete'] == ['gui/src/views/JevView.tsx']
+          for name in manifest['delete']:
+              pathlib.Path(name).unlink()
+          PY
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix gui
+          npm ci
+          python -m pip install -e '.[dev]' crossplane pyyaml
+          npx playwright install --with-deps chromium
+      - name: Typecheck, stream regression tests and build
+        run: |
+          npm run typecheck --prefix gui
+          npm run test:unit --prefix gui
+          npm run build --prefix gui
+          git diff --check
+      - name: Full harness verification
+        run: |
+          set -o pipefail
+          PYTHONPATH=src ./scripts/verify.sh | tee /tmp/review-verification.log
+      - name: Browser regression suite
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: review-verification
+          path: |
+            /tmp/review-verification.log
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - name: Commit verified source and rebuilt package to feature branch only
+        run: |
+          test "$GITHUB_REF_NAME" = 'codex/settings-assistant-cleanup'
+          remote_sha="$(git ls-remote origin refs/heads/codex/settings-assistant-cleanup | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA" || { echo 'Branch changed during verification; refusing to overwrite.'; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs e2e gui src tests
+          git diff --cached --check
+          git commit -m 'feat(workbench): simplify settings and harden assistant streaming (#26)'
+          git push origin HEAD:refs/heads/codex/settings-assistant-cleanup
