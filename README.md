@@ -349,6 +349,21 @@ plugin version, source reference, input and output hashes, time semantics, and d
 quality, and an output whose data became available after the decision time is
 refused as future leakage.
 
+## Open-Source Integration Matrix
+
+| Project | Status | Harness Role |
+| --- | --- | --- |
+| [wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | `recommended-companion` | External analysis skill and narrative inspiration for review packets |
+| [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | `documented-adapter` / `optional-bridge` | User-selected external LLM multi-agent analysis engine |
+| [AKShare](https://github.com/akfamily/akshare) | `reserved-slot` | Future read-only market-data adapter source; no runtime integration yet |
+| [Microsoft Qlib](https://github.com/microsoft/qlib) | `reserved-slot` | Future evaluation aid for challenger rule candidates; no runtime integration yet |
+| [Amazon Chronos](https://github.com/amazon-science/chronos-forecasting) | `reserved-slot` | Future forecast-as-evidence input; no runtime integration yet |
+| [Google TimesFM](https://github.com/google-research/timesfm) | `reserved-slot` | Future forecast-as-evidence input; no runtime integration yet |
+| [Nixtla NeuralForecast](https://github.com/Nixtla/neuralforecast) | `reserved-slot` | Future forecast-as-evidence input; no runtime integration yet |
+| [FinRobot](https://github.com/AI4Finance-Foundation/FinRobot) | `reserved-slot` | Future external report source for review packets; no runtime integration yet |
+
+All integrations remain read-only and no project is `runtime-integrated` today; see [docs/integrations.md](docs/integrations.md) as the source of truth for the full matrix, status definitions, and safety boundaries.
+
 ## Review Workspace and Share Pack
 
 ```bash

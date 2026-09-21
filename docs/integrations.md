@@ -56,11 +56,34 @@ grades the project; it never ships as a bundled dependency. The core release kee
 | --- | --- | --- | --- |
 | [wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | `recommended-companion` | External analysis skill and narrative inspiration; outputs may be saved locally and reviewed by reviewer / challenger agents. | Do not call it an embedded dependency. Do not convert its analysis into buy/sell instructions. |
 | [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | `documented-adapter` / `optional-bridge` | User-selected external LLM multi-agent analysis engine. Users may run TradingAgents locally to produce candidate reports, debate summaries, risk notes, watchlist rationale, or decision evidence, then import the output as a review packet. | Users configure their own LLM/API keys outside this repository. The harness must not store, collect, upload, or print key values; must not connect to brokers; and must not convert TradingAgents output into order intent, broker action, or execution plans. |
+| [AKShare](https://github.com/akfamily/akshare) | `reserved-slot` | Future read-only market-data adapter source. The toy loop does not require it, and no runtime adapter exists in this repository yet. | Read-only inputs only. No broker execution, no account mutation, no credential capture. |
+| [Microsoft Qlib](https://github.com/microsoft/qlib) | `reserved-slot` | Future evaluation aid for challenger rule candidates and sample quality. No runtime integration exists in this repository yet. | No future leakage, no execution recommendation surface. |
+| [Amazon Chronos](https://github.com/amazon-science/chronos-forecasting) | `reserved-slot` | Future forecast-as-evidence input for review packets. No runtime integration exists in this repository yet. | Forecasts are review evidence only, never trading instructions. Users install models and weights themselves. |
+| [Google TimesFM](https://github.com/google-research/timesfm) | `reserved-slot` | Future forecast-as-evidence input for review packets. No runtime integration exists in this repository yet. | Forecasts are review evidence only, never trading instructions. Users install models and weights themselves. |
+| [Nixtla NeuralForecast](https://github.com/Nixtla/neuralforecast) | `reserved-slot` | Future forecast-as-evidence input for review packets. No runtime integration exists in this repository yet. | Forecasts are review evidence only, never trading instructions. Users install the library themselves. |
+| [FinRobot](https://github.com/AI4Finance-Foundation/FinRobot) | `reserved-slot` | Future external analysis report source that can be imported as review evidence. No runtime integration exists in this repository yet. | Reports are review evidence only. User-owned keys stay outside this repository. |
 | Data-source adapters | `reserved-slot` | Normalize read-only exports, toy fixtures, or public examples into manifests. | No broker execution, no account mutation, no credential capture. |
 | Report generators | `reserved-slot` | Render loop reports, case records, and ledgers for local reading. | No upload of private review artifacts. |
 | Agent skills | `reserved-slot` | Improve reviewer, challenger, archivist, and drift-detector workflows. | No role may bypass the harness contract or promote champion rules automatically. |
 | Evaluation / backtest tools | `reserved-slot` | Help evaluate challenger candidates and sample quality. | No future leakage and no execution recommendation surface. |
 | Knowledge-memory tools | `reserved-slot` | Organize Markdown memory, case banks, and evolution ledgers. | No cloud sync requirement and no private trading logic publication. |
+
+## Upstream Ownership and Distribution Boundary
+
+- Third-party projects listed above are owned and maintained by their upstream authors. This repository does not fork, vendor, or redistribute upstream source code or model weights.
+- Users decide whether to install any external project, in their own environment, under the upstream license. Nothing in the matrix is a required dependency of the toy/offline workflow.
+- Every integration, present or future, remains read-only and human-gated: no order placement, no order cancellation, no account mutation, no broker automation, and no automatic champion mutation.
+
+## README Matrix Synchronization
+
+`README.md` (Open-Source Integration Matrix) and `README.zh-CN.md` (优秀开源项目集成矩阵) each carry a condensed matrix for the repository homepage. This file remains the complete source of truth.
+
+Maintenance rules:
+
+1. Update this file first, then mirror the change into both condensed README matrices in the same commit.
+2. The condensed matrices may omit rows or columns, but must never claim a stronger status than this file.
+3. Statuses everywhere must use the Status Vocabulary defined above.
+4. `tests/test_readme_regression.py` guards the presence of the condensed matrices and rejects `runtime-integrated` claims that lack runtime code and tests.
 
 ## UZI-Skill Positioning
 

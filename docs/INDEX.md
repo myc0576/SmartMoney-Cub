@@ -15,12 +15,12 @@
 | 交易决策Schema | [decision-schema.md](decision-schema.md) (5.3KB) | DecisionEnvelope、invalidation条件、time stop与数据质量口径 | 修改或验证决策输出数据结构时 |
 | 规则演化机制 | [evolution-loop.md](evolution-loop.md) (0.8KB) | Challenger -> Champion 规则晋级流程与人工确认要求 | 修改策略优化与进化逻辑时 |
 | Harness核心契约 | [harness-contract.md](harness-contract.md) (3.0KB) | 离线运行、只读市场数据、安全铁律、无订单无撤单声明 | 开发或修改核心接口与安全边界时 |
-| 外部服务集成 | [integrations.md](integrations.md) (6.6KB) | 第三方数据源、只读连接器与格式转换适配器 | 新增数据导入或只读市场连接器时 |
+| 外部服务集成 | [integrations.md](integrations.md) (9.6KB) | 第三方数据源、开源集成矩阵、只读连接器与格式转换适配器 | 新增数据导入或只读市场连接器时 |
 | Jev生态与评测基准 | [jev-ecosystem.md](jev-ecosystem.md) (5.9KB) | Jev 四轨金融审查架构、JevBackend协议与finance-jev-v1基准评测指南 | 接入Jev审查后端或运行金融基准评测时 |
 | 记忆循环系统 | [memory-loop.md](memory-loop.md) (1.1KB) | 短期会话上下文与长期交易日志经验检索 | 排查交易记忆召回或历史对账时 |
 | 设计哲学 | [philosophy.md](philosophy.md) (3.7KB) | Smartmoney-Cub 设计理念、核心权衡与不可妥协边界 | 做重大设计决策或架构评审时 |
 | 插件开发指南 | [plugin-development.md](plugin-development.md) (6.0KB) | 如何开发、测试和打包第三方交易复盘与分析插件 | 创建新插件或编写测试用例时 |
-| 插件体系全景 | [plugins.md](plugins.md) (9.3KB) | 内置插件清单、生命周期钩子、数据模式与外部扩展机制 | 开发、安装或调试特定插件时 |
+| 插件体系全景 | [plugins.md](plugins.md) (9.3KB) | 内置插件清单、生命周期钩子、数据模式、外部扩展机制与生态目录 | 开发、安装或调试特定插件时 |
 | 数据隐私保护 | [privacy.md](privacy.md) (3.8KB) | 用户个人交易日志本地化、凭据隔离与脱敏机制 | 处理用户敏感数据或审计数据泄露时 |
 | 公开与私有知识库边界 | [public-vs-private-quantkb.md](public-vs-private-quantkb.md) (0.9KB) | 开源核心与专有策略知识库的隔离准则 | 涉及敏感策略或知识库分类时 |
 | 复盘智能体规范 | [review-agent.md](review-agent.md) (6.1KB) | Review Agent 决策循环、提示词与多模态复盘交互规则 | 优化或调试 AI 对话复盘引擎时 |
