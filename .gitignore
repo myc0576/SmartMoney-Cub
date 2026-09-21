@@ -75,3 +75,9 @@ artifacts/visual/tmp-state/
 # Local outputs and downloads
 graphify-out/
 release_downloads/
+
+# Playwright End-to-End Test Artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+

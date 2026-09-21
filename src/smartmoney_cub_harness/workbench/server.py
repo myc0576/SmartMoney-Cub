@@ -40,6 +40,7 @@ from smartmoney_cub_harness.agent.providers import (
 )
 from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime, ReviewLifecycleError
 from smartmoney_cub_harness.governance import GovernanceStore, profile_facts_from_trades
+from smartmoney_cub_harness.local_state import LOCAL_STATE_DIR
 from smartmoney_cub_harness.plugin_marketplace import MarketplaceStore
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
@@ -2093,7 +2094,9 @@ def is_loopback(host: str) -> bool:
 
 def start_workbench(
     *,
-    root: str | Path = "state/convergence",
+    # The shared local state root, not a third copy of it: a caller that omits
+    # root must land on the same account the other front door uses.
+    root: str | Path = LOCAL_STATE_DIR,
     host: str = "127.0.0.1",
     port: int = 8787,
     asset_dir: str | Path | None = None,

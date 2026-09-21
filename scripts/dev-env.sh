@@ -27,12 +27,16 @@ case "$cmd" in
         python3 -m smartmoney_cub_harness.cli doctor
         ;;
       gui)
-        echo "[dev-env] 运行 GUI 前端测试..."
-        if [ -d gui ] && [ -f gui/package.json ]; then
-          (cd gui && npm test)
-        else
-          echo "gui 目录或测试未配置"
-        fi
+       echo "[dev-env] 运行 GUI 前端测试..."
+       if [ -d gui ] && [ -f gui/package.json ]; then
+         (cd gui && npm test)
+       else
+         echo "gui 目录或测试未配置"
+       fi
+       ;;
+      e2e)
+        echo "[dev-env] 运行 Playwright E2E 端到端测试..."
+        npx playwright test
         ;;
       all)
         echo "[dev-env] 顺序执行 Doctor 审查与全量测试套件..."
@@ -41,7 +45,7 @@ case "$cmd" in
         echo "[dev-env] 全部测试执行完成！"
         ;;
       *)
-        echo "未知测试目标: $sub (支持: all | unit | doctor | gui)"
+        echo "未知测试目标: $sub (支持: all | unit | doctor | gui | e2e)"
         exit 1
         ;;
     esac
@@ -173,7 +177,7 @@ case "$cmd" in
 
 命令列表:
   status               - 显示当前开发环境组件与依赖就绪状态
-  test [target]        - 确定性测试 (all | unit | doctor | gui)
+  test [target]        - 确定性测试 (all | unit | doctor | gui | e2e)
   build [target]       - 确定性构建 (all | gui | package)
   verify               - 执行完整门禁 (./scripts/verify.sh)
   graph query <关键词> - 使用 AST 语义图谱检索代码符号与依赖关系

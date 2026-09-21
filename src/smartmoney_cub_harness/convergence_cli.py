@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from smartmoney_cub_harness import __version__
+from smartmoney_cub_harness.local_state import LOCAL_STATE_DIR, journal_dir, local_state_root
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 from smartmoney_cub_harness.trader.auth import MODE_LOCAL
@@ -15,11 +16,14 @@ from smartmoney_cub_harness.trader.storage import StoreError, open_store
 # the read-only contract and reports the store location instead of absolute
 # paths that leak a machine layout.
 
-DEFAULT_STATE_DIR = "state/convergence"
+# Defined in local_state, next to the layout rule, because this command and
+# `smcub trader serve` are two front doors onto one local account. Keeping the
+# literal here is how they drifted apart in the first place.
+DEFAULT_STATE_DIR = LOCAL_STATE_DIR
 
 
 def state_root(state_dir: str | None = None) -> Path:
-    return Path(state_dir) if state_dir else Path(DEFAULT_STATE_DIR)
+    return local_state_root(state_dir)
 
 
 def run_workbench(
@@ -55,7 +59,10 @@ def run_workbench(
     # platform identity per request and is the only entry point that does.
     root = state_root(state_dir)
     try:
-        store = open_store(root / "journal", mode=MODE_LOCAL)
+        # journal_dir rather than a fixed "journal" suffix: this is what lets the
+        # front door open the same journal that `trader serve` writes, while a
+        # workbench-era <root>/journal/ keeps working instead of being orphaned.
+        store = open_store(journal_dir(root), mode=MODE_LOCAL)
         service = TraderService(store, auth_mode=MODE_LOCAL)
     except StoreError as error:
         sys.stderr.write("could not open the local journal: " + str(error) + "\n")

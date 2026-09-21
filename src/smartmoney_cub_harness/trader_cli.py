@@ -22,10 +22,13 @@ import sys
 from pathlib import Path
 
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
+from smartmoney_cub_harness.local_state import LOCAL_STATE_DIR, journal_dir, local_state_root
 from smartmoney_cub_harness.trader.auth import MODE_HOSTED, MODE_LOCAL
 from smartmoney_cub_harness.trader.storage import StoreError, open_store
 
-DEFAULT_STATE_DIR = "state/trader"
+# The same value the review workbench's front door resolves, from local_state,
+# so the two entry points cannot disagree about which journal is "the" journal.
+DEFAULT_STATE_DIR = LOCAL_STATE_DIR
 DEFAULT_PORT = 8787
 
 
@@ -88,6 +91,15 @@ def run_trader_serve(
         sys.stderr.write(str(error) + "\n")
         return 2
 
+    # In local mode the location is a directory and the store may sit one level
+    # inside it, which is the layout the review workbench used before the two
+    # entry points were unified. Resolving it here means a journal written by
+    # either front door opens in the other, instead of this one quietly creating
+    # a second, empty store beside it. Hosted mode is left alone: its location is
+    # a Postgres URL and there is no directory to inspect.
+    if selected == MODE_LOCAL:
+        location = str(journal_dir(location))
+
     if not is_loopback(host) and not token:
         sys.stderr.write(
             "refusing to bind " + host + " without --token: "
@@ -127,9 +139,10 @@ def run_trader_serve(
             sys.stderr.write("store: " + str(location).split("://")[0] + "://(configured)\n")
         sys.stderr.write(SAFETY_DECLARATION + "\n")
 
-    workbench_root = Path(DEFAULT_STATE_DIR)
-    if selected == MODE_LOCAL and state_dir:
-        workbench_root = Path(state_dir)
+    # The workbench half of this process keeps its own files (review store, rule
+    # library, plugin state) at the state root, so it follows the same override
+    # the store does rather than a second copy of the default.
+    workbench_root = Path(state_dir) if (selected == MODE_LOCAL and state_dir) else Path(DEFAULT_STATE_DIR)
 
     try:
         start_workbench(
