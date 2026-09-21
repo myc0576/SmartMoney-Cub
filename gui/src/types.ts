@@ -902,3 +902,14 @@ export interface BenchmarkLatestResponse extends SafetyEnvelope {
   images?: BenchmarkImageItem[];
   image_urls?: Record<string, string>;
 }
+
+export interface JevConnection {
+  has_key: boolean;
+  has_local_key: boolean;
+  key_source: 'local' | 'environment' | 'none';
+  model: string;
+  connection_verified: boolean;
+  model_resolved?: string;
+  error?: string;
+  safety: string;
+}

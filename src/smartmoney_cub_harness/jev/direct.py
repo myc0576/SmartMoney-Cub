@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from smartmoney_cub_harness.jev.errors import JevProtocolError, JevUnavailable
@@ -33,12 +33,18 @@ class TypeSafeDirectJevBackend:
         base_url: str = "https://api.typesafe.ai",
         timeout_seconds: float = 30.0,
         http_client: Any = _DEFAULT_CLIENT,
+        *,
+        credentials_root: str | Path | None = None,
+        max_attempts: int = 3,
     ) -> None:
-        self.api_key = api_key if api_key is not None else os.environ.get("TYPESAFE_API_KEY")
+        from smartmoney_cub_harness.jev.connection import credential
+
+        self.api_key = api_key if api_key is not None else credential(credentials_root)[0]
         self.model_requested = model_requested
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.http_client = http_client
+        self.max_attempts = max(1, min(int(max_attempts), 3))
 
     def health(self) -> dict[str, Any]:
         """Report backend health and credential status without network side effects."""
@@ -263,7 +269,7 @@ class TypeSafeDirectJevBackend:
                     raise
                 raise JevUnavailable(f"TypeSafe direct request failed: {exc}") from exc
 
-        max_attempts = 3
+        max_attempts = self.max_attempts
         for attempt in range(1, max_attempts + 1):
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:

@@ -6,6 +6,7 @@ import type {
 import { Badge, Panel } from '../components/common';
 import { effortLabel } from '../components/ModelPicker';
 import { PluginsView } from './PluginsView';
+import { JevConnectionSettings, AgentIntegrationSettings } from './ConnectionSettings';
 
 // Settings -> 模型 Providers, rebuilt against DSH's Settings -> Models page.
 //
@@ -292,7 +293,7 @@ export function SettingsView({
   const [drafts, setDrafts] = useState<Record<string, ProviderDraft>>({});
   const [catalogKey, setCatalogKey] = useState('');
   const [custom, setCustom] = useState<CustomDraft>(blankCustomDraft);
-  const [activeSection, setActiveSection] = useState<'general' | 'models' | 'plugins' | 'agent' | 'privacy'>('models');
+  const [activeSection, setActiveSection] = useState<'general' | 'models' | 'plugins' | 'agent' | 'privacy' | 'jev' | 'integrations'>('models');
   const [agentPresets, setAgentPresets] = useState<{ system_prompt: string; default_effort: string; context_strategy: string }>({
     system_prompt: '',
     default_effort: 'medium',
@@ -499,6 +500,11 @@ export function SettingsView({
             <span className="dsh-tab-badge">{providers.length}</span>
           </button>
 
+          <button className={'dsh-nav-tab' + (activeSection === 'jev' ? ' active' : '')}
+            onClick={() => { setActiveSection('jev'); setError(''); }}>JEV 连接</button>
+          <button className={'dsh-nav-tab' + (activeSection === 'integrations' ? ' active' : '')}
+            onClick={() => { setActiveSection('integrations'); setError(''); }}>Agent 集成</button>
+
           <button
             className={'dsh-nav-tab' + (activeSection === 'plugins' ? ' active' : '')}
             onClick={() => { setActiveSection('plugins'); setError(''); }}
@@ -653,6 +659,9 @@ export function SettingsView({
               ) : null}
             </Panel>
           ) : null}
+
+          {activeSection === 'jev' ? <JevConnectionSettings /> : null}
+          {activeSection === 'integrations' ? <AgentIntegrationSettings /> : null}
 
           {/* 3. 插件设置 */}
           {activeSection === 'plugins' ? (

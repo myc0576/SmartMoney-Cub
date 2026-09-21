@@ -1,5 +1,5 @@
 import type {
-  AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
+  JevConnection, AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
   SessionEvent, SessionSummary, UploadResult,
   PluginCatalogResponse, PluginDetailResponse,
@@ -217,8 +217,8 @@ export const api = {
     request<Record<string, any>>('/api/import/manual', { method: 'POST', body: JSON.stringify(payload) }),
 
   sessions: () => request<{ sessions: SessionSummary[] }>('/api/assistant/sessions'),
-  createSession: (payload: Record<string, unknown>) =>
-    request<{ session: SessionSummary }>('/api/assistant/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  createSession: (payload: Record<string, unknown>, signal?: AbortSignal) =>
+    request<{ session: SessionSummary }>('/api/assistant/sessions', { method: 'POST', body: JSON.stringify(payload), signal }),
   sessionDetail: (id: string, afterSeq = 0) =>
     request<{ session: SessionSummary; events: SessionEvent[] }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '?after_seq=' + afterSeq,
@@ -245,6 +245,10 @@ export const api = {
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/review/package',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
+  jevConnection: () => request<JevConnection>('/api/settings/jev'),
+  saveJevConnection: (payload: { api_key?: string; clear_key?: boolean }) =>
+    request<JevConnection>('/api/settings/jev', { method: 'POST', body: JSON.stringify(payload) }),
+  testJevConnection: () => request<JevConnection>('/api/settings/jev/test', { method: 'POST', body: '{}' }),
   jevStatus: () => request<JevStatusResponse>('/api/jev/status'),
   jevTracks: () => request<JevTracksResponse>('/api/jev/tracks'),
   agents: () => request<AgentsResponse>('/api/agents'),
@@ -265,10 +269,10 @@ export const api = {
     }),
   benchmarkLatest: () => request<BenchmarkLatestResponse>('/api/benchmark/latest'),
 
-  cancelTurn: (id: string) =>
+  cancelTurn: (id: string, signal?: AbortSignal) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',
-      { method: 'POST', body: JSON.stringify({}) },
+      { method: 'POST', body: JSON.stringify({}), signal },
     ),
   resumeTurn: (id: string, text = '', handlers?: StreamHandlers) =>
     handlers
@@ -294,67 +298,66 @@ export interface StreamHandlers {
 // The assistant turn is a server-sent event stream. The same events are stored
 // locally, so a dropped stream can be recovered by reloading the session.
 export async function streamTurn(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
-  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/messages'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-    signal: handlers.signal,
-  });
-  if (!response.ok || !response.body) {
-    const detail = await response.text().catch(() => '');
-    handlers.onError(detail || 'stream failed: ' + response.status);
-    return;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() || '';
-    for (const frame of frames) {
-      const line = frame.split('\n').find((item) => item.startsWith('data:'));
-      if (!line) continue;
-      try {
-        handlers.onEvent(JSON.parse(line.slice(5).trim()));
-      } catch {
-        // A partial frame is not worth failing the whole turn over.
-      }
-    }
-  }
-  handlers.onDone();
+  return streamRequest(sessionId, 'messages', text, handlers);
 }
 
 export async function streamResume(sessionId: string, text: string, handlers: StreamHandlers): Promise<void> {
-  const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/resume'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-    signal: handlers.signal,
-  });
-  if (!response.ok || !response.body) {
-    const detail = await response.text().catch(() => '');
-    handlers.onError(detail || 'resume failed: ' + response.status);
-    return;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() || '';
-    for (const frame of frames) {
-      const line = frame.split('\n').find((item) => item.startsWith('data:'));
-      if (!line) continue;
-      try { handlers.onEvent(JSON.parse(line.slice(5).trim())); } catch { /* ignore partial frame */ }
+  return streamRequest(sessionId, 'resume', text, handlers);
+}
+
+/** onDone finalizes the transport on every path; only a server `done` event
+ * means the turn succeeded. Never swallow parser errors or treat EOF as success. */
+async function streamRequest(sessionId: string, action: string, text: string, handlers: StreamHandlers): Promise<void> {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    const response = await fetch(apiUrl('/api/assistant/sessions/' + encodeURIComponent(sessionId) + '/' + action), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }), signal: handlers.signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new Error('复盘请求失败（HTTP ' + response.status + '），请检查服务后重试。');
     }
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let terminal = false;
+    while (!terminal) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      // Normalize only complete CRLF sequences: a chunk may end on the CR.
+      buffer = buffer.replace(/\r\n/g, '\n');
+      let boundary: number;
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const data = frame.split('\n').filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart()).join('\n');
+        if (!data) continue;
+        let event: Record<string, any>;
+        try { event = JSON.parse(data); }
+        catch { throw new Error('复盘数据流格式异常；已保留收到的内容。'); }
+        if (!event || typeof event.kind !== 'string') throw new Error('复盘数据流缺少事件类型。');
+        terminal = ['done', 'error', 'cancelled'].includes(event.kind);
+        handlers.onEvent(event);
+        if (terminal) break;
+      }
+      if (buffer.length > 2 * 1024 * 1024) throw new Error('复盘数据帧过大，已停止接收。');
+      if (done) {
+        if (!terminal) throw new Error('连接提前结束；已保留收到的内容，请重试。');
+        break;
+      }
+    }
+  } catch (error) {
+    if (!handlers.signal?.aborted) {
+      handlers.onError(error instanceof Error ? error.message : String(error));
+    }
+  } finally {
+    if (reader) {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+    handlers.onDone();
   }
-  handlers.onDone();
 }
 
 export function readFileAsBase64(file: File): Promise<string> {

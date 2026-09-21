@@ -4,6 +4,7 @@ import json
 import re
 import os
 import socket
+import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -410,11 +411,20 @@ def load_credentials(root: str | Path) -> dict[str, Any]:
 def save_credentials(root: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     path = credentials_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Create a private file before writing any secret, then replace atomically.
+    # A failed write must not truncate the user's existing provider credentials.
+    temporary: str | None = None
     try:
-        os.chmod(path, 0o600)
-    except OSError:  # pragma: no cover - some filesystems reject chmod
-        pass
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".credentials-", suffix=".tmp", delete=False) as stream:
+            temporary = stream.name
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
     providers = {
         key: {
             "base_url": value.get("base_url", ""),
