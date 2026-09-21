@@ -11,7 +11,7 @@
 [![Agent-ready](https://img.shields.io/badge/agent--ready-offline%20artifacts-success)](docs/agent-integration.md)
 [![Official API gateway](https://img.shields.io/badge/official%20API%20gateway-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
 
-![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)
+[![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
 
 ![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
 

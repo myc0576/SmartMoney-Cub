@@ -26,7 +26,7 @@
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
-![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)
+[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
 
 ![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
