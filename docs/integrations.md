@@ -59,6 +59,7 @@ grades the project; it never ships as a bundled dependency. The core release kee
 | Data-source adapters | `reserved-slot` | Normalize read-only exports, toy fixtures, or public examples into manifests. | No broker execution, no account mutation, no credential capture. |
 | Report generators | `reserved-slot` | Render loop reports, case records, and ledgers for local reading. | No upload of private review artifacts. |
 | Agent skills | `reserved-slot` | Improve reviewer, challenger, archivist, and drift-detector workflows. | No role may bypass the harness contract or promote champion rules automatically. |
+| [typesafe-ai/skills](https://github.com/typesafe-ai/skills) | `recommended-companion` | Official agent-skill package providing typed judgments and probabilities for review and challenger workflows; pinned to upstream commit `65a39f393687675ce170e6094757de20370365b9`. | Read-only prompt asset; output may only become review evidence or a challenger candidate; never order intent or automatic champion promotion; `TYPESAFE_API_KEY` value stays in the user environment. |
 | Evaluation / backtest tools | `reserved-slot` | Help evaluate challenger candidates and sample quality. | No future leakage and no execution recommendation surface. |
 | Knowledge-memory tools | `reserved-slot` | Organize Markdown memory, case banks, and evolution ledgers. | No cloud sync requirement and no private trading logic publication. |
 

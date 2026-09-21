@@ -53,4 +53,6 @@ Any AI agent operating in this repository MUST strictly follow the skills config
    - **RTK Compression**: Prefix shell commands with `rtk` to strip 60%-90% terminal noise and save tokens.
    - **State Externalization**: Maintain persistent discoveries and task state in `ledger.md` rather than repeating huge progress boards across conversation turns.
 
+Additionally, the repository vendors the official TypeSafe agent skill ([typesafe-ai/skills](https://github.com/typesafe-ai/skills)) at `.codex/skills/typesafe-ai/`, hash-pinned to upstream commit `65a39f393687675ce170e6094757de20370365b9`. Its output is review evidence only.
+
 @RTK.md

@@ -217,6 +217,21 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         ),
         execution_risk="low",
     ),
+    _entry(
+        "typesafe-ai/skills",
+        "https://github.com/typesafe-ai/skills",
+        LEVEL_COMPANION,
+        [CapabilityName.REVIEWER, CapabilityName.CHALLENGER],
+        license_name="MIT",
+        maintained="active",
+        boundary=(
+            "Read-only prompt and skill asset. Output may only become review evidence or a "
+            "challenger candidate; never order intent, broker action, or automatic champion promotion. "
+            "TYPESAFE_API_KEY is name-declared with the value staying in the user environment."
+        ),
+        network_required=True,
+        execution_risk="low",
+    ),
 )
 
 

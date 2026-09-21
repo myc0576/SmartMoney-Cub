@@ -184,7 +184,7 @@ export function PluginsView() {
           onClick={() => setTab('market')}
         >
           官方插件市场
-          <span className="dsh-tab-badge">{marketData?.catalog?.length || 20}</span>
+          <span className="dsh-tab-badge">{marketData?.catalog?.length || 21}</span>
         </button>
         <button
           className={'dsh-subtab' + (tab === 'inventory' ? ' active' : '')}
