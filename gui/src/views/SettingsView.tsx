@@ -6,6 +6,8 @@ import type {
 import { Badge, Panel } from '../components/common';
 import { effortLabel } from '../components/ModelPicker';
 import { PluginsView } from './PluginsView';
+import { JevConnectionSettings } from '../components/JevConnectionSettings';
+import { AgentIntegrationsSettings } from '../components/AgentIntegrationsSettings';
 
 // Settings -> 模型 Providers, rebuilt against DSH's Settings -> Models page.
 //
@@ -292,7 +294,7 @@ export function SettingsView({
   const [drafts, setDrafts] = useState<Record<string, ProviderDraft>>({});
   const [catalogKey, setCatalogKey] = useState('');
   const [custom, setCustom] = useState<CustomDraft>(blankCustomDraft);
-  const [activeSection, setActiveSection] = useState<'general' | 'models' | 'plugins' | 'agent' | 'privacy'>('models');
+  const [activeSection, setActiveSection] = useState<'general' | 'models' | 'plugins' | 'agent' | 'privacy' | 'jev' | 'integrations'>('models');
   const [agentPresets, setAgentPresets] = useState<{ system_prompt: string; default_effort: string; context_strategy: string }>({
     system_prompt: '',
     default_effort: 'medium',
@@ -460,7 +462,7 @@ export function SettingsView({
         <div>
           <h2 className="dsh-settings-heading">设置</h2>
           <span className="muted" style={{ fontSize: 12 }}>
-            配置模型提供方、Agent 预设、外观与系统选项
+            配置模型、JEV 连接、Agent 集成与系统选项
           </span>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -483,7 +485,11 @@ export function SettingsView({
 
       <div className="dsh-settings-layout">
         {/* Left Vertical Sub-Navigation: DSH Architecture */}
-        <nav className="dsh-settings-sidebar">
+        <nav className="dsh-settings-sidebar" aria-label="设置分类">
+          <button className={'dsh-nav-tab' + (activeSection === 'jev' ? ' active' : '')}
+            onClick={() => { setActiveSection('jev'); setError(''); }}><span>JEV 连接</span></button>
+          <button className={'dsh-nav-tab' + (activeSection === 'integrations' ? ' active' : '')}
+            onClick={() => { setActiveSection('integrations'); setError(''); }}><span>Agent 集成</span></button>
           <button
             className={'dsh-nav-tab' + (activeSection === 'general' ? ' active' : '')}
             onClick={() => { setActiveSection('general'); setError(''); }}
@@ -523,6 +529,8 @@ export function SettingsView({
 
         {/* Right Content Panel */}
         <div className="dsh-settings-content">
+          {activeSection === 'jev' ? <JevConnectionSettings /> : null}
+          {activeSection === 'integrations' ? <AgentIntegrationsSettings /> : null}
           {/* 1. 通用设置 */}
           {activeSection === 'general' ? (
             <Panel title="通用设置">

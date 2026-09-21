@@ -81,3 +81,6 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+
+# Optional JEV credentials must never be committed.
+**/jev.credentials.json

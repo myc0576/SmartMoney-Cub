@@ -258,3 +258,34 @@ def test_benchmark_image_path_traversal_defence(tmp_path: Path):
         assert service.benchmark_image("run_safe", "valid*.png") is None
     finally:
         service.close()
+
+
+def test_jev_connection_settings_http_contract(http_server, monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    base, _ = http_server
+    status, body = _post(f"{base}/api/settings/jev", {"api_key": "fixture-only-key"})
+    assert status == 200 and body["has_key"]
+    assert "fixture-only-key" not in json.dumps(body)
+    status, body = _get(f"{base}/api/settings/jev")
+    assert status == 200 and body["key_source"] == "local"
+    status, body = _post(f"{base}/api/settings/jev", {"api_key": "bad key"})
+    assert status == 400 and body["safety"] == SAFETY_DECLARATION
+    status, body = _post(f"{base}/api/settings/jev", {"clear_key": True})
+    assert status == 200 and not body["has_key"]
+    status, body = _post(f"{base}/api/settings/jev/test", {})
+    assert status == 200 and body["connected"] is False
+
+
+def test_jev_connection_test_http_uses_saved_key(http_server, monkeypatch):
+    from smartmoney_cub_harness.jev import connection
+    base, _ = http_server
+    seen = []
+    def respond(req):
+        seen.append(req.get_header("Authorization"))
+        return {"model": "jev-test", "answers": {"connection_test": {"type": "noul", "noul": 0.8}}}
+    monkeypatch.setattr(connection, "_probe_request", respond)
+    _post(f"{base}/api/settings/jev", {"api_key": "fixture-only-key"})
+    status, body = _post(f"{base}/api/settings/jev/test", {})
+    assert status == 200 and body["connected"]
+    assert seen == ["Bearer fixture-only-key"]
+    assert "fixture-only-key" not in json.dumps(body)

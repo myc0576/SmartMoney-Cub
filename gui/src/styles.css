@@ -776,3 +776,18 @@ th.num .th-sort { text-align: right; }
   border-color: var(--color-accent);
   text-decoration: none;
 }
+
+/* Optional connections are settings, not primary workbench destinations. */
+.integration-intro { margin-bottom: 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.integration-intro .tag { margin-right: 6px; }
+.integration-key-field { max-width: 540px; margin: 18px 0; }
+.integration-key-field input { width: 100%; }
+.integration-help { margin-top: 12px; font-size: 11px; line-height: 1.7; }
+.integration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; }
+.integration-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--panel-2); min-width: 0; }
+.integration-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.integration-card p { font-size: 12px; line-height: 1.7; }
+.integration-card details { font-size: 11px; margin: 10px 0; }
+.integration-card summary { cursor: pointer; }
+.integration-card code { overflow-wrap: anywhere; }
+.integration-actions { gap: 8px; flex-wrap: wrap; }
