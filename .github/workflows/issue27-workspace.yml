@@ -1,0 +1,72 @@
+name: Issue 27 isolated implementation verification
+on:
+  push:
+    branches: [codex/settings-jev-assistant-27]
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.repository == 'myc0576/SmartMoney-Cub' && github.ref == 'refs/heads/codex/settings-jev-assistant-27'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/settings-jev-assistant-27
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev]' crossplane pyyaml
+      - name: Observe regression tests failing before source edits
+        run: |
+          set +e
+          python -m pytest tests/test_settings_navigation_contract.py -q
+          result=$?
+          set -e
+          test "$result" -eq 1
+      - name: Apply asserted changes only to this feature branch
+        id: apply
+        run: |
+          test "$(git branch --show-current)" = codex/settings-jev-assistant-27
+          python issue27-apply.py
+      - name: Typecheck and rebuild packaged interface
+        id: build
+        run: |
+          npm ci --prefix gui
+          npm run typecheck --prefix gui
+          npm test --prefix gui
+          npm run build --prefix gui
+      - name: Commit changes and remove temporary workspace tooling
+        if: always() && steps.apply.outcome == 'success'
+        run: |
+          test "$(git branch --show-current)" = codex/settings-jev-assistant-27
+          rm issue27-apply.py .github/workflows/issue27-workspace.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .gitignore gui src/smartmoney_cub_harness/workbench/server.py src/smartmoney_cub_harness/workbench/web src/smartmoney_cub_harness/jev/cli.py issue27-apply.py .github/workflows/issue27-workspace.yml
+          git diff --cached --check
+          git commit -m 'feat(workbench): consolidate optional connections and improve assistant run feedback'
+          git push origin HEAD:refs/heads/codex/settings-jev-assistant-27
+      - name: Full verification loop
+        if: always() && steps.apply.outcome == 'success'
+        run: ./scripts/verify.sh
+      - name: Browser regression tests
+        if: always() && steps.apply.outcome == 'success'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/settings-connections.spec.ts --project=chromium
+      - name: Retain browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue27-browser-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

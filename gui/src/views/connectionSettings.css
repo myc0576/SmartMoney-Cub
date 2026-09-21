@@ -1,0 +1,14 @@
+.connection-settings { min-width: 0; }
+.settings-sections { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.connection-card { padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.connection-card h2 { margin: 0; font-size: 16px; }
+.connection-card p { color: var(--muted); font-size: 12px; line-height: 1.8; margin: 8px 0 14px; }
+.connection-heading { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.connection-card label { display: block; font-size: 12px; margin-bottom: 8px; }
+.connection-card input { width: 100%; max-width: 560px; box-sizing: border-box; }
+.connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.agent-connections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.agent-connection { border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.agent-connection small { display: block; overflow-wrap: anywhere; }
+.connection-card .connection-error { color: var(--text); border-left: 3px solid currentColor; padding-left: 10px; }
+.settings-sections button:focus-visible, .connection-actions button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
