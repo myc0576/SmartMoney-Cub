@@ -4,12 +4,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-from smartmoney_cub_harness.plugins.profiles import BUILTIN_PROFILES, get_profile
+from smartmoney_cub_harness.plugins.catalog import catalog_index, catalog_payload
+from smartmoney_cub_harness.plugins.curated_catalog import curated_catalog_payload
 from smartmoney_cub_harness.plugins.lifecycle import PluginState
+from smartmoney_cub_harness.plugins.manifest import parse_manifest, validate_manifest
+from smartmoney_cub_harness.plugins.profiles import BUILTIN_PROFILES, get_profile
 from smartmoney_cub_harness.plugins.registry import PluginStateStore
 from smartmoney_cub_harness.plugins.runtime import PluginRuntime
-from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.safety import redact
+from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 DEFAULT_STATE_DB = "state/plugins/plugin_state.db"
 
@@ -47,8 +50,6 @@ def plugin_list(
 
 
 def plugin_inspect(manifest_path: str) -> dict[str, Any]:
-    from smartmoney_cub_harness.plugins.manifest import parse_manifest, validate_manifest
-
     payload = _read_json(manifest_path)
     validation = validate_manifest(payload)
     result: dict[str, Any] = {
@@ -123,42 +124,66 @@ def plugin_remove(plugin_id: str, *, state_db: str | None = None) -> dict[str, A
     }
 
 
-# Schemes that would mean downloading code. Installation must stay deliberate.
-_REMOTE_SCHEMES = ("http://", "https://", "git+", "git://", "ssh://", "ftp://")
-
-
 def plugin_install(
     source: str,
     *,
     profile_name: str = "default-offline",
     state_db: str | None = None,
+    permissions_confirmed: bool = True,
+    credentials: dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Register a plugin the user already obtained locally.
+    """Register or install a plugin.
 
-    This deliberately does not download anything. A remote URL, a git spec, or a
-    package index reference is refused so installation cannot quietly become a
-    supply-chain entry point. Users install dependencies themselves with pip, then
-    point this command at the resulting local path.
+    If source matches a plugin_id in the curated catalog, route to PluginInstaller.
+    Otherwise, maintain existing local directory discovery and registration behavior.
     """
-    lowered = source.strip().lower()
-    if any(lowered.startswith(scheme) for scheme in _REMOTE_SCHEMES):
+    clean_source = source.strip()
+    whitelist = catalog_index()
+
+    if clean_source in whitelist:
+        from smartmoney_cub_harness.plugin_installer import PluginInstaller
+        from smartmoney_cub_harness.plugin_marketplace import MarketplaceStore
+
+        entry = whitelist[clean_source]
+        db_path = Path(state_db or DEFAULT_STATE_DB)
+        state_store = PluginStateStore(db_path)
+        # Derive root for installer and credentials from state_db parent
+        installer_root = db_path.parent.parent if db_path.parent.name == "plugins" else db_path.parent
+        installer = PluginInstaller(installer_root)
+        install_res = installer.install(
+            entry,
+            permissions_confirmed=permissions_confirmed,
+            credentials=credentials,
+            config=config,
+        )
+        if install_res.get("status") == "ok":
+            market_store = MarketplaceStore(installer_root, state_store=state_store)
+            rec = market_store.install_record(
+                entry,
+                health=install_res.get("health", {"healthy": True}),
+                config_keys=list(config.keys()) if config else [],
+            )
+            return {
+                "status": "ok",
+                "installed": [rec],
+                "steps": install_res.get("steps", []),
+                "health": install_res.get("health", {}),
+                "downloaded": entry.get("install", {}).get("kind") != "builtin",
+                "safety": SAFETY_DECLARATION,
+            }
         return {
-            "status": "refused",
-            "error": {
-                "code": "remote_install_refused",
-                "message": (
-                    "automatic download is not supported; obtain the plugin yourself "
-                    "and pass its local directory or manifest path"
-                ),
-            },
+            "status": "error",
+            "steps": install_res.get("steps", []),
+            "error": install_res.get("error", "install_failed"),
             "safety": SAFETY_DECLARATION,
         }
 
-    path = Path(source).expanduser()
+    path = Path(clean_source).expanduser()
     if not path.exists():
         return {
             "status": "not_found",
-            "error": {"code": "path_missing", "message": f"no such path: {source}"},
+            "error": {"code": "path_missing", "message": f"no such path or catalog plugin: {source}"},
             "safety": SAFETY_DECLARATION,
         }
 
@@ -216,9 +241,6 @@ def profile_show(profile_name: str) -> dict[str, Any]:
 
 def plugin_catalog() -> dict[str, Any]:
     """Show curated external projects and the boundary each one must respect."""
-    from smartmoney_cub_harness.plugins.catalog import catalog_payload
-    from smartmoney_cub_harness.plugins.curated_catalog import curated_catalog_payload
-
     payload = catalog_payload()
     payload["curated_finance"] = curated_catalog_payload()
     payload["safety"] = SAFETY_DECLARATION

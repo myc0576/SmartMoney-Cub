@@ -623,9 +623,14 @@ def test_plugin_endpoints_lifecycle_and_catalog(tmp_path) -> None:
     service = _service(tmp_path)
     try:
         catalog = service.plugin_catalog()
-        assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v1"
+        assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v2"
         assert len(catalog["entries"]) > 0
         assert catalog["safety"] == SAFETY_DECLARATION
+        # Every curated entry names how it is obtained, so the interface never
+        # has to guess whether a card corresponds to installable code.
+        for entry in catalog["entries"]:
+            assert entry["install"]["kind"] in ("pypi", "git", "builtin")
+            assert entry["repo"]
 
         detail = service.plugin_detail("toy.review-tagger")
         assert detail["status"] == "ok"

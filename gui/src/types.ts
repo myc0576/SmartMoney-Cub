@@ -690,6 +690,115 @@ export interface ReplaySessions extends SafetyEnvelope {
   sessions: ReplaySession[];
 }
 
+/* ---- plugin marketplace (real install channel) ---------------------- */
+
+/** How a curated project is obtained. The installer switches on this value. */
+export interface PluginInstallSpec {
+  kind: 'pypi' | 'git' | 'builtin';
+  /** pypi: the distribution name to install. */
+  package?: string;
+  /** pypi/git: the import name the health check verifies. */
+  module?: string;
+  /** pypi: optional pinned version. */
+  version?: string | null;
+  /** git: the upstream repository URL. */
+  repo?: string;
+  /** git: optional branch or tag. */
+  tag?: string | null;
+  /** builtin: what ships with the harness. */
+  note?: string;
+}
+
+/**
+ * Lifecycle state of a market entry. Only INSTALLED and ENABLED mean code
+ * exists on this machine and passed its health check; there is no
+ * half-configured state because an interrupted wizard writes nothing.
+ */
+export type PluginMarketState =
+  | 'AVAILABLE'
+  | 'INSTALLED'
+  | 'ENABLED'
+  | 'DISABLED'
+  | 'ERROR';
+
+export interface PluginMarketEntry {
+  plugin_id: string;
+  name: string;
+  category: string;
+  description: string;
+  repo: string;
+  docs_url?: string | null;
+  install: PluginInstallSpec;
+  license: string;
+  level: string;
+  capabilities: string[];
+  requires_credentials: boolean;
+  network_required: boolean;
+  execution_risk: string;
+  boundary: string;
+  source: string;
+  safety: string;
+  /** The command a user would run themselves to install this upstream project. */
+  manual_command: string;
+  state: PluginMarketState;
+  installed: boolean;
+  enabled: boolean;
+  mounted: boolean;
+  health?: string | null;
+  last_error?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PluginMarketResponse extends SafetyEnvelope {
+  schema: string;
+  source: string;
+  categories: string[];
+  catalog: PluginMarketEntry[];
+  counts: {
+    total: number;
+    by_category: Record<string, number>;
+    by_install_kind: Record<string, number>;
+  };
+  policy: string;
+}
+
+export interface PluginInstallRequest {
+  plugin_id: string;
+  permissions_confirmed: boolean;
+  /** Written to the local credentials file; never returned by the API. */
+  credentials?: Record<string, string>;
+  config?: Record<string, unknown>;
+}
+
+export interface PluginInstallStep {
+  step: string;
+  status: 'ok' | 'failed' | 'skipped';
+  detail: string;
+}
+
+export interface PluginInstallResponse extends SafetyEnvelope {
+  status: 'ok' | 'error';
+  plugin?: PluginMarketEntry;
+  steps: PluginInstallStep[];
+  health?: { ok: boolean; detail: string };
+  error?: string;
+}
+
+export interface PluginProbeResponse extends SafetyEnvelope {
+  status: string;
+  healthy: boolean;
+  detail: string;
+  module?: string;
+  interpreter?: string;
+}
+
+export interface PluginUninstallResponse extends SafetyEnvelope {
+  status: 'ok' | 'error';
+  plugin_id: string;
+  removed_path?: string;
+  error?: string;
+}
+
 /* ---- plugins & agent presets (DSH alignment) ------------------------ */
 
 export interface PluginItem {

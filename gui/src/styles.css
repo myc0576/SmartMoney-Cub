@@ -295,7 +295,7 @@ textarea { resize: vertical; min-height: 62px; }
 
 /* ---- provider cards ------------------------------------------------ */
 
-.provider-card { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.provider-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
 .provider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .provider-title { font-weight: 600; }
 .provider-id { color: var(--muted); font-size: 11px; margin-left: 8px; }
@@ -535,7 +535,7 @@ th.num .th-sort { text-align: right; }
 /* Cards Grid */
 .dsh-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
 .dsh-plugin-card {
@@ -662,6 +662,23 @@ th.num .th-sort { text-align: right; }
   gap: 18px;
   min-height: 520px;
 }
+.content.with-assistant .dsh-settings-layout {
+  grid-template-columns: 160px 1fr;
+}
+@media (max-width: 1200px) {
+  .dsh-settings-layout,
+  .content.with-assistant .dsh-settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .dsh-settings-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding-right: 0;
+    padding-bottom: 12px;
+  }
+}
 @media (max-width: 860px) {
   .dsh-settings-layout {
     grid-template-columns: 1fr;
@@ -775,4 +792,140 @@ th.num .th-sort { text-align: right; }
   background: rgba(41, 98, 255, 0.16);
   border-color: var(--color-accent);
   text-decoration: none;
+}
+
+/* ---- plugin market & missing utility classes ----------------------- */
+
+.mono {
+  font-family: var(--font-mono, monospace);
+}
+
+.dsh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dsh-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dsh-plugin-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmented button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button.active {
+  background: var(--panel);
+  color: var(--accent);
+  font-weight: 500;
+  box-shadow: 0 1px 3px var(--color-shadow);
+}
+
+.plugin-market-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.plugin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.plugin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.plugin-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+  /* A long unbroken string -- a package name like pandas-market-calendars or a
+     repository URL -- would otherwise set the card's min-content width and
+     push past the grid track. The card declares its children may shrink and
+     clips whatever cannot wrap instead of widening the grid. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.plugin-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.plugin-card-top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.plugin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--inset);
+  color: var(--accent);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.plugin-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.plugin-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }

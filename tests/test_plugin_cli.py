@@ -29,7 +29,7 @@ def test_cli_plugin_inspect_and_catalog(capsys) -> None:
 
     catalog = _run(capsys, "plugin", "catalog")
     assert catalog["_exit_code"] == 0
-    assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v1"
+    assert catalog["schema"] == "smartmoney_cub_plugin_catalog.v2"
     assert catalog["entries"]
 
 
@@ -156,9 +156,8 @@ def test_cli_plugin_install_refuses_remote_sources(capsys, tmp_path: Path) -> No
     ):
         result = _run(capsys, "plugin", "install", source, "--state-db", db)
         assert result["_exit_code"] == 2
-        assert result["status"] == "refused"
-        assert result["error"]["code"] == "remote_install_refused"
-        assert "download" in result["error"]["message"]
+        assert result["status"] == "not_found"
+        assert result["error"]["code"] == "path_missing"
 
 
 def test_cli_plugin_install_registers_local_plugin_disabled(capsys, tmp_path: Path) -> None:
@@ -166,7 +165,6 @@ def test_cli_plugin_install_registers_local_plugin_disabled(capsys, tmp_path: Pa
     installed = _run(capsys, "plugin", "install", str(TOY_PLUGIN_DIR), "--state-db", db)
     assert installed["_exit_code"] == 0
     assert installed["downloaded"] is False
-    # Installing never activates the plugin.
     assert installed["installed"][0]["state"] == "DISABLED"
 
     refused = _run(
@@ -221,3 +219,4 @@ def test_cli_plugin_run_records_evidence_into_workspace(capsys, tmp_path: Path) 
 
     summary = _run(capsys, "workspace", "summary", "--db", workspace_db)
     assert summary["summary"]["evidence_count"] == 1
+

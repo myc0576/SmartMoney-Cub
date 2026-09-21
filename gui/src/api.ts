@@ -2,7 +2,9 @@ import type {
   AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
   SessionEvent, SessionSummary, UploadResult,
-  PluginCatalogResponse, PluginDetailResponse,
+  PluginDetailResponse,
+  PluginMarketResponse, PluginInstallRequest, PluginInstallResponse,
+  PluginProbeResponse, PluginUninstallResponse,
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
   Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
   TraderCalendar, TradeLogDetail, TraderHealth, TraderImportResult, TraderMeta,
@@ -135,18 +137,18 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ note }) },
     ),
   plugins: () => request<Record<string, any>>('/api/plugins'),
-  pluginMarket: () => request<Record<string, any>>('/api/plugins/market'),
-  installMarketPlugin: (pluginId: string, config: Record<string, unknown> = {}) =>
-    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/install', {
-      method: 'POST', body: JSON.stringify({ config }),
+  pluginMarket: () => request<PluginMarketResponse>('/api/plugins/market'),
+  pluginInstall: (req: PluginInstallRequest) =>
+    request<PluginInstallResponse>('/api/plugins/install', {
+      method: 'POST', body: JSON.stringify(req),
     }),
-  updateMarketPlugin: (pluginId: string, confirm = false) =>
-    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/update', {
-      method: 'POST', body: JSON.stringify({ confirm }),
+  pluginProbe: (pluginId: string) =>
+    request<PluginProbeResponse>('/api/plugins/probe', {
+      method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
     }),
-  setMarketPluginEnabled: (pluginId: string, enabled: boolean) =>
-    request<Record<string, any>>('/api/plugins/market/' + encodeURIComponent(pluginId) + '/' + (enabled ? 'enable' : 'disable'), {
-      method: 'POST', body: JSON.stringify({ enabled }),
+  pluginUninstall: (pluginId: string) =>
+    request<PluginUninstallResponse>('/api/plugins/uninstall', {
+      method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
     }),
   enablePlugin: (pluginId: string) =>
     request<{ status: string; plugin: any; safety: string }>('/api/plugins/enable', {
@@ -156,13 +158,8 @@ export const api = {
     request<{ status: string; plugin: any; safety: string }>('/api/plugins/disable', {
       method: 'POST', body: JSON.stringify({ plugin_id: pluginId }),
     }),
-  pluginCatalog: () => request<PluginCatalogResponse>('/api/plugins/catalog'),
   pluginDetail: (pluginId: string) =>
     request<PluginDetailResponse>('/api/plugins/detail?plugin_id=' + encodeURIComponent(pluginId)),
-  configurePlugin: (pluginId: string, config: Record<string, any>) =>
-    request<{ status: string; config: Record<string, any>; safety: string }>('/api/plugins/configure', {
-      method: 'POST', body: JSON.stringify({ plugin_id: pluginId, config }),
-    }),
   reloadPlugins: () =>
     request<{ status: string; safety: string }>('/api/plugins/reload', {
       method: 'POST', body: JSON.stringify({}),

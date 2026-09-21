@@ -21,9 +21,9 @@ automatically. There is no "edit the core to add a data source" step.
 | Dependency resolution | Yes | `inject`; missing hard dependencies become `PENDING` |
 | Activation | Yes | Gated by profile permissions and health check |
 | Execution | Yes | Every result is wrapped in an Evidence Envelope |
-| Installation | No | Always a user-initiated action |
-| Downloading | No | The catalog is documentation, not an installer |
-| Enabling network or a model | No | Requires an explicit profile or flag |
+| Installation | No | User-initiated; workbench can install into a dedicated venv upon explicit per-item confirmation |
+| Downloading | No | Only via verified curated catalog whitelist on explicit confirmation; never silent background fetching |
+| Enabling network or a model | No | Requires an explicit profile, credentials confirmation, or flag |
 
 ## Layer model
 
@@ -94,16 +94,28 @@ The machine-readable schema is
 | `supported_markets` | No | For example `CN-A` |
 | `safety` | Yes | Must be `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE` |
 
-## Lifecycle
+## Lifecycle and Status Vocabulary
 
 ```text
-DISCOVERED -> INSPECTED -> INSTALLED -> ENABLED/DISABLED -> HEALTH_CHECKED
+AVAILABLE -> [PERMISSIONS_CONFIRMED] -> INSTALLED (in dedicated venv/sources) -> ENABLED/DISABLED -> HEALTH_CHECKED
    -> ACTIVE -> EXECUTED -> EVIDENCE_WRAPPED -> REVIEWED
-   -> DEPRECATED/REVOKED
+   -> UNINSTALLED / REVOKED
 PENDING  (a required service is missing)
-FAILED   (a health check or an execution raised)
-BLOCKED  (the active profile does not permit the declared permissions)
+FAILED / ERROR (a health probe, installation, or execution raised)
+BLOCKED  (high execution risk or the active profile does not permit permissions)
 ```
+
+### Market States
+
+The workbench and catalog contract define five explicit market states:
+
+| State | Meaning |
+| --- | --- |
+| `AVAILABLE` | The plugin is cataloged and available for installation, but not yet downloaded or installed. |
+| `INSTALLED` | The plugin package has been fetched into the dedicated venv (or cloned into `sources/`), passes health check, but is currently inactive. |
+| `ENABLED` | The plugin is active and available for invocation in workflows. |
+| `DISABLED` | The plugin is installed but intentionally disabled by the user or profile. |
+| `ERROR` | A health probe, installation step, or execution failed, or the entry is in an invalid state. |
 
 Activation registers providers as reversible effects. Deactivation runs those
 disposers in reverse order, so no consumer keeps a reference to a provider that is
@@ -158,10 +170,22 @@ smcub profile dump --output profiles.json
 smcub profile reload --plugin-dir examples/toy_plugin
 ```
 
-`plugin install` accepts only a local directory or manifest path, registers the
-plugin as installed, and leaves it disabled. A URL, git spec, or package reference
-is refused so installation cannot become an automatic download path. Pass
-`--workspace-db` to `plugin run` to persist the wrapped envelope into the review
+### Installation Channels and Workbench Wizard
+
+The harness provides two installation avenues:
+
+1. **CLI Local Registration**: `smcub plugin install <local-dir>` registers an existing local directory or manifest path.
+2. **Workbench Installation Wizard (Dedicated venv & Whitelist)**:
+   The review workbench provides an interactive, human-gated installation flow for curated catalog plugins:
+   - **Catalog Whitelist Enforcement**: Only entries present in the curated catalog whitelist (`catalog_index()`) can be installed. Arbitrary URLs or unauthorized packages are strictly rejected.
+   - **Absolute Execution Ban on High Risk**: Catalog entries marked with `execution_risk: "high"` (such as vn.py, which contains order placement and account manipulation capabilities) are **never installed** under any circumstance. The installer immediately refuses them.
+   - **Explicit Permission Confirmation**: Installation cannot proceed without explicit human consent to the `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE` boundary.
+   - **Dedicated Virtual Environment (`.plugins/venv`)**: PyPI-based plugins are installed into an isolated dedicated virtual environment, avoiding pollution of the core runtime.
+   - **Dedicated Sources Directory (`.plugins/sources`)**: Git-based plugins are cloned into an isolated sources directory with health probes verified.
+   - **Health Checks & Probes**: Immediately following download/install, a non-mutating health check (`probe`) verifies that the declared module can be imported cleanly. If the probe fails, the installer reports `ERROR`, rolls back changes, and surfaces the failure.
+   - **Clean Uninstallation**: Uninstallation cleanly removes packages from the dedicated venv or deletes cloned directories while preserving audit logs.
+
+Pass `--workspace-db` to `plugin run` to persist the wrapped envelope into the review
 workspace, optionally linked to a case with `--case-id`.
 
 ## Profiles
