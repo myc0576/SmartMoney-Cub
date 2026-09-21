@@ -1,0 +1,73 @@
+name: Issue 27 visual containment regression
+on:
+  push:
+    branches: [codex/settings-jev-assistant-27]
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.repository == 'myc0576/SmartMoney-Cub' && github.ref == 'refs/heads/codex/settings-jev-assistant-27'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/settings-jev-assistant-27
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: |
+          npm ci --prefix gui
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Reproduce inherited fixed-width bubble overflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('e2e/settings-connections.spec.ts')
+          s=p.read_text()
+          old='  expect(created).toBe(1);'
+          assert s.count(old)==1
+          new=old+"\n  await expect.poll(() => page.locator('.assistant-body').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);\n  await expect(page.getByText('未选择会话', { exact: true })).toHaveCount(0);"
+          p.write_text(s.replace(old,new))
+          PY
+          set +e
+          npx playwright test e2e/settings-connections.spec.ts --grep IME --project=chromium --retries=0
+          code=$?
+          set -e
+          test "$code" -eq 1
+      - name: Isolate panel styles from message role and fix provisional title
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('gui/src/styles.css');s=p.read_text()
+          assert s.count('.assistant {')==2
+          p.write_text(s.replace('.assistant {','.assistant:not(.bubble) {'))
+          p=Path('gui/src/components/AssistantPanel.tsx');s=p.read_text()
+          old="{activeSession ? activeSession.title : '未选择会话'}"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"{activeSession ? activeSession.title : activeId ? '当前会话' : '未选择会话'}"))
+          PY
+          npm run typecheck --prefix gui
+          npm test --prefix gui
+          npm run build --prefix gui
+          npx playwright test e2e/settings-connections.spec.ts --project=chromium
+      - name: Commit verified layout correction and remove temporary workflow
+        run: |
+          test "$(git branch --show-current)" = codex/settings-jev-assistant-27
+          rm .github/workflows/issue27-visual-check.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gui/src/styles.css gui/src/components/AssistantPanel.tsx e2e/settings-connections.spec.ts src/smartmoney_cub_harness/workbench/web .github/workflows/issue27-visual-check.yml
+          git diff --cached --check
+          git commit -m 'fix(assistant): keep message bubbles within the reader viewport'
+          git push origin HEAD:refs/heads/codex/settings-jev-assistant-27
+      - name: Upload final reviewed screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue27-visual-containment
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
