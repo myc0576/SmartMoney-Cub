@@ -95,7 +95,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .content.with-assistant { display: flex; gap: 16px; padding: 0; overflow: hidden; }
 .content.with-assistant .page { flex: 1; min-width: 0; overflow: auto; padding: 16px; }
 
-.assistant {
+.assistant:not(.bubble) {
   width: 400px; flex: none; border-left: 1px solid var(--border);
   background: var(--panel); display: flex; flex-direction: column; min-height: 0;
   transition: width var(--motion-base) var(--motion-ease), box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
@@ -224,7 +224,7 @@ textarea { resize: vertical; min-height: 62px; }
 .chip.active { background: var(--panel-2); border-color: var(--accent); }
 
 @media (max-width: 1180px) {
-  .assistant { width: 340px; }
+  .assistant:not(.bubble) { width: 340px; }
 }
 @media (max-width: 980px) {
   .content.with-assistant .assistant.drawer:not(.open) { display: none; }

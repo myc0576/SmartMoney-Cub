@@ -86,6 +86,8 @@ test('IME, double submit, folded tools, and stop preserve real streamed output',
   await input.press('Enter');
   await expect(page.getByText('已收到的部分回复', { exact: true })).toBeVisible();
   expect(created).toBe(1);
+  await expect.poll(() => page.locator('.assistant-body').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(page.getByText('未选择会话', { exact: true })).toHaveCount(0);
   await expect(page.locator('.tool-card[open]')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('assistant-running.png'), fullPage: true });
   await page.getByRole('button', { name: '停止', exact: true }).click();

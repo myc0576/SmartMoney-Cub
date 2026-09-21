@@ -329,7 +329,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       <div className="assistant-head">
         <strong style={{ fontSize: 12 }}>复盘助手</strong>
         <span className="muted" style={{ fontSize: 11 }}>
-          {activeSession ? activeSession.title : '未选择会话'}
+          {activeSession ? activeSession.title : activeId ? '当前会话' : '未选择会话'}
         </span>
         <div style={{ flex: 1 }} />
         <span className={'assistant-live-dot' + (busy ? ' busy' : '')} title={busy ? '正在处理' : '已就绪'} />
