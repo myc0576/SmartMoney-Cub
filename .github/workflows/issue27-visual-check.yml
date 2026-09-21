@@ -39,10 +39,12 @@ jobs:
       - name: Isolate panel styles from message role and fix provisional title
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
           p=Path('gui/src/styles.css');s=p.read_text()
-          assert s.count('.assistant {')==2
-          p.write_text(s.replace('.assistant {','.assistant:not(.bubble) {'))
+          pattern=r'(?m)^([ \t]*)\.assistant \{'
+          assert len(re.findall(pattern,s))==2
+          p.write_text(re.sub(pattern,r'\1.assistant:not(.bubble) {',s))
           p=Path('gui/src/components/AssistantPanel.tsx');s=p.read_text()
           old="{activeSession ? activeSession.title : '未选择会话'}"
           assert s.count(old)==1
