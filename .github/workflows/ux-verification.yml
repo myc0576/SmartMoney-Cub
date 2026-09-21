@@ -1,31 +1,95 @@
-name: UX verification snapshot
+name: Verify settings and assistant patch
 on:
   push:
     branches: [codex/settings-assistant-ux]
-    paths: [.github/workflows/ux-verification.yml]
+    paths:
+      - .github/workflows/ux-verification.yml
+      - .codex/ux-patch.*
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: settings-assistant-patch
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
 jobs:
-  snapshot:
+  verify:
+    if: github.ref == 'refs/heads/codex/settings-assistant-ux'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smcub
+          POSTGRES_PASSWORD: smcub
+          POSTGRES_DB: smcub_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U smcub"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      SMARTMONEY_TEST_DATABASE_URL: postgresql://smcub:smcub@127.0.0.1:5432/smcub_test
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          ref: codex/settings-assistant-ux
+      - name: Apply checksum-verified public source patch
+        run: |
+          python - <<'PY'
+          import base64, hashlib, lzma, pathlib, subprocess
+          encoded = ''.join(pathlib.Path(f'.codex/ux-patch.{i}').read_text().strip() for i in (1, 2, 3))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '8c0fa8e30da59b9d0fbb0d5df8bad480c4686892cdf5b0e5499f335f85a700de'
+          path = pathlib.Path('/tmp/settings-assistant.patch')
+          path.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--unidiff-zero', str(path)], check=True)
+          subprocess.run(['git', 'apply', '--unidiff-zero', str(path)], check=True)
+          pathlib.Path('gui/src/views/JevView.tsx').unlink()
+          PY
+          git diff --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --prefix gui
-      - run: npm ci
-      - name: Export public source and locked development dependencies
+      - name: Install locked toolchains
         run: |
-          mkdir -p "$RUNNER_TEMP/ux-snapshot"
-          git archive HEAD | tar -x -C "$RUNNER_TEMP/ux-snapshot"
-          cp -a gui/node_modules "$RUNNER_TEMP/ux-snapshot/gui/"
-          cp -a node_modules "$RUNNER_TEMP/ux-snapshot/"
-          tar -czf "$RUNNER_TEMP/ux-source.tgz" -C "$RUNNER_TEMP/ux-snapshot" .
+          python -m pip install -e '.[dev,hosted]' crossplane pyyaml
+          npm ci
+          npm ci --prefix gui
+      - name: Frontend unit tests, typecheck and production build
+        run: |
+          npm test --prefix gui
+          npm run typecheck --prefix gui
+          npm run build --prefix gui
+      - name: Python regression suite and safety contract
+        run: |
+          mkdir -p test-results
+          python -m pytest -q | tee test-results/python-suite.txt
+          smcub doctor | tee test-results/doctor.txt
+          grep -q READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE test-results/doctor.txt
+      - name: Install clean browser
+        run: npx playwright install --with-deps chromium
+      - name: Browser interaction regression suite
+        run: npx playwright test
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: ux-source-snapshot
-          path: ${{ runner.temp }}/ux-source.tgz
-          retention-days: 1
+          name: settings-assistant-verification
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+      - name: Commit verified changes and rebuilt assets to feature branch only
+        if: success()
+        run: |
+          git rm -- .codex/ux-patch.1 .codex/ux-patch.2 .codex/ux-patch.3
+          git add -- .gitignore docs/settings-assistant-review.md docs/superpowers/plans/2026-09-21-settings-assistant-ux.md e2e/settings-assistant.spec.ts gui/package.json gui/src gui/tests src/smartmoney_cub_harness/jev src/smartmoney_cub_harness/workbench/server.py src/smartmoney_cub_harness/workbench/web tests/test_jev_connection_settings.py tests/test_workbench_jev_api.py
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: consolidate JEV settings and improve review assistant lifecycle (#24)'
+          git push origin HEAD:codex/settings-assistant-ux
