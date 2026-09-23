@@ -728,6 +728,20 @@ def test_hosted_isolation_matches_the_sqlite_contract(hosted_store) -> None:
 
 
 @requires_postgres
+def test_hosted_reads_release_locks_before_another_instance_migrates(hosted_store) -> None:
+    from psycopg.pq import TransactionStatus
+
+    hosted_store.get_user("tenant-a")
+    assert hosted_store._connection().info.transaction_status == TransactionStatus.IDLE
+    hosted_store.list_trades("tenant-a")
+    assert hosted_store._connection().info.transaction_status == TransactionStatus.IDLE
+    with open_store(POSTGRES_TEST_URL, mode=MODE_HOSTED) as second:
+        with second._transaction() as conn:
+            conn.execute("SET lock_timeout = '2s'")
+        assert second.migrate()["status"] == "ok"
+
+
+@requires_postgres
 def test_hosted_upserts_do_not_cross_tenants(hosted_store) -> None:
     hosted_store.insert_trades("tenant-a", [_buy("SHARED-ID", price=10.0)])
     hosted_store.insert_trades("tenant-b", [_buy("SHARED-ID", price=20.0)])

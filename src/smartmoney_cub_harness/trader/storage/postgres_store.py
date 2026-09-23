@@ -128,7 +128,7 @@ class PostgresTenantStore:
 
     @contextmanager
     def _transaction(self) -> Iterator[Any]:
-        """Run one write atomically, rolling back on any failure."""
+        """Finish one operation atomically, rolling back on any failure."""
         with self._lock:
             conn = self._connection()
             try:
@@ -150,13 +150,15 @@ class PostgresTenantStore:
         return resolved
 
     def _fetchall(self, sql: str, params: Sequence[Any]) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._connection().execute(sql, tuple(params)).fetchall()
+        # SELECT starts a transaction too. Release its table locks before another
+        # server instance runs schema migrations against the shared database.
+        with self._transaction() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
     def _fetchone(self, sql: str, params: Sequence[Any]) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._connection().execute(sql, tuple(params)).fetchone()
+        with self._transaction() as conn:
+            row = conn.execute(sql, tuple(params)).fetchone()
         return None if row is None else dict(row)
 
     def _write_audit(
