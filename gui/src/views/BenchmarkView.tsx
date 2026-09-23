@@ -2,63 +2,65 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { BenchmarkLatestResponse } from '../types';
 import { Badge, Empty, Kpi, Panel } from '../components/common';
+import { useLegacyI18n } from '../locales/legacy';
 
 const IMAGE_CATEGORIES = [
-  { key: 'all', label: '全部评分图 (All)' },
-  { key: 'overview', label: '全景与排行 (Overview & Leaderboard)' },
-  { key: 'domains', label: '分赛道雷达 (Domain Tracks)' },
-  { key: 'analysis', label: '校准与质量象限 (Calibration & Latency)' },
+  { key: 'all', labelKey: 'benchmark.allImages' as const },
+  { key: 'overview', labelKey: 'benchmark.overview' as const },
+  { key: 'domains', labelKey: 'benchmark.domains' as const },
+  { key: 'analysis', labelKey: 'benchmark.analysis' as const },
 ];
 
-const IMAGE_META: Record<string, { label: string; category: string; desc: string }> = {
+const IMAGE_META: Record<string, { labelKey: 'benchmark.heroLabel' | 'benchmark.leaderboardImageLabel' | 'benchmark.compactLabel' | 'benchmark.qualityLabel' | 'benchmark.calibrationLabel' | 'benchmark.tradingLabel' | 'benchmark.filingsLabel' | 'benchmark.eventsLabel' | 'benchmark.macroLabel'; category: string; descKey: 'benchmark.heroDesc' | 'benchmark.leaderboardImageDesc' | 'benchmark.compactDesc' | 'benchmark.qualityDesc' | 'benchmark.calibrationDesc' | 'benchmark.tradingDesc' | 'benchmark.filingsDesc' | 'benchmark.eventsDesc' | 'benchmark.macroDesc' }> = {
   'benchmark-hero-1200x630.png': {
-    label: '全景展示卡 (Hero 1200x630)',
+    labelKey: 'benchmark.heroLabel',
     category: 'overview',
-    desc: '包含核心准确率、宏平均 F1、覆盖率及四赛道样本概览',
+    descKey: 'benchmark.heroDesc',
   },
   'benchmark-leaderboard.png': {
-    label: '模型综合排行榜 (Leaderboard)',
+    labelKey: 'benchmark.leaderboardImageLabel',
     category: 'overview',
-    desc: '基准规则 vs 各推理系统对比、置信区间及 McNemar 显著性',
+    descKey: 'benchmark.leaderboardImageDesc',
   },
   'benchmark-card-compact.png': {
-    label: '紧凑型评测卡 (Compact Card)',
+    labelKey: 'benchmark.compactLabel',
     category: 'overview',
-    desc: '适合社区分享的紧凑版得分指标速览',
+    descKey: 'benchmark.compactDesc',
   },
   'benchmark-quality-cost-latency.png': {
-    label: '质量 · 成本 · 延迟象限图 (Quality vs Cost vs Latency)',
+    labelKey: 'benchmark.qualityLabel',
     category: 'analysis',
-    desc: '多模型推理耗时与成本效益分布',
+    descKey: 'benchmark.qualityDesc',
   },
   'benchmark-calibration.png': {
-    label: '可靠性校准曲线 (Reliability Calibration)',
+    labelKey: 'benchmark.calibrationLabel',
     category: 'analysis',
-    desc: '预测置信度与真实命中率的校准拟合表现 (ECE / Brier)',
+    descKey: 'benchmark.calibrationDesc',
   },
   'benchmark-domain-trading-review.png': {
-    label: '赛道细分：交易复盘 (Trading Review)',
+    labelKey: 'benchmark.tradingLabel',
     category: 'domains',
-    desc: '交易逻辑合规性、时效性与反向证据判定',
+    descKey: 'benchmark.tradingDesc',
   },
   'benchmark-domain-financial-filings.png': {
-    label: '赛道细分：财务财报 (Financial Filings)',
+    labelKey: 'benchmark.filingsLabel',
     category: 'domains',
-    desc: '财报指标披露口径与财务数据矛盾校验',
+    descKey: 'benchmark.filingsDesc',
   },
   'benchmark-domain-industry-events.png': {
-    label: '赛道细分：行业事件 (Industry Events)',
+    labelKey: 'benchmark.eventsLabel',
     category: 'domains',
-    desc: '行业突发事件对产业链及供应链的传导影响',
+    descKey: 'benchmark.eventsDesc',
   },
   'benchmark-domain-macro-policy.png': {
-    label: '赛道细分：宏观政策 (Macro Policy)',
+    labelKey: 'benchmark.macroLabel',
     category: 'domains',
-    desc: '宏观货币与财政政策转向的预期与定性评估',
+    descKey: 'benchmark.macroDesc',
   },
 };
 
 export function BenchmarkView() {
+  const { t, locale } = useLegacyI18n();
   const [data, setData] = useState<BenchmarkLatestResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function BenchmarkView() {
   if (loading && !data) {
     return (
       <div style={{ padding: 24 }}>
-        <Empty text="加载 Benchmark 评测数据中..." />
+        <Empty text={t('benchmark.loading')} />
       </div>
     );
   }
@@ -94,8 +96,8 @@ export function BenchmarkView() {
     return (
       <div style={{ padding: 24 }}>
         <div className="banner" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: 'var(--radius)', color: 'var(--text)' }}>
-          <div><strong>加载失败:</strong> {error}</div>
-          <button className="ghost" style={{ marginTop: 8 }} onClick={() => void loadBenchmark()}>重试</button>
+          <div><strong>{t('benchmark.failed')}</strong> {error}</div>
+          <button className="ghost" style={{ marginTop: 8 }} onClick={() => void loadBenchmark()}>{t('benchmark.retry')}</button>
         </div>
       </div>
     );
@@ -106,12 +108,12 @@ export function BenchmarkView() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="banner" style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 'var(--radius)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Finance-Jev-v1 基准评测</strong>
+            <strong>{t('benchmark.title')}</strong>
             <Badge kind="ok">{data?.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'}</Badge>
           </div>
         </div>
-        <Panel title="暂无评测记录">
-          <Empty text="尚未找到 Benchmark 运行记录。可通过命令行运行 'smcub benchmark run' 生成评测数据与评分图片。" />
+        <Panel title={t('benchmark.noRuns')}>
+          <Empty text={t('benchmark.noRunsText')} />
         </Panel>
       </div>
     );
@@ -140,13 +142,13 @@ export function BenchmarkView() {
       <div className="banner" style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 'var(--radius)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <strong style={{ fontSize: 13 }}>Finance-Jev-v1 评测基准与排行榜</strong>
+            <strong style={{ fontSize: 13 }}>{t('benchmark.title')}</strong>
             {data.source && (
               <Badge kind={data.source === 'local' ? 'ok' : 'warn'}>
-                {data.source === 'local' ? '本地生成运行 (Local)' : '预置发布运行 (Bundled)'}
+                {data.source === 'local' ? t('benchmark.local') : t('benchmark.bundled')}
               </Badge>
             )}
-            <span className="muted" style={{ marginLeft: 4, fontSize: 11 }}>240 例离线玩具案例 · 4 大赛道 · 确定性指标与评分可视化</span>
+            <span className="muted" style={{ marginLeft: 4, fontSize: 11 }}>{t('benchmark.summary')}</span>
           </div>
           <Badge kind="ok">{data.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'}</Badge>
         </div>
@@ -155,57 +157,48 @@ export function BenchmarkView() {
       {/* KPI Cards */}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <Kpi
-          label="评测运行 ID (Run ID)"
+          label={t('benchmark.runId')}
           value={<span style={{ fontSize: 12 }}>{data.run_id}</span>}
           note={
-            (data.source === 'bundled' ? '来源: 仓库预置发布产物' : '来源: 本地评测运行') +
-            (data.run_date ? ' · ' + new Date(data.run_date).toLocaleString('zh-CN') : '')
+            (data.source === 'bundled' ? t('benchmark.sourceBundled') : t('benchmark.sourceLocal')) +
+            (data.run_date ? ' · ' + new Date(data.run_date).toLocaleString(locale) : '')
           }
         />
         <Kpi
-          label="案例总数 (Cases)"
+          label={t('benchmark.cases')}
           value={data.sample_count || 240}
-          note="4 赛道 x 60 例 (30 dev + 30 holdout)"
+          note={t('benchmark.casesNote')}
         />
         <Kpi
-          label="基准准确率 (Baseline Accuracy)"
+          label={t('benchmark.baseline')}
           value={baselineSystem?.metrics ? (baselineSystem.metrics.accuracy * 100).toFixed(1) + '%' : '—'}
-          note={baselineSystem?.metrics?.confidence_interval_95 ? '95% CI: [' + (baselineSystem.metrics.confidence_interval_95[0] * 100).toFixed(1) + '%, ' + (baselineSystem.metrics.confidence_interval_95[1] * 100).toFixed(1) + '%]' : '规则基准'}
+          note={baselineSystem?.metrics?.confidence_interval_95 ? '95% CI: [' + (baselineSystem.metrics.confidence_interval_95[0] * 100).toFixed(1) + '%, ' + (baselineSystem.metrics.confidence_interval_95[1] * 100).toFixed(1) + '%]' : t('benchmark.ruleBaseline')}
         />
         <Kpi
-          label="运行 Hash (Run Hash)"
+          label={t('benchmark.runHash')}
           value={<code style={{ fontSize: 10 }}>{data.run_hash ? data.run_hash.slice(0, 12) : '—'}</code>}
-          note={'Git SHA: ' + (data.git_sha ? data.git_sha.slice(0, 8) : '—')}
+          note={t('benchmark.gitSha', { sha: data.git_sha ? data.git_sha.slice(0, 8) : '—' })}
         />
       </div>
 
       {/* Systems Leaderboard Panel */}
       <Panel
-        title="模型系统评测排行榜 (Systems Leaderboard)"
+        title={t('benchmark.leaderboard')}
         actions={
           <button className="ghost" onClick={() => void loadBenchmark()} disabled={loading}>
-            {loading ? '加载中...' : '刷新'}
+            {loading ? t('benchmark.refreshing') : t('benchmark.refresh')}
           </button>
         }
       >
         <div style={{ marginBottom: 12, color: 'var(--muted)', fontSize: 12 }}>
-          评测严格遵守确定性门禁：未运行系统清晰标明状态及未运行原因，不将缺失分数显示为 0。
+          {t('benchmark.gate')}
         </div>
 
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>系统标识 (System ID)</th>
-                <th>状态 (Status)</th>
-                <th>请求 / 解析模型</th>
-                <th>准确率 (Accuracy)</th>
-                <th>宏平均 F1</th>
-                <th>召回率 (Recall)</th>
-                <th>覆盖率</th>
-                <th>P50 延迟</th>
-                <th>单例成本</th>
-                <th>McNemar 检验</th>
+                <th>{t('benchmark.systemId')}</th><th>{t('benchmark.status')}</th><th>{t('benchmark.models')}</th><th>{t('benchmark.accuracy')}</th><th>{t('benchmark.f1')}</th><th>{t('benchmark.recall')}</th><th>{t('benchmark.coverage')}</th><th>{t('benchmark.latency')}</th><th>{t('benchmark.cost')}</th><th>{t('benchmark.mcnemar')}</th>
               </tr>
             </thead>
             <tbody>
@@ -218,13 +211,13 @@ export function BenchmarkView() {
                     </td>
                     <td>
                       {isCompleted ? (
-                        <Badge kind="ok">已完成 (completed)</Badge>
+                        <Badge kind="ok">{t('benchmark.completed')}</Badge>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <Badge kind="warn">未运行 (not_run)</Badge>
+                          <Badge kind="warn">{t('benchmark.notRun')}</Badge>
                           {sys.reason ? (
                             <small className="muted" style={{ fontSize: 10 }}>
-                              {sys.reason === 'missing_credential' ? '缺少 API 密钥' : sys.reason}
+                              {sys.reason === 'missing_credential' ? t('benchmark.missingCredential') : sys.reason}
                             </small>
                           ) : null}
                         </div>
@@ -233,7 +226,7 @@ export function BenchmarkView() {
                     <td>
                       <div><code>{sys.model_requested || '—'}</code></div>
                       {sys.model_resolved ? (
-                        <small className="muted">解析: <code>{sys.model_resolved}</code></small>
+                        <small className="muted">{t('benchmark.resolved')} <code>{sys.model_resolved}</code></small>
                       ) : null}
                     </td>
                     <td>
@@ -304,7 +297,7 @@ export function BenchmarkView() {
 
       {/* Domain Breakdown Table for Completed Systems */}
       {completedSystems.length > 0 && (
-        <Panel title="分赛道细分指标 (Track-Level Metrics)">
+        <Panel title={t('benchmark.trackMetrics')}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             {['trading-review', 'financial-filings', 'industry-events', 'macro-policy'].map((t) => (
               <button
@@ -321,14 +314,9 @@ export function BenchmarkView() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>系统 (System)</th>
-                  <th>赛道准确率</th>
-                  <th>宏平均 F1</th>
-                  <th>召回率</th>
-                  <th>误报率 (FPR)</th>
+                  <th>{t('benchmark.system')}</th><th>{t('benchmark.trackAccuracy')}</th><th>{t('benchmark.f1')}</th><th>{t('benchmark.recall')}</th><th>{t('benchmark.falsePositive')}</th>
                   <th>Brier Score</th>
-                  <th>校准误差 (ECE)</th>
-                  <th>95% 置信区间</th>
+                  <th>{t('benchmark.calibration')}</th><th>{t('benchmark.ci')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,7 +347,7 @@ export function BenchmarkView() {
       )}
 
       {/* Inline Score Images Section */}
-      <Panel title="内嵌评分可视化图表 (Rendered Score Artifacts)">
+      <Panel title={t('benchmark.artifacts')}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {IMAGE_CATEGORIES.map((cat) => (
             <button
@@ -367,7 +355,7 @@ export function BenchmarkView() {
               className={activeCategory === cat.key ? 'primary' : 'ghost'}
               onClick={() => setActiveCategory(cat.key)}
             >
-              {cat.label}
+              {t(cat.labelKey)}
             </button>
           ))}
         </div>
@@ -376,9 +364,11 @@ export function BenchmarkView() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
             {filteredImages.map((img) => {
               const meta = IMAGE_META[img.name] || {
-                label: img.name,
-                desc: 'Benchmark 评测图表',
+                labelKey: null,
+                descKey: null,
               };
+              const label = meta.labelKey ? t(meta.labelKey) : img.name;
+              const description = meta.descKey ? t(meta.descKey) : t('benchmark.defaultImageDesc');
               return (
                 <div
                   key={img.name}
@@ -393,14 +383,14 @@ export function BenchmarkView() {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong style={{ fontSize: 13 }}>{meta.label}</strong>
+                    <strong style={{ fontSize: 13 }}>{label}</strong>
                     <code style={{ fontSize: 11, color: 'var(--muted)' }}>{img.name}</code>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{meta.desc}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{description}</div>
                   <div style={{ width: '100%', overflow: 'hidden', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: '#fff' }}>
                     <img
                       src={img.url}
-                      alt={meta.label}
+                      alt={label}
                       loading="lazy"
                       style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
                     />
@@ -410,7 +400,7 @@ export function BenchmarkView() {
             })}
           </div>
         ) : (
-          <Empty text="该分类下没有相关评测图片" />
+          <Empty text={t('benchmark.emptyImages')} />
         )}
       </Panel>
     </div>

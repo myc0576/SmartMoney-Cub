@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from datetime import date, datetime, timezone
 from typing import Any, Iterator
 
@@ -22,6 +23,10 @@ from smartmoney_cub_harness.agent.route_chain import (
     RouteCandidate,
     RouteChainPolicy,
     stream_chat_with_route_chain,
+)
+from smartmoney_cub_harness.agent.tool_summary import (
+    get_tool_title,
+    summarize_tool_result,
 )
 from smartmoney_cub_harness.agent.tools import TOOL_SPECS, ToolBox, _detect_trader_service
 from smartmoney_cub_harness.redaction import alias_for, prepare_outbound
@@ -50,6 +55,12 @@ from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 
 MAX_TOOL_ROUNDS = 6
 REVIEW_PHASES = ("scope_preview", "scope_confirmed", "evidence", "synthesis", "challenger", "completed")
+
+# 上下文快照体积软上限：50KB (51,200 字节)。
+# 本地脱敏上下文注入到系统提示词中，若交易记录、持仓列表或日历记录过大，
+# 超过 50KB 时降级为轻量摘要，并在 context_payload 标注 context_truncated: true，
+# 既防止超出模型上下文/请求体限制，又杜绝无感知的静默截断。
+MAX_CONTEXT_BYTES = 50 * 1024
 
 
 class ReviewLifecycleError(ValueError):
@@ -141,7 +152,59 @@ class ReviewAgentRuntime:
             )
         if context.get("date"):
             payload["focus_date"] = context["date"]
-        return payload
+        return self._enforce_context_size_limit(payload)
+
+    def _enforce_context_size_limit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """若上下文体积超过 MAX_CONTEXT_BYTES，降级为轻量摘要并附带显式说明。"""
+        raw_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        if raw_bytes <= MAX_CONTEXT_BYTES:
+            return payload
+
+        # 超限降级策略：保留整体结构，压缩长列表，附带明确的截断说明
+        degraded = dict(payload)
+        degraded["context_truncated"] = True
+        degraded["truncation_reason"] = (
+            f"上下文原始体积 {raw_bytes} 字节超过安全上限 {MAX_CONTEXT_BYTES} 字节，"
+            "已自动降级为轻量摘要，长列表项已做截断收敛。"
+        )
+
+        # 1. 截断 open_positions
+        if isinstance(degraded.get("open_positions"), list):
+            orig_len = len(degraded["open_positions"])
+            if orig_len > 5:
+                degraded["open_positions"] = degraded["open_positions"][:5]
+                degraded["open_positions_truncated_info"] = f"共 {orig_len} 项，仅保留前 5 项"
+
+        # 2. 截断 calendar
+        if isinstance(degraded.get("calendar"), list):
+            orig_cal_len = len(degraded["calendar"])
+            if orig_cal_len > 7:
+                degraded["calendar"] = degraded["calendar"][:7]
+                degraded["calendar_truncated_info"] = f"共 {orig_cal_len} 天，仅保留前 7 天"
+
+        # 3. 截断 blocking_issues
+        if isinstance(degraded.get("blocking_issues"), list):
+            orig_issues_len = len(degraded["blocking_issues"])
+            if orig_issues_len > 5:
+                degraded["blocking_issues"] = degraded["blocking_issues"][:5]
+                degraded["blocking_issues_truncated_info"] = f"共 {orig_issues_len} 项，仅保留前 5 项"
+
+        # 检查降级后是否满足上限，若依然超限则进一步深度精简
+        curr_bytes = len(json.dumps(degraded, ensure_ascii=False).encode("utf-8"))
+        if curr_bytes > MAX_CONTEXT_BYTES:
+            degraded["open_positions"] = []
+            degraded["calendar"] = []
+            degraded["blocking_issues"] = []
+            if "focus_trade" in degraded and isinstance(degraded["focus_trade"], dict):
+                trade = degraded["focus_trade"]
+                degraded["focus_trade"] = {
+                    "round_trip_id": trade.get("round_trip_id"),
+                    "symbol": trade.get("symbol"),
+                    "net_pnl": trade.get("net_pnl"),
+                    "return_pct": trade.get("return_pct"),
+                }
+
+        return degraded
 
     # ---- the turn ------------------------------------------------------
 
@@ -663,9 +726,11 @@ class ReviewAgentRuntime:
 
             for index, call in enumerate(tool_calls):
                 call_id = call["call_id"] or f"call_{index}"
+                tool_title = get_tool_title(call["name"])
                 started = {
                     "call_id": call_id,
                     "name": call["name"],
+                    "title": tool_title,
                     "arguments": call["arguments"],
                 }
                 self.store.append_event(session_id, kind="tool_call", payload=started)
@@ -673,22 +738,45 @@ class ReviewAgentRuntime:
                     "kind": "tool_call",
                     "call_id": call_id,
                     "name": call["name"],
+                    "title": tool_title,
                     "arguments": call["arguments"],
                     "safety": SAFETY_DECLARATION,
                 }
+                call_start_time = time.perf_counter()
                 result = self.toolbox.call(call["name"], call["arguments"])
+                call_elapsed_ms = (time.perf_counter() - call_start_time) * 1000.0
+
+                summary_info = summarize_tool_result(
+                    call["name"],
+                    call["arguments"] if isinstance(call["arguments"], dict) else {},
+                    result,
+                    call_elapsed_ms,
+                )
+
                 # A tool result is local data that the model may see. The local
                 # transcript and the browser keep the real row; the copy sent
                 # back is redacted when the next request is built.
                 redacted_result = _redact_tool_result(result, salt=self._salt())
+                result_payload = {
+                    "call_id": call_id,
+                    "result": result,
+                    "step_summary": summary_info["summary"],
+                    "stats": summary_info["stats"],
+                    "status": summary_info["status"],
+                    "duration_ms": summary_info["duration_ms"],
+                }
                 self.store.append_event(
-                    session_id, kind="tool_result", payload={"call_id": call_id, "result": result}
+                    session_id, kind="tool_result", payload=result_payload
                 )
                 yield {
                     "kind": "tool_result",
                     "call_id": call_id,
                     "name": call["name"],
                     "result": result,
+                    "step_summary": summary_info["summary"],
+                    "stats": summary_info["stats"],
+                    "status": summary_info["status"],
+                    "duration_ms": summary_info["duration_ms"],
                     "safety": SAFETY_DECLARATION,
                 }
                 if call["name"] == "propose_challenger_rule" and isinstance(result, dict) and result.get("status") == "ok":

@@ -64,13 +64,15 @@ export function PluginSetupWizard({ entry, onClose, onSuccess }: PluginSetupWiza
     void startInstall();
   };
 
-  const credentialKeys = entry.requires_credentials
-    ? (entry.plugin_id === 'tushare-pro'
-        ? ['TUSHARE_TOKEN']
-        : entry.plugin_id === 'fred'
-        ? ['FRED_API_KEY']
-        : ['API_KEY'])
+  // The catalog is the source of truth for names and acquisition URLs.
+  const credentialRequirements = entry.requires_credentials
+    ? (entry.credential_requirements?.length
+      ? entry.credential_requirements
+      : [{ name: 'API_KEY', label: 'API key', obtain_url: entry.credential_setup_url || entry.docs_url || entry.repo, help: '', required: true, scopes: [] }])
     : [];
+  const credentialsValid = credentialRequirements.every((requirement) =>
+    !requirement.required || Boolean(credentials[requirement.name]?.trim()),
+  );
 
   return (
     <div className="dsh-modal-backdrop" onClick={step === 'installing' ? undefined : onClose}>
@@ -134,15 +136,23 @@ export function PluginSetupWizard({ entry, onClose, onSuccess }: PluginSetupWiza
               </div>
 
               <div className="dsh-field-group">
-                {credentialKeys.map((k) => (
-                  <div className="dsh-field" key={k}>
-                    <label>{k} 密钥（不回显明文）</label>
+                {credentialRequirements.map((requirement) => (
+                  <div className="dsh-field" key={requirement.name}>
+                    <label>{requirement.label || requirement.name}（{requirement.name}，不回显明文）</label>
+                    {requirement.obtain_url ? (
+                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                        <a href={requirement.obtain_url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>
+                          前往官方页面获取
+                        </a>
+                      </div>
+                    ) : null}
+                    {requirement.help ? <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>{requirement.help}</div> : null}
                     <input
                       type="password"
                       autoComplete="off"
-                      placeholder={'请输入 ' + k}
-                      value={credentials[k] || ''}
-                      onChange={(e) => handleCredentialChange(k, e.target.value)}
+                      placeholder={'请输入 ' + requirement.name}
+                      value={credentials[requirement.name] || ''}
+                      onChange={(e) => handleCredentialChange(requirement.name, e.target.value)}
                     />
                   </div>
                 ))}
@@ -247,7 +257,7 @@ export function PluginSetupWizard({ entry, onClose, onSuccess }: PluginSetupWiza
           {step === 'credentials' ? (
             <>
               <button className="ghost" onClick={() => setStep('permissions')}>上一步</button>
-              <button className="primary" onClick={() => void startInstall()}>
+              <button className="primary" disabled={!credentialsValid || submitting} onClick={() => void startInstall()}>
                 开始安装
               </button>
             </>
@@ -284,4 +294,3 @@ export function PluginSetupWizard({ entry, onClose, onSuccess }: PluginSetupWiza
     </div>
   );
 }
-

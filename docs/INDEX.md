@@ -1,6 +1,6 @@
 # Smartmoney-Cub 设计与技术文档轻量索引 (Documentation Index)
 
-> **按需加载原则 (Progressive Disclosure)**：本目录包含 28 篇详细设计文档。
+> **按需加载原则 (Progressive Disclosure)**：本目录包含 29 篇详细设计文档。
 > **严禁盲目全文检索或全量载入 context**。先通过本索引表格定位目标领域的 1~2 篇文档，再有针对性地按需读取。
 
 ## 核心文档索引表
@@ -15,7 +15,9 @@
 | 交易决策Schema | [decision-schema.md](decision-schema.md) (5.3KB) | DecisionEnvelope、invalidation条件、time stop与数据质量口径 | 修改或验证决策输出数据结构时 |
 | 规则演化机制 | [evolution-loop.md](evolution-loop.md) (0.8KB) | Challenger -> Champion 规则晋级流程与人工确认要求 | 修改策略优化与进化逻辑时 |
 | Harness核心契约 | [harness-contract.md](harness-contract.md) (3.0KB) | 离线运行、只读市场数据、安全铁律、无订单无撤单声明 | 开发或修改核心接口与安全边界时 |
+| 全球复盘与调研决策 | [global-journal-decisions.md](global-journal-decisions.md) | 模式归因、回放用途、只读账户连接覆盖与验证限制 | 检查全球化功能的产品依据及实际边界时 |
 | 外部服务集成 | [integrations.md](integrations.md) (12.1KB) | 27项收录开源项目矩阵、只读连接器与格式转换适配器 | 新增数据导入或只读市场连接器时 |
+| 开源维护与上游贡献 | [open-source-maintenance.md](open-source-maintenance.md) (6.6KB) | Fork、上游 PR、合并后同步与持续维护检查清单，含 Awesome Jev 收录记录 | Fork、公开发布、提交或更新上游 PR 时 |
 | Jev生态与评测基准 | [jev-ecosystem.md](jev-ecosystem.md) (5.9KB) | Jev 四轨金融审查架构、JevBackend协议与finance-jev-v1基准评测指南 | 接入Jev审查后端或运行金融基准评测时 |
 | 记忆循环系统 | [memory-loop.md](memory-loop.md) (1.1KB) | 短期会话上下文与长期交易日志经验检索 | 排查交易记忆召回或历史对账时 |
 | 设计哲学 | [philosophy.md](philosophy.md) (3.7KB) | Smartmoney-Cub 设计理念、核心权衡与不可妥协边界 | 做重大设计决策或架构评审时 |
@@ -42,3 +44,4 @@
 2. **复盘智能体与模型集成**：review-agent.md -> agent-integration.md -> agent-loop.md
 3. **本地工作台与API**：review-workspace.md -> trader-api.md -> decision-schema.md
 4. **插件与扩展系统**：plugins.md -> plugin-development.md -> tradingagents-adapter.md
+5. **Fork 与上游贡献**：open-source-maintenance.md -> versioning.md -> harness-contract.md

@@ -25,8 +25,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import math
 import threading
-from dataclasses import dataclass, field
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote
@@ -50,6 +51,7 @@ from smartmoney_cub_harness.trader.market import (
     list_providers,
 )
 from smartmoney_cub_harness.trader.storage import StoreError, TenantStore
+from smartmoney_cub_harness.trader.replay import create_record, public_view, apply_action
 
 DEFAULT_INITIAL_CASH = 100_000.0
 
@@ -67,6 +69,16 @@ PLAYBOOK_AUDIT_ACTION = "upsert_playbook"
 PLAYBOOK_DIMENSIONS = ("tag", "regime")
 PLAYBOOK_AUDIT_SCAN = 5_000
 PLAYBOOK_ID_PREFIX = "PB"
+
+# Readable names for the deterministic mistake triggers, so the interface can
+# report the ones that found nothing without hard-coding a second copy of the
+# vocabulary. The keys match the clustering module's CLUSTER_KINDS.
+_CLUSTER_LABELS = {
+    "broken_invalidation_unstopped": "跌破止损线未离场",
+    "early_morning_exit": "开盘 15 分钟内平仓",
+    "one_day_holding": "持仓仅 1 日",
+    "revenge_reentry": "亏损后 10 分钟内再次开仓",
+}
 
 BAR_FIELDS = ("open_time", "open", "high", "low", "close", "volume")
 
@@ -128,7 +140,10 @@ def coerce_float(value: Any, *, name: str, default: float | None = None) -> floa
     if isinstance(value, bool):
         raise TraderRequestError(f"{name} must be a number, got {value!r}")
     try:
-        return float(value)
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError()
+        return number
     except (TypeError, ValueError):
         raise TraderRequestError(f"{name} must be a number, got {value!r}") from None
 
@@ -153,7 +168,7 @@ def build_tenant_ledger(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         if not row.get("fill_id") and row.get("trade_id"):
             row["fill_id"] = row["trade_id"]
         rows.append(row)
-    return build_fill_ledger(rows)
+    return build_fill_ledger(rows, market="UNKNOWN", allow_shorts=True)
 
 
 def parse_delimited_rows(text: str) -> list[dict[str, Any]]:
@@ -231,14 +246,6 @@ def parse_import_payload(
     return cleaned, "json"
 
 
-@dataclass
-class _ReplaySession:
-    """One in-memory replay session, owned by exactly one tenant."""
-
-    user_id: str
-    record: dict[str, Any] = field(default_factory=dict)
-
-
 class TraderService:
     """The trader product's endpoints, one method per endpoint, AuthContext first.
 
@@ -253,15 +260,24 @@ class TraderService:
         *,
         auth_mode: str = "local",
         fetch_bars_fn: Callable[..., ProviderResult] | None = None,
+        connection_root: str | Path | None = None,
+        connection_factory: Callable | None = None,
     ) -> None:
         self.store = store
         self.auth_mode = str(auth_mode or "local").strip().lower()
         self._fetch_bars = fetch_bars_fn or fetch_bars
-        self._replay_lock = threading.Lock()
-        self._replay_sessions: dict[str, _ReplaySession] = {}
+        self._replay_lock = threading.RLock()
         # The store is the product's own journal, so its schema is created on
         # open. Both engines make this call idempotent.
         self.store.migrate()
+        from smartmoney_cub_harness.trader.connections.controller import ConnectionController
+        database_path = getattr(store, "database_path", None)
+        inferred_root = Path(database_path).parent / "connections" if database_path and str(database_path) != ":memory:" else None
+        self.connections = ConnectionController(self, Path(connection_root) if connection_root else inferred_root, connection_factory)
+        self.connections.resume_local_watch()
+
+    def close(self) -> None:
+        self.connections.close()
 
     # ---- helpers -------------------------------------------------------
 
@@ -287,22 +303,45 @@ class TraderService:
         symbol: str | None = None,
         start: str | None = None,
         end: str | None = None,
-        limit: int = MAX_ANALYTICS_TRADES,
+        limit: int | None = None,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """This tenant's trades, filtered. The tenant predicate is the store's."""
-        return self.store.list_trades(
-            ctx.user_id,
-            account_id=account_id,
-            symbol=symbol,
-            start=start,
-            end=end,
-            limit=limit,
-            offset=offset,
-        )
+        """Read the complete matching history, not just the newest fill page.
+
+        A ledger needs the older opening fills to match newer closes. Explicit
+        limits are only for callers requesting a bounded raw-fill page.
+        """
+        filters = dict(account_id=account_id, symbol=symbol, start=start, end=end)
+        if limit is not None:
+            return self.store.list_trades(ctx.user_id, **filters, limit=limit, offset=offset)
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        while True:
+            page = self.store.list_trades(ctx.user_id, **filters, limit=MAX_ANALYTICS_TRADES, offset=offset)
+            for row in page:
+                identity = str(row['trade_id'])
+                if identity in seen:
+                    raise TraderRequestError('journal_changed_during_read; retry after synchronization completes')
+                seen.add(identity)
+            rows.extend(page)
+            if len(page) < MAX_ANALYTICS_TRADES:
+                return rows
+            offset += len(page)
 
     def _ledger(self, ctx: AuthContext, **filters: Any) -> dict[str, Any]:
-        return build_tenant_ledger(self._fills(ctx, **filters))
+        start = filters.pop("start", None)
+        ledger = build_tenant_ledger(self._fills(ctx, **filters))
+        return self._closed_window(ledger, start)
+
+    @staticmethod
+    def _closed_window(ledger: dict[str, Any], start: str | None) -> dict[str, Any]:
+        # Openings before a report window still establish the closing cost basis.
+        # Filter completed trips only after matching the account's full history.
+        if start:
+            ledger["round_trips"] = [trip for trip in ledger["round_trips"]
+                                     if str(trip.get("exit_time") or "")[:10] >= start[:10]]
+            ledger["counts"] = {**ledger["counts"], "round_trips": len(ledger["round_trips"])}
+        return ledger
 
     def _resolve_bars(
         self,
@@ -335,7 +374,7 @@ class TraderService:
                 raise TraderRequestError(
                     "no cached bars for " + symbol + " " + interval + "; fetch them first"
                 )
-            return bars, self._provenance("cache")
+            return bars, self._cached_provenance(ctx, symbol, interval)
 
         if provider:
             result = self._fetch_bars(
@@ -347,6 +386,9 @@ class TraderService:
                 "source_quality": result.source_quality,
                 "fetched_at": result.fetched_at,
                 "warnings": list(result.warnings),
+                "available_at": result.available_at,
+                "decision_time": result.decision_time,
+                "historical_evidence": result.historical_evidence,
                 "cached": self._cache_bars(ctx, result),
             }
             return list(result.bars), provenance
@@ -355,7 +397,7 @@ class TraderService:
             ctx, symbol=symbol, interval=interval, start=start, end=end, limit=limit
         )
         if bars:
-            return bars, self._provenance("cache")
+            return bars, self._cached_provenance(ctx, symbol, interval)
         raise TraderRequestError(
             "no bars to run on: pass bars, a provider, or cached data"
         )
@@ -365,10 +407,18 @@ class TraderService:
         return {
             "source": source,
             "provider_id": "",
-            "source_quality": "",
+            "source_quality": "unverified",
             "fetched_at": "",
             "warnings": [],
+            "available_at": None,
+            "decision_time": None,
+            "historical_evidence": "unverified",
         }
+
+    def _cached_provenance(self, ctx: AuthContext, symbol: str, interval: str) -> dict[str, Any]:
+        document = self.store.get_document(ctx.user_id, "bar_provenance", symbol + ":" + interval)
+        record = document["payload"] if document else None
+        return {**(record or self._provenance("cache")), "source": "cache"}
 
     def _inline_bars(self, raw: Any, *, symbol: str, interval: str) -> list[Bar]:
         if not isinstance(raw, list) or not raw:
@@ -377,6 +427,14 @@ class TraderService:
         for position, item in enumerate(raw):
             if not isinstance(item, Mapping):
                 raise TraderRequestError(f"bars[{position}] is not an object")
+            if item.get("available_at") and item.get("decision_time"):
+                try:
+                    available = datetime.fromisoformat(str(item["available_at"]).replace("Z", "+00:00"))
+                    decision = datetime.fromisoformat(str(item["decision_time"]).replace("Z", "+00:00"))
+                    if available > decision:
+                        raise TraderRequestError("available_at is later than decision_time")
+                except (ValueError, TypeError):
+                    raise TraderRequestError("availability timestamps must have comparable timezone precision") from None
             missing = [name for name in BAR_FIELDS if item.get(name) in (None, "")]
             if missing:
                 raise TraderRequestError(
@@ -446,6 +504,13 @@ class TraderService:
                     for bar in result.bars
                 ],
             )
+            self.store.put_document(ctx.user_id, "bar_provenance", result.symbol + ":" + result.interval, {
+                "source": "provider", "provider_id": result.provider_id,
+                "source_quality": result.source_quality, "fetched_at": result.fetched_at,
+                "available_at": result.available_at, "decision_time": result.decision_time,
+                "historical_evidence": result.historical_evidence,
+                "metadata_scope": "latest_fetch", "warnings": list(result.warnings),
+            })
         except (StoreError, TypeError, ValueError):
             return False
         return True
@@ -539,24 +604,39 @@ class TraderService:
     ) -> dict[str, Any]:
         """This tenant's journal: their fills, and the round trips they close.
 
-        Round trips are matched inside the tenant's own page of trades, which is
-        why another tenant's round_trip_id cannot appear here: the matcher never
-        sees another tenant's rows.
+        Paging applies to the ROUND TRIPS, not to the fills behind them, and the
+        difference decides whether the list works. A round trip is produced by
+        matching a buy against a later sell, so a page of N fills closes fewer
+        than N round trips, and a page of the newest fills closes almost none
+        because the sells sit further back. Reading the newest 24 fills and
+        calling the result the newest trades reported zero trades over a journal
+        holding hundreds -- which is exactly what the overview page showed.
+
+        So the ledger is built from the whole filtered window and the page is
+        taken from the matched round trips. The offset follows the same rule. The
+        filters still restrict the rows the matcher sees, so another tenant's
+        round trip still cannot appear here.
         """
         fills = self._fills(
             ctx,
             account_id=account_id,
             symbol=symbol,
-            start=start,
+            start=None,
             end=end,
-            limit=limit,
-            offset=offset,
         )
-        ledger = build_tenant_ledger(fills)
+        ledger = self._closed_window(build_tenant_ledger(fills), start)
+        # Newest close first: the interface lists recent activity, and a page
+        # taken from the front of a chronological ledger would be the oldest.
+        trips = sorted(
+            ledger["round_trips"],
+            key=lambda trip: str(trip.get("exit_time") or ""),
+            reverse=True,
+        )
+        page = trips[offset:offset + limit] if limit > 0 else []
         return {
             "status": "ok",
-            "count": len(ledger["round_trips"]),
-            "trades": ledger["round_trips"],
+            "count": len(trips),
+            "trades": page,
             "fills": ledger["fills"],
             "open_positions": ledger["open_positions"],
             "issues": ledger["issues"],
@@ -671,6 +751,7 @@ class TraderService:
         ctx: AuthContext,
         *,
         dimension: str | None = None,
+        account_id: str | None = None,
         start: str | None = None,
         end: str | None = None,
         refresh: bool = False,
@@ -684,7 +765,7 @@ class TraderService:
                 + "; known dimensions: "
                 + ", ".join(analytics.DIMENSIONS)
             )
-        ledger = self._ledger(ctx, start=start, end=end)
+        ledger = self._ledger(ctx, start=start, end=end, account_id=account_id)
         symbol_meta: dict[str, dict[str, Any]] = {}
         if "symbol" in requested:
             symbols = list({
@@ -731,14 +812,15 @@ class TraderService:
         }
 
     def calendar(
-        self, ctx: AuthContext, *, year: int | None = None, month: int | None = None
+        self, ctx: AuthContext, *, year: int | None = None, month: int | None = None,
+        account_id: str | None = None,
     ) -> dict[str, Any]:
         today = datetime.now(timezone.utc).astimezone()
         resolved_year = year or today.year
         resolved_month = month or today.month
         if not 1 <= resolved_month <= 12:
             raise TraderRequestError("month must be between 1 and 12")
-        ledger = self._ledger(ctx)
+        ledger = self._ledger(ctx, account_id=account_id)
         return {
             "status": "ok",
             "year": resolved_year,
@@ -749,7 +831,149 @@ class TraderService:
             "safety": SAFETY_DECLARATION,
         }
 
+    # ---- insight --------------------------------------------------------
+
+    def insight_mistakes(
+        self,
+        ctx: AuthContext,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        account_id: str | None = None,
+    ) -> dict[str, Any]:
+        trades = self._fills(ctx, end=end, account_id=account_id)
+        ledger = self._closed_window(build_tenant_ledger(trades), start)
+        from smartmoney_cub_harness.trader.insight import (  # noqa: PLC0415
+            CLUSTER_KINDS,
+            cluster_mistakes,
+        )
+
+        clusters = cluster_mistakes(ledger, trades=trades)
+        # The clustering module reports the FILLS behind a cluster, because that
+        # is where its trigger is evaluated. A reader clicking an entry needs the
+        # round trip, which is what the detail route can address, so the closed
+        # trips that carry any of those fills are resolved here and exposed beside
+        # the fill ids. Both are sent: the fills are the evidence, the round trips
+        # are the way in.
+        fills_to_trip: dict[str, str] = {}
+        for trip in ledger["round_trips"]:
+            trip_id = str(trip.get("round_trip_id") or "")
+            if not trip_id:
+                continue
+            for lot in trip.get("matched_lots") or []:
+                fill_id = str(lot.get("lot_fill_id") or "")
+                if fill_id:
+                    fills_to_trip[fill_id] = trip_id
+        matched: dict[str, int] = {kind: 0 for kind in CLUSTER_KINDS}
+        for cluster in clusters:
+            kind = str(cluster.get("kind") or "")
+            if kind in matched:
+                matched[kind] = int(cluster.get("count") or 0)
+            cluster["label"] = str(cluster.get("label_seed") or kind)
+            cluster["round_trip_ids"] = sorted({
+                fills_to_trip[fill_id]
+                for fill_id in cluster.get("trade_ids") or []
+                if fill_id in fills_to_trip
+            })
+        return {
+            "status": "ok",
+            "count": len(clusters),
+            "rows": clusters,
+            # The triggers that were evaluated and found nothing are reported too.
+            # A scan that lists only its hits cannot be told from a scan that never
+            # ran, and "my journal is clean" is a claim that needs the second.
+            "triggers": [
+                {
+                    "kind": kind,
+                    "label": _CLUSTER_LABELS.get(kind, kind),
+                    "matched": matched.get(kind, 0),
+                }
+                for kind in CLUSTER_KINDS
+            ],
+            "filters": {
+                "from": start or "",
+                "to": end or "",
+                "account_id": account_id or "",
+            },
+            "safety": SAFETY_DECLARATION,
+        }
+
+    def insight_edges(
+        self,
+        ctx: AuthContext,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        account_id: str | None = None,
+    ) -> dict[str, Any]:
+        trades = self._fills(ctx, end=end, account_id=account_id)
+        ledger = self._closed_window(build_tenant_ledger(trades), start)
+        from smartmoney_cub_harness.trader.insight import EDGE_DIMENSIONS, extract_edges
+
+        edges = extract_edges(ledger)
+        return {
+            "status": "ok",
+            "count": len(edges),
+            "rows": edges,
+            "dimensions": list(EDGE_DIMENSIONS),
+            "filters": {
+                "from": start or "",
+                "to": end or "",
+                "account_id": account_id or "",
+            },
+            "safety": SAFETY_DECLARATION,
+        }
+
     # ---- playbooks -----------------------------------------------------
+
+    def insight_patterns(self, ctx: AuthContext, *, account_id: str | None = None,
+                         start: str | None = None, end: str | None = None) -> dict[str, Any]:
+        from smartmoney_cub_harness.trader.patterns import attribute_patterns
+        trades = self._fills(ctx, account_id=account_id, end=end)
+        result = attribute_patterns(self._closed_window(build_tenant_ledger(trades), start), trades=trades)
+        decisions = {row["document_id"]: row["payload"] for row in
+                     self.store.list_documents(ctx.user_id, "pattern_decision", limit=MAX_ANALYTICS_TRADES * 4)}
+        for candidate in result["candidates"]:
+            decision = decisions.get(candidate["pattern_id"])
+            if not decision:
+                continue
+            candidate["decision"] = decision
+            candidate["original_label"] = candidate["label"]
+            if decision.get("label"):
+                candidate["label"] = decision["label"]
+            if decision.get("state") in ("confirmed", "rejected"):
+                candidate["status"] = decision["state"]
+        return {"status": "ok", **result, "filters": {"account_id": account_id, "from": start, "to": end},
+                "truncated": False}
+
+    def decide_pattern(self, ctx: AuthContext, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, Mapping):
+            raise TraderRequestError("the request body must be a JSON object")
+        pattern_id, action = str(payload.get("pattern_id") or ""), str(payload.get("action") or "")
+        if action not in ("confirm", "reject", "rename"):
+            raise TraderRequestError("action must be confirm, reject, or rename")
+        candidate = next((item for item in self.insight_patterns(ctx)["candidates"] if item["pattern_id"] == pattern_id), None)
+        if candidate is None:
+            raise TraderRequestError("no current pattern candidate for this tenant", status=404, code="not_found")
+        label = str(payload.get("label") or "").strip()
+        if action == "rename" and not label:
+            raise TraderRequestError("rename requires a nonempty label")
+        if len(label) > 120:
+            raise TraderRequestError("label must be no longer than 120 characters")
+        playbook_id = str(payload.get("playbook_id") or "").strip()
+        if playbook_id and playbook_id not in self._playbook_definitions(ctx):
+            raise TraderRequestError("playbook must be declared in this tenant's journal")
+        previous = candidate.get("decision") or {}
+        state = {"confirm": "confirmed", "reject": "rejected"}.get(action, previous.get("state", "unconfirmed"))
+        decision = {"pattern_id": pattern_id, "action": action, "state": state,
+                    "label": label or previous.get("label") or candidate["label"],
+                    "playbook_id": playbook_id or previous.get("playbook_id"),
+                    "updated_at": now_iso(), "evidence_version": candidate["version"],
+                    "round_trip_id": candidate["round_trip_id"], "safety": SAFETY_DECLARATION}
+        self._ensure_tenant(ctx)
+        self.store.put_document(ctx.user_id, "pattern_decision", pattern_id, decision)
+        self.store.audit(ctx.user_id, "pattern_" + action, record_id=pattern_id, detail=decision)
+        return {"status": "ok", "decision": decision, "safety": SAFETY_DECLARATION}
 
     def _playbook_definitions(self, ctx: AuthContext) -> dict[str, dict[str, Any]]:
         """Read this tenant's declared playbooks, the newest declaration winning.
@@ -766,7 +990,10 @@ class TraderService:
             entries = reader(ctx.user_id, limit=PLAYBOOK_AUDIT_SCAN)
         except (StoreError, TypeError, ValueError):
             return {}
-        definitions: dict[str, dict[str, Any]] = {}
+        definitions: dict[str, dict[str, Any]] = {
+            item["payload"]["playbook_id"]: item["payload"]
+            for item in self.store.list_documents(ctx.user_id, "playbook", limit=5000)
+        }
         for entry in entries:
             if str(entry.get("action") or "") != PLAYBOOK_AUDIT_ACTION:
                 continue
@@ -786,9 +1013,9 @@ class TraderService:
     def _playbook_id(dimension: str, key: str) -> str:
         return PLAYBOOK_ID_PREFIX + "-" + dimension + "-" + quote(key, safe="_-")
 
-    def _journal_playbooks(self, ctx: AuthContext) -> dict[str, dict[str, Any]]:
+    def _journal_playbooks(self, ctx: AuthContext, account_id: str | None = None) -> dict[str, dict[str, Any]]:
         """Playbooks observed in this tenant's own journal, scored by analytics."""
-        ledger = self._ledger(ctx)
+        ledger = self._ledger(ctx, account_id=account_id)
         found: dict[str, dict[str, Any]] = {}
         for dimension in PLAYBOOK_DIMENSIONS:
             for row in analytics.group_performance(ledger, dimension=dimension):
@@ -803,12 +1030,15 @@ class TraderService:
                     "avg_return_pct": row["avg_return_pct"],
                     "profit_factor": row["profit_factor"],
                     "small_sample": row["small_sample"],
+                    "currency": row.get("currency"),
+                    "mixed_currency": row.get("mixed_currency", False),
+                    "currency_breakdown": row.get("currency_breakdown", []),
                 }
         return found
 
-    def playbooks(self, ctx: AuthContext) -> dict[str, Any]:
+    def playbooks(self, ctx: AuthContext, *, account_id: str | None = None) -> dict[str, Any]:
         """Declared playbooks, each scored against this tenant's own journal."""
-        journal = self._journal_playbooks(ctx)
+        journal = self._journal_playbooks(ctx, account_id=account_id)
         definitions = self._playbook_definitions(ctx)
         records: list[dict[str, Any]] = []
         for playbook_id, detail in sorted(definitions.items()):
@@ -816,6 +1046,7 @@ class TraderService:
             stats = journal.get(playbook_id, {})
             records.append(
                 {
+                    **detail,
                     "playbook_id": playbook_id,
                     "name": str(detail.get("name") or key or playbook_id),
                     "dimension": str(detail.get("dimension") or ""),
@@ -831,6 +1062,9 @@ class TraderService:
                     "profit_factor": stats.get("profit_factor"),
                     "small_sample": stats.get("small_sample", True),
                     "has_journal_data": bool(stats),
+                    "currency": stats.get("currency"),
+                    "mixed_currency": stats.get("mixed_currency", False),
+                    "currency_breakdown": stats.get("currency_breakdown", []),
                 }
             )
         declared = set(definitions)
@@ -856,12 +1090,18 @@ class TraderService:
                     "profit_factor": stats["profit_factor"],
                     "small_sample": stats["small_sample"],
                     "has_journal_data": True,
+                    "currency": stats.get("currency"),
+                    "mixed_currency": stats.get("mixed_currency", False),
+                    "currency_breakdown": stats.get("currency_breakdown", []),
                 }
             )
         return {
             "status": "ok",
             "count": len(records),
             "playbooks": records,
+            "stats": {record["playbook_id"]: {key: record.get(key) for key in (
+                "trade_count", "win_rate", "net_pnl", "avg_return_pct", "profit_factor", "small_sample"
+            )} for record in records},
             "definitions": len(definitions),
             "dimensions": list(PLAYBOOK_DIMENSIONS),
             "scoring": "analytics.group_performance over the tenant's own ledger",
@@ -891,6 +1131,12 @@ class TraderService:
         rules = payload.get("rules") or []
         if not isinstance(rules, list):
             raise TraderRequestError("rules must be a list")
+        authored_lists = {}
+        for field_name in ("entry_rules", "exit_rules", "risk_rules", "tags"):
+            value = payload.get(field_name, [])
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise TraderRequestError(field_name + " must be a list of strings")
+            authored_lists[field_name] = value
         detail = {
             "playbook_id": playbook_id,
             "name": name,
@@ -898,8 +1144,12 @@ class TraderService:
             "key": key,
             "description": str(payload.get("description") or "").strip(),
             "rules": rules,
+            "setup": str(payload.get("setup") or ""),
+            **authored_lists,
+            "updated_at": now_iso(),
         }
         self._ensure_tenant(ctx)
+        self.store.put_document(ctx.user_id, "playbook", playbook_id, detail)
         self.store.audit(
             ctx.user_id, PLAYBOOK_AUDIT_ACTION, record_id=playbook_id, detail=detail
         )
@@ -938,8 +1188,10 @@ class TraderService:
         data = payload.get("data") or {}
         if not isinstance(data, Mapping):
             raise TraderRequestError("data must be a JSON object")
-        symbol = str(data.get("symbol") or spec.universe.symbol)
-        interval = str(data.get("interval") or spec.universe.interval)
+        symbol = str(data.get("symbol") or payload.get("symbol") or spec.universe.symbol)
+        interval = str(data.get("interval") or payload.get("interval") or spec.universe.interval)
+        if symbol != spec.universe.symbol or interval != spec.universe.interval:
+            raise TraderRequestError("symbol and interval controls must match the strategy universe")
         inline = data.get("bars") if data.get("bars") is not None else payload.get("bars")
         provider = data.get("provider") or payload.get("provider")
         limit = coerce_int(
@@ -972,6 +1224,8 @@ class TraderService:
         )
         if not bars:
             raise TraderRequestError("the bar series is empty; nothing to run")
+        if any(bar.symbol != symbol or bar.interval != interval for bar in bars):
+            raise TraderRequestError("bar symbol and interval must match the strategy universe")
 
         result: BacktestResult = run_backtest(
             spec,
@@ -985,6 +1239,10 @@ class TraderService:
         run_id = ""
         if should_save:
             run_id = self._save_run(ctx, spec=spec, result_payload=result_payload)
+            self.store.put_document(ctx.user_id, "backtest_detail", run_id, {
+                **result_payload, "run_id": run_id, "provenance": provenance,
+                "symbol": symbol, "interval": interval, "spec": spec.to_dict(),
+            })
         return {
             "status": "ok",
             "run_id": run_id,
@@ -1053,14 +1311,16 @@ class TraderService:
                 status=404,
                 code="not_found",
             )
-        return {"status": "ok", "run": run, "safety": SAFETY_DECLARATION}
+        document = self.store.get_document(ctx.user_id, "backtest_detail", run_id)
+        detail = document["payload"] if document else {}
+        return {"status": "ok", "run": {**run, **detail}, "safety": SAFETY_DECLARATION}
 
     # ---- replay --------------------------------------------------------
 
     def create_replay_session(
         self, ctx: AuthContext, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """Hold one bar series for this tenant to step through."""
+        """Persist a replay; return only the portion already revealed."""
         if not isinstance(payload, Mapping):
             raise TraderRequestError("the request body must be a JSON object")
         symbol = str(payload.get("symbol") or "").strip()
@@ -1090,75 +1350,59 @@ class TraderService:
         index = coerce_int(
             payload.get("index"), name="index", default=0, minimum=0, maximum=len(bars) - 1
         )
-        session_id = self._new_session_id()
-        record: dict[str, Any] = {
-            "session_id": session_id,
-            "symbol": symbol,
-            "interval": interval,
-            "source": provenance["source"],
-            "provider_id": provenance.get("provider_id", ""),
-            "source_quality": provenance.get("source_quality", ""),
-            "fetched_at": provenance.get("fetched_at", ""),
-            "warnings": list(provenance.get("warnings") or []),
-            "created_at": now_iso(),
-            "frame_count": len(bars),
-            "index": index or 0,
-            "bars": [bar.to_dict() for bar in bars],
-        }
-        session = _ReplaySession(user_id=ctx.user_id, record=record)
+        account_id = str(payload.get("account_id") or "") or None
+        record = create_record(
+            symbol=symbol, interval=interval, bars=[bar.to_dict() for bar in bars],
+            provenance=provenance, mode=str(payload.get("mode") or "review"),
+            initial_cash=payload.get("initial_cash", DEFAULT_INITIAL_CASH),
+            account_id=account_id, fills=self._fills(ctx, symbol=symbol, account_id=account_id),
+        )
+        record["index"] = index or 0
+        self._ensure_tenant(ctx)
         with self._replay_lock:
-            self._replay_sessions[session_id] = session
-            while len(self._replay_sessions) > REPLAY_SESSION_LIMIT:
-                oldest = next(iter(self._replay_sessions))
-                self._replay_sessions.pop(oldest, None)
+            self.store.put_document(ctx.user_id, "replay_session", record["session_id"], record)
         return {
             "status": "ok",
-            "session": {**record, "ephemeral": True},
+            "session": public_view(record),
             "safety": SAFETY_DECLARATION,
         }
 
     def replay_session(
         self, ctx: AuthContext, session_id: str, *, index: int | None = None
     ) -> dict[str, Any]:
-        """Return one replay session, stepped to an optional frame index.
-
-        A session owned by another tenant is reported as missing rather than
-        forbidden: the answer must not confirm that an id exists elsewhere.
-        """
+        """Compatibility read/step; all mutations retain the cursor boundary."""
         if not session_id:
             raise TraderRequestError("a session id is required")
         with self._replay_lock:
-            session = self._replay_sessions.get(session_id)
-        if session is None or session.user_id != ctx.user_id:
-            raise TraderRequestError(
-                "no such replay session for this tenant",
-                status=404,
-                code="not_found",
-            )
-        record = dict(session.record)
-        frame: dict[str, Any] | None = None
-        if index is not None:
-            bars = record.get("bars") or []
-            if index < 0 or index >= len(bars):
-                raise TraderRequestError(
-                    "index must be between 0 and " + str(max(len(bars) - 1, 0))
-                )
-            record["index"] = index
-            with self._replay_lock:
-                session.record["index"] = index
-            frame = bars[index]
+            document = self.store.get_document(ctx.user_id, "replay_session", session_id)
+            if document is None:
+                raise TraderRequestError("no such replay session for this tenant", status=404, code="not_found")
+            record = document["payload"]
+            if index is not None:
+                record = apply_action(record, {"action": "seek", "index": index})
+                self.store.put_document(ctx.user_id, "replay_session", record["session_id"], record)
+        view = public_view(record)
         return {
-            "status": "ok",
-            "session": record,
-            "frame": frame,
-            "ephemeral": True,
+            "status": "ok", "session": view,
+            "frame": view["bars"][-1], "ephemeral": False,
             "safety": SAFETY_DECLARATION,
         }
 
-    def _new_session_id(self) -> str:
+    def replay_sessions(self, ctx: AuthContext) -> dict[str, Any]:
+        records = self.store.list_documents(ctx.user_id, "replay_session", limit=100)
+        # A history list must not disclose the unrevealed series either.
+        views = [public_view(record["payload"]) for record in records]
+        return {"status": "ok", "sessions": [{k: v for k, v in view.items() if k not in ("bars", "markers", "training")} for view in views],
+                "safety": SAFETY_DECLARATION}
+
+    def replay_action(self, ctx: AuthContext, session_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, Mapping):
+            raise TraderRequestError("the request body must be a JSON object")
         with self._replay_lock:
-            counter = len(self._replay_sessions)
-        token = hashlib.sha256(
-            (now_iso() + ":" + str(counter)).encode("utf-8")
-        ).hexdigest()[:12]
-        return REPLAY_ID_PREFIX + "-" + token
+            document = self.store.get_document(ctx.user_id, "replay_session", session_id)
+            if document is None:
+                raise TraderRequestError("no such replay session for this tenant", status=404, code="not_found")
+            record = document["payload"]
+            updated = apply_action(record, payload)
+            self.store.put_document(ctx.user_id, "replay_session", updated["session_id"], updated)
+        return {"status": "ok", "session": public_view(updated), "safety": SAFETY_DECLARATION}

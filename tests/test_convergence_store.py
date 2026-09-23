@@ -220,10 +220,10 @@ def test_profit_factor_uses_absolute_gross_loss() -> None:
     # Fees are set to zero so the ratio is exactly the gross relationship.
     ledger = analytics.build_ledger(
         [
-            _fill(fee=0.0),
-            _fill(trade_date="2026-09-03", side="SELL", price=12.0, fee=0.0),
-            _fill(trade_date="2026-09-04", symbol="000725", price=4.0, quantity=1000, fee=0.0),
-            _fill(trade_date="2026-09-08", symbol="000725", side="SELL", price=3.0, fee=0.0),
+            _fill(fee=0.0, currency="USD"),
+            _fill(trade_date="2026-09-03", side="SELL", price=12.0, fee=0.0, currency="USD"),
+            _fill(trade_date="2026-09-04", symbol="000725", price=4.0, quantity=1000, fee=0.0, currency="USD"),
+            _fill(trade_date="2026-09-08", symbol="000725", side="SELL", price=3.0, fee=0.0, currency="USD"),
         ]
     )
     summary = analytics.summarize(ledger)

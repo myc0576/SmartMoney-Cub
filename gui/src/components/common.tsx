@@ -1,21 +1,26 @@
 import React from 'react';
+import { formatDateTime as formatLocaleDateTime, formatNumber as formatLocaleNumber, getLocale } from '../i18n';
 
 export function formatMoney(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   const sign = value > 0 ? '+' : '';
-  return sign + value.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return sign + formatLocaleNumber(value, getLocale(), digits);
 }
 
 /** A cost total is never presented with a leading plus sign. */
 export function formatCost(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
-  return value.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return formatLocaleNumber(value, getLocale(), digits);
 }
 
 export function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   const sign = value > 0 ? '+' : '';
-  return sign + value.toFixed(2) + '%';
+  return sign + formatLocaleNumber(value, getLocale(), 2) + '%';
+}
+
+export function formatDateTime(value: string | Date | null | undefined, timeZone?: string): string {
+  return formatLocaleDateTime(value, getLocale(), timeZone);
 }
 
 export function toneOf(value: number | null | undefined, scheme: 'cn' | 'intl'): string {

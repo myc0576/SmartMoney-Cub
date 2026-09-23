@@ -60,16 +60,31 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", "/api/trader/trades/{round_trip_id}", "get_trade", "One round trip, with the issues touching its symbol."),
     Route("GET", "/api/trader/accounts", "list_accounts", "The tenant's accounts."),
     Route("POST", "/api/trader/accounts", "upsert_account", "Create or update one account."),
+    Route("GET", "/api/trader/connections", "connections", "Read-only account connection catalogue and saved sync state."),
+    Route("GET", "/api/trader/connections/manifests", "connections", "Read-only adapter authentication and capability metadata."),
+    Route("GET", "/api/trader/connections/accounts", "connections", "Imported connection accounts."),
+    Route("POST", "/api/trader/connections/{provider_id}/connect", "connect_account", "Validate and save a user-authorized read-only connection."),
+    Route("POST", "/api/trader/connections/{provider_id}/sync", "sync_account", "Read account history into the local journal."),
+    Route("POST", "/api/trader/connections/{provider_id}/disconnect", "disconnect_account", "Forget connection credentials; preserve imported journal rows."),
+    Route("POST", "/api/trader/connections/snaptrade-personal-mcp/oauth/start", "connection_oauth_start", "Start official read-only OAuth with PKCE."),
+    Route("POST", "/api/trader/connections/snaptrade-personal-mcp/oauth/complete", "connection_oauth_complete", "Consume a tenant-bound single-use authorization code."),
+    Route("GET", "/api/trader/connections/snaptrade-personal-mcp/oauth/callback", "connection_oauth_callback", "Complete the local OAuth redirect."),
     Route("GET", "/api/trader/analytics/summary", "analytics_summary", "Performance summary over the tenant's own ledger."),
     Route("GET", "/api/trader/analytics/breakdown", "analytics_breakdown", "Performance grouped by one reviewed dimension."),
     Route("GET", "/api/trader/calendar", "calendar", "Closed round trips aggregated by exit day."),
+    Route("GET", "/api/trader/insight/mistakes", "insight_mistakes", "Deterministic candidate mistake clusters identified from journal executions."),
+    Route("GET", "/api/trader/insight/edges", "insight_edges", "Profitable edges grouped by tag, regime, and holding period."),
+    Route("GET", "/api/trader/insight/patterns", "insight_patterns", "Observed profiles and evidence-backed pattern candidates."),
+    Route("POST", "/api/trader/insight/patterns/decisions", "decide_pattern", "Explicitly confirm, reject, rename or link a candidate."),
     Route("GET", "/api/trader/playbooks", "playbooks", "Declared and observed playbooks, each scored."),
     Route("POST", "/api/trader/playbooks", "upsert_playbook", "Declare or update one playbook."),
     Route("POST", "/api/trader/backtest/run", "backtest_run", "Validate a strategy, run it, and save the run."),
     Route("GET", "/api/trader/backtest/runs", "backtest_runs", "The tenant's saved backtest runs."),
     Route("GET", "/api/trader/backtest/runs/{run_id}", "backtest_run_detail", "One saved run, with its spec and curve."),
     Route("POST", "/api/trader/replay/sessions", "create_replay_session", "Hold a bar series for a browser to step through."),
+    Route("GET", "/api/trader/replay/sessions", "replay_sessions", "List persisted, cursor-bounded replay sessions."),
     Route("GET", "/api/trader/replay/sessions/{session_id}", "replay_session", "Step a replay session to a frame index."),
+    Route("POST", "/api/trader/replay/sessions/{session_id}/actions", "replay_action", "Step, branch, or simulate in an isolated replay ledger."),
 )
 
 # The documentation lines for the same table, in the same order. Kept beside
@@ -209,15 +224,66 @@ def _analytics_summary(request: Request) -> dict[str, Any]:
     )
 
 
+def _connections(request: Request) -> dict[str, Any]:
+    return request.service.connections.view(request.ctx)
+
+
+def _connection_oauth_start(request: Request) -> dict[str, Any]:
+    if not isinstance(request.json_body, Mapping):
+        raise TraderRequestError("request body must be an object")
+    return request.service.connections.oauth_start(request.ctx, request.json_body)
+
+
+def _connection_oauth_complete(request: Request) -> dict[str, Any]:
+    if not isinstance(request.json_body, Mapping):
+        raise TraderRequestError("request body must be an object")
+    return request.service.connections.oauth_complete(request.ctx, request.json_body)
+
+
+def _connection_oauth_callback(request: Request) -> dict[str, Any]:
+    return request.service.connections.oauth_complete(request.ctx, {"code": _one(request.query, "code"), "state": _one(request.query, "state")})
+
+
+def _connect_account(request: Request) -> dict[str, Any]:
+    return request.service.connections.connect(request.ctx, request.params.get("provider_id", ""), request.json_body)
+
+
+def _sync_account(request: Request) -> dict[str, Any]:
+    return request.service.connections.sync(request.ctx, request.params.get("provider_id", ""))
+
+
+def _disconnect_account(request: Request) -> dict[str, Any]:
+    return request.service.connections.disconnect(request.ctx, request.params.get("provider_id", ""))
+
+
 def _analytics_breakdown(request: Request) -> dict[str, Any]:
     refresh_param = _one(request.query, "refresh")
     refresh = str(refresh_param or "").lower() in ("1", "true", "yes")
     return request.service.analytics_breakdown(
         request.ctx,
         dimension=_one(request.query, "dimension"),
+        account_id=_one(request.query, "account_id"),
         start=_one(request.query, "from"),
         end=_one(request.query, "to"),
         refresh=refresh,
+    )
+
+
+def _insight_mistakes(request: Request) -> dict[str, Any]:
+    return request.service.insight_mistakes(
+        request.ctx,
+        start=_one(request.query, "from"),
+        end=_one(request.query, "to"),
+        account_id=_one(request.query, "account_id"),
+    )
+
+
+def _insight_edges(request: Request) -> dict[str, Any]:
+    return request.service.insight_edges(
+        request.ctx,
+        start=_one(request.query, "from"),
+        end=_one(request.query, "to"),
+        account_id=_one(request.query, "account_id"),
     )
 
 
@@ -226,11 +292,21 @@ def _calendar(request: Request) -> dict[str, Any]:
         request.ctx,
         year=_int(request.query, "year", minimum=1, maximum=9999),
         month=_int(request.query, "month", minimum=1, maximum=12),
+        account_id=_one(request.query, "account_id"),
     )
 
 
+def _insight_patterns(request: Request) -> dict[str, Any]:
+    return request.service.insight_patterns(request.ctx, account_id=_one(request.query, "account_id"),
+                                            start=_one(request.query, "from"), end=_one(request.query, "to"))
+
+
+def _decide_pattern(request: Request) -> dict[str, Any]:
+    return request.service.decide_pattern(request.ctx, request.json_body)
+
+
 def _playbooks(request: Request) -> dict[str, Any]:
-    return request.service.playbooks(request.ctx)
+    return request.service.playbooks(request.ctx, account_id=_one(request.query, "account_id"))
 
 
 def _upsert_playbook(request: Request) -> dict[str, Any]:
@@ -271,6 +347,14 @@ def _replay_session(request: Request) -> dict[str, Any]:
     )
 
 
+def _replay_sessions(request: Request) -> dict[str, Any]:
+    return request.service.replay_sessions(request.ctx)
+
+
+def _replay_action(request: Request) -> dict[str, Any]:
+    return request.service.replay_action(request.ctx, request.params.get("session_id", ""), request.json_body)
+
+
 HANDLERS: dict[str, Callable[[Request], dict[str, Any]]] = {
     "health": _health,
     "meta": _meta,
@@ -281,9 +365,20 @@ HANDLERS: dict[str, Callable[[Request], dict[str, Any]]] = {
     "get_trade": _get_trade,
     "list_accounts": _list_accounts,
     "upsert_account": _upsert_account,
+    "connections": _connections,
+    "connection_oauth_start": _connection_oauth_start,
+    "connection_oauth_complete": _connection_oauth_complete,
+    "connection_oauth_callback": _connection_oauth_callback,
+    "connect_account": _connect_account,
+    "sync_account": _sync_account,
+    "disconnect_account": _disconnect_account,
     "analytics_summary": _analytics_summary,
     "analytics_breakdown": _analytics_breakdown,
     "calendar": _calendar,
+    "insight_mistakes": _insight_mistakes,
+    "insight_edges": _insight_edges,
+    "insight_patterns": _insight_patterns,
+    "decide_pattern": _decide_pattern,
     "playbooks": _playbooks,
     "upsert_playbook": _upsert_playbook,
     "backtest_run": _backtest_run,
@@ -291,6 +386,8 @@ HANDLERS: dict[str, Callable[[Request], dict[str, Any]]] = {
     "backtest_run_detail": _backtest_run_detail,
     "create_replay_session": _create_replay_session,
     "replay_session": _replay_session,
+    "replay_sessions": _replay_sessions,
+    "replay_action": _replay_action,
 }
 
 
@@ -452,6 +549,10 @@ def dispatch(
         )
     except StoreError as error:
         return 400, _error_payload(str(error), code="store_error", status=400)
+    except PermissionError:
+        return 403, _error_payload("this operation is unavailable in the current trust boundary", code="forbidden", status=403)
+    except KeyError:
+        return 404, _error_payload("no such resource for this tenant", code="not_found", status=404)
     except ValueError as error:
         return 400, _error_payload(str(error), code="bad_request", status=400)
     except Exception as error:  # noqa: BLE001 - a handler must never crash the server

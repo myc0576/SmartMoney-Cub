@@ -7,7 +7,7 @@ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
 SmartMoney-Cub is built so that "everything is a plugin" without giving plugins the
 ability to trade. The harness publishes a stable protocol, a reference plugin, and a
 curated catalog. It does not bundle AKShare, TradingAgents, Qlib, vectorbt,
-QuantStats, Backtrader, vn.py, or ZVT.
+QuantStats, Backtrader, or ZVT.
 
 ## What automatic integration means here
 
@@ -210,8 +210,15 @@ a patch keeps applying to the same logical slot even when providers change.
 - `runtime-plugin` — a manifest, tests, permission declarations, safety docs,
   and a health check exist.
 
-Projects with high execution risk, such as vn.py, stay at `companion` level and are
-listed with no capabilities. A catalog entry is never a bundled dependency.
+Execution frameworks such as vn.py are not listed in the official marketplace.
+A catalog entry is never a bundled dependency. The installer still refuses any
+entry with high execution risk as a defense in depth.
+
+Credential fields come from catalog metadata, never an invented generic API key.
+TuShare and FRED link to their official key pages. TradingAgents is configured
+externally using its upstream instructions; this journal neither requests nor
+stores its provider keys. Local managed credentials are saved only after an
+installation passes its health check.
 
 ## Schemas
 

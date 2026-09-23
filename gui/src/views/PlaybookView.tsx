@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { Playbook, PlaybookStats } from '../types';
 import { Banner, Empty, Panel, formatMoney, formatPct, toneOf } from '../components/common';
+import { useLegacyI18n } from '../locales/legacy';
 
 /**
  * Playbooks: the trader's own setups, and what each one actually returned.
@@ -30,6 +31,7 @@ const EMPTY_DRAFT: Draft = {
 };
 
 export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
+  const { t } = useLegacyI18n();
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [stats, setStats] = useState<Record<string, PlaybookStats>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
   const submit = async () => {
     const name = draft.name.trim();
     if (!name) {
-      setError('playbook 需要一个名字。');
+      setError(t('playbook.errorName'));
       return;
     }
     setBusy(true);
@@ -78,7 +80,7 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
       });
       setDraft(EMPTY_DRAFT);
       setCreating(false);
-      setStatus('已保存 playbook「' + name + '」。');
+      setStatus(t('playbook.saved', { name }));
       await load();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -90,18 +92,17 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
   return (
     <div className="grid" style={{ gap: 14 }}>
       <div className="notice">
-        playbook 记录的是你自己的计划：什么条件进场、什么条件离场、单笔承担多少风险。
-        收益数字只在有匹配交易时出现，样本不足会明确标注，不会用 0 冒充结果。
+        {t('playbook.notice')}
       </div>
 
       {error ? <Banner>{error}</Banner> : null}
       {status ? <div className="muted" style={{ fontSize: 11 }}>{status}</div> : null}
 
       <Panel
-        title={'Playbooks（' + playbooks.length + '）'}
+        title={t('playbook.title', { count: playbooks.length })}
         actions={
           <button className="ghost" onClick={() => { setCreating((previous) => !previous); setError(''); }}>
-            {creating ? '取消新增' : '新增 playbook'}
+            {creating ? t('playbook.cancelAdd') : t('playbook.add')}
           </button>
         }
       >
@@ -109,52 +110,52 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
           <div className="grid" style={{ gap: 10, marginBottom: 14 }}>
             <div className="grid split">
               <div className="field">
-                <label>名称</label>
-                <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="例如：开盘区间突破" />
+                <label>{t('playbook.name')}</label>
+                <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={t('playbook.namePlaceholder')} />
               </div>
               <div className="field">
-                <label>标签（逗号分隔）</label>
-                <input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="突破, A 级机会" />
+                <label>{t('playbook.tags')}</label>
+                <input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder={t('playbook.tagsPlaceholder')} />
               </div>
             </div>
             <div className="field">
-              <label>一句话说明</label>
+              <label>{t('playbook.description')}</label>
               <input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
             </div>
             <div className="field">
-              <label>适用场景</label>
-              <input value={draft.setup} onChange={(event) => setDraft({ ...draft, setup: event.target.value })} placeholder="例如：高开缺口、趋势日" />
+              <label>{t('playbook.setup')}</label>
+              <input value={draft.setup} onChange={(event) => setDraft({ ...draft, setup: event.target.value })} placeholder={t('playbook.setupPlaceholder')} />
             </div>
             <div className="grid split">
               <div className="field">
-                <label>进场条件（每行一条）</label>
-                <textarea value={draft.entry_rules} onChange={(event) => setDraft({ ...draft, entry_rules: event.target.value })} placeholder="价格站上开盘区间上沿" />
+                <label>{t('playbook.entry')}</label>
+                <textarea value={draft.entry_rules} onChange={(event) => setDraft({ ...draft, entry_rules: event.target.value })} placeholder={t('playbook.entryPlaceholder')} />
               </div>
               <div className="field">
-                <label>离场条件（每行一条）</label>
-                <textarea value={draft.exit_rules} onChange={(event) => setDraft({ ...draft, exit_rules: event.target.value })} placeholder="跌破 VWAP 离场；到达 2R 分批止盈" />
+                <label>{t('playbook.exit')}</label>
+                <textarea value={draft.exit_rules} onChange={(event) => setDraft({ ...draft, exit_rules: event.target.value })} placeholder={t('playbook.exitPlaceholder')} />
               </div>
             </div>
             <div className="field">
-              <label>风险规则（每行一条）</label>
-              <textarea value={draft.risk_rules} onChange={(event) => setDraft({ ...draft, risk_rules: event.target.value })} placeholder="单笔风险不超过账户 1%；连续两笔亏损后降半仓" />
+              <label>{t('playbook.risk')}</label>
+              <textarea value={draft.risk_rules} onChange={(event) => setDraft({ ...draft, risk_rules: event.target.value })} placeholder={t('playbook.riskPlaceholder')} />
             </div>
             <div className="row">
-              <button className="primary" onClick={() => void submit()} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
-              <span className="muted" style={{ fontSize: 11 }}>保存后按名称与你的交易自动匹配。</span>
+              <button className="primary" onClick={() => void submit()} disabled={busy}>{busy ? t('playbook.saving') : t('playbook.save')}</button>
+              <span className="muted" style={{ fontSize: 11 }}>{t('playbook.matchHint')}</span>
             </div>
           </div>
         ) : null}
 
         {playbooks.length === 0 ? (
-          <Empty text="还没有 playbook。用「新增 playbook」写下第一个计划。" />
+          <Empty text={t('playbook.empty')} />
         ) : (
           <div className="scroll-x">
             <table>
               <thead>
                 <tr>
-                  <th>名称</th><th>场景</th><th className="num">笔数</th><th className="num">胜率</th>
-                  <th className="num">净盈亏</th><th className="num">平均收益</th><th>标签</th>
+                  <th>{t('playbook.name')}</th><th>{t('playbook.scene')}</th><th className="num">{t('reports.count')}</th><th className="num">{t('reports.winRate')}</th>
+                  <th className="num">{t('reports.netPnl')}</th><th className="num">{t('playbook.avgReturn')}</th><th>{t('playbook.tags')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -187,12 +188,12 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
       </Panel>
 
       {current ? (
-        <Panel title={'计划详情 · ' + current.name}>
-          <RuleList title="进场条件" rules={current.entry_rules} />
-          <RuleList title="离场条件" rules={current.exit_rules} />
-          <RuleList title="风险规则" rules={current.risk_rules} />
+        <Panel title={t('playbook.detail', { name: current.name })}>
+          <RuleList title={t('playbook.entry').replace('（每行一条）', '')} rules={current.entry_rules} emptyLabel={t('playbook.unrecorded')} />
+          <RuleList title={t('playbook.exit').replace('（每行一条）', '')} rules={current.exit_rules} emptyLabel={t('playbook.unrecorded')} />
+          <RuleList title={t('playbook.risk').replace('（每行一条）', '')} rules={current.risk_rules} emptyLabel={t('playbook.unrecorded')} />
           {stats[current.name]?.small_sample ? (
-            <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>* 该 playbook 的匹配样本不足 5 笔，数字只作提示。</div>
+            <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>{t('playbook.smallSample')}</div>
           ) : null}
           {current.description ? (
             <div className="muted" style={{ fontSize: 12, marginTop: 10, lineHeight: 1.7 }}>{current.description}</div>
@@ -203,13 +204,13 @@ export function PlaybookView({ scheme }: { scheme: 'cn' | 'intl' }) {
   );
 }
 
-function RuleList({ title, rules }: { title: string; rules: string[] | undefined }) {
+function RuleList({ title, rules, emptyLabel }: { title: string; rules: string[] | undefined; emptyLabel: string }) {
   const items = Array.isArray(rules) ? rules : [];
   return (
     <div style={{ marginBottom: 10 }}>
       <div className="kpi-label">{title}</div>
       {items.length === 0 ? (
-        <div className="muted" style={{ fontSize: 12 }}>未记录</div>
+        <div className="muted" style={{ fontSize: 12 }}>{emptyLabel}</div>
       ) : (
         <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12.5, lineHeight: 1.7 }}>
           {items.map((rule, index) => <li key={index}>{rule}</li>)}

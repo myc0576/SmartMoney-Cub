@@ -442,6 +442,7 @@ def test_assistant_reads_trades_from_trader_service(tmp_path: Path) -> None:
                 "price": 100.0,
                 "quantity": 100,
                 "fee": 5.0,
+                "currency": "CNY",
             },
             {
                 "trade_id": "T1-SELL",
@@ -453,6 +454,7 @@ def test_assistant_reads_trades_from_trader_service(tmp_path: Path) -> None:
                 "price": 110.0,
                 "quantity": 100,
                 "fee": 5.0,
+                "currency": "CNY",
             },
         ],
     )
@@ -489,6 +491,7 @@ def test_assistant_reads_trades_from_trader_service(tmp_path: Path) -> None:
                 "trade_date": "2026-09-05",
                 "price": 10.0,
                 "quantity": 100,
+                "currency": "CNY",
             },
             {
                 "trade_id": "T2-SELL",
@@ -497,6 +500,7 @@ def test_assistant_reads_trades_from_trader_service(tmp_path: Path) -> None:
                 "trade_date": "2026-09-06",
                 "price": 12.0,
                 "quantity": 100,
+                "currency": "CNY",
             },
         ],
     )

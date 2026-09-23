@@ -97,7 +97,9 @@ class DashboardState:
 
         # Replace the previous naive FIFO pairing. Ambiguous rows are surfaced as
         # needs_review issues instead of being silently turned into trades.
-        ledger = build_fill_ledger(records)
+        # Language and symbol shape are not sufficient market evidence. A
+        # caller's explicit market column controls market-specific policies.
+        ledger = build_fill_ledger(records, market="UNKNOWN", allow_shorts=True)
         self.ledger = ledger
         self.data_origin = USER_CSV_DATA_ORIGIN
         self.needs_review = [issue for issue in ledger["issues"] if issue["severity"] == "error"]

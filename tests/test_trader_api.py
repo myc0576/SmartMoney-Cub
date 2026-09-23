@@ -58,16 +58,31 @@ BRIEF_ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/trader/trades/{round_trip_id}"),
     ("GET", "/api/trader/accounts"),
     ("POST", "/api/trader/accounts"),
+    ("GET", "/api/trader/connections"),
+    ("GET", "/api/trader/connections/manifests"),
+    ("GET", "/api/trader/connections/accounts"),
+    ("POST", "/api/trader/connections/{provider_id}/connect"),
+    ("POST", "/api/trader/connections/{provider_id}/sync"),
+    ("POST", "/api/trader/connections/{provider_id}/disconnect"),
+    ("POST", "/api/trader/connections/snaptrade-personal-mcp/oauth/start"),
+    ("POST", "/api/trader/connections/snaptrade-personal-mcp/oauth/complete"),
+    ("GET", "/api/trader/connections/snaptrade-personal-mcp/oauth/callback"),
     ("GET", "/api/trader/analytics/summary"),
     ("GET", "/api/trader/analytics/breakdown"),
     ("GET", "/api/trader/calendar"),
+    ("GET", "/api/trader/insight/mistakes"),
+    ("GET", "/api/trader/insight/edges"),
+    ("GET", "/api/trader/insight/patterns"),
+    ("POST", "/api/trader/insight/patterns/decisions"),
     ("GET", "/api/trader/playbooks"),
     ("POST", "/api/trader/playbooks"),
     ("POST", "/api/trader/backtest/run"),
     ("GET", "/api/trader/backtest/runs"),
     ("GET", "/api/trader/backtest/runs/{run_id}"),
     ("POST", "/api/trader/replay/sessions"),
+    ("GET", "/api/trader/replay/sessions"),
     ("GET", "/api/trader/replay/sessions/{session_id}"),
+    ("POST", "/api/trader/replay/sessions/{session_id}/actions"),
 )
 
 STRATEGY = {
@@ -303,8 +318,9 @@ def test_each_endpoint_answers_200_with_a_well_formed_body(tmp_path) -> None:
             body={"rows": [_buy("T-1"), _sell("T-2")]},
         )
         responses["GET /api/trader/trades"] = _call(base, "GET", "/api/trader/trades")
+        actual_trip_id = responses["GET /api/trader/trades"][1]["trades"][0]["round_trip_id"]
         responses["GET /api/trader/trades/{round_trip_id}"] = _call(
-            base, "GET", "/api/trader/trades/RT-TOY-A-1"
+            base, "GET", "/api/trader/trades/" + actual_trip_id
         )
         responses["POST /api/trader/accounts"] = _call(
             base,
@@ -313,6 +329,24 @@ def test_each_endpoint_answers_200_with_a_well_formed_body(tmp_path) -> None:
             body={"name": "Toy Account", "broker": "toy-broker", "initial_balance": 5000.0},
         )
         responses["GET /api/trader/accounts"] = _call(base, "GET", "/api/trader/accounts")
+        from test_connection_journal_contract import trusted_fixture
+        _trader.connections.factory = trusted_fixture
+        for suffix in ("", "/manifests", "/accounts"):
+            route = "/api/trader/connections" + suffix
+            responses["GET " + route] = _call(base, "GET", route)
+        for action in ("connect", "sync", "disconnect"):
+            responses["POST /api/trader/connections/{provider_id}/" + action] = _call(
+                base, "POST", "/api/trader/connections/ccxt-binance/" + action,
+                body={"credentials": {"api_key": "toy-read-key"}} if action == "connect" else {})
+        from test_connection_journal_contract import fixture_oauth, oauth_adapter, SnapTradeOAuthClient
+        _trader.connections.oauth_client = SnapTradeOAuthClient(fixture_oauth)
+        _trader.connections.factory = oauth_adapter
+        oauth = "/api/trader/connections/snaptrade-personal-mcp/oauth"
+        responses["POST " + oauth + "/start"] = _call(base, "POST", oauth + "/start", body={"redirect_uri": base + oauth + "/callback"})
+        state = responses["POST " + oauth + "/start"][1]["state"]
+        responses["POST " + oauth + "/complete"] = _call(base, "POST", oauth + "/complete", body={"code": "toy-code", "state": state})
+        _, started = _call(base, "POST", oauth + "/start", body={"redirect_uri": base + oauth + "/callback"})
+        responses["GET " + oauth + "/callback"] = _call(base, "GET", oauth + "/callback?code=toy-code&state=" + started["state"])
         responses["GET /api/trader/analytics/summary"] = _call(
             base, "GET", "/api/trader/analytics/summary"
         )
@@ -322,6 +356,16 @@ def test_each_endpoint_answers_200_with_a_well_formed_body(tmp_path) -> None:
         responses["GET /api/trader/calendar"] = _call(
             base, "GET", "/api/trader/calendar?year=2026&month=8"
         )
+        responses["GET /api/trader/insight/mistakes"] = _call(
+            base, "GET", "/api/trader/insight/mistakes"
+        )
+        responses["GET /api/trader/insight/edges"] = _call(
+            base, "GET", "/api/trader/insight/edges"
+        )
+        responses["GET /api/trader/insight/patterns"] = _call(base, "GET", "/api/trader/insight/patterns")
+        pattern = responses["GET /api/trader/insight/patterns"][1]["candidates"][0]
+        responses["POST /api/trader/insight/patterns/decisions"] = _call(
+            base, "POST", "/api/trader/insight/patterns/decisions", body={"pattern_id": pattern["pattern_id"], "action": "confirm"})
         responses["POST /api/trader/playbooks"] = _call(
             base,
             "POST",
@@ -358,6 +402,10 @@ def test_each_endpoint_answers_200_with_a_well_formed_body(tmp_path) -> None:
         responses["GET /api/trader/replay/sessions/{session_id}"] = _call(
             base, "GET", "/api/trader/replay/sessions/" + session_id + "?index=1"
         )
+        responses["GET /api/trader/replay/sessions"] = _call(base, "GET", "/api/trader/replay/sessions")
+        responses["POST /api/trader/replay/sessions/{session_id}/actions"] = _call(
+            base, "POST", "/api/trader/replay/sessions/" + session_id + "/actions", body={"action": "step"}
+        )
 
         answered = {label for label, (status, _body) in responses.items() if status == 200}
         expected = {"%s %s" % route for route in BRIEF_ROUTES}
@@ -392,6 +440,8 @@ def test_each_endpoint_body_carries_the_safety_declaration(tmp_path) -> None:
                 _call(base, "GET", "/api/trader/accounts", headers=headers),
                 _call(base, "GET", "/api/trader/analytics/summary", headers=headers),
                 _call(base, "GET", "/api/trader/calendar", headers=headers),
+                _call(base, "GET", "/api/trader/insight/mistakes", headers=headers),
+                _call(base, "GET", "/api/trader/insight/edges", headers=headers),
                 _call(base, "GET", "/api/trader/playbooks", headers=headers),
                 _call(base, "GET", "/api/trader/backtest/runs", headers=headers),
                 # No identity at all.
@@ -520,8 +570,8 @@ def test_tenant_a_never_sees_tenant_b_round_trip_ids(tmp_path) -> None:
             symbols_a = {trip["symbol"] for trip in body_a["trades"]}
             symbols_b = {trip["symbol"] for trip in body_b["trades"]}
 
-            assert ids_a == {"RT-TOY-A-1"}
-            assert ids_b == {"RT-TOY-B-1"}
+            assert len(ids_a) == len(ids_b) == 1
+            assert all(identifier.startswith("RT-") for identifier in ids_a | ids_b)
             assert symbols_a == {"TOY-A"}
             assert symbols_b == {"TOY-B"}
             assert ids_a.isdisjoint(ids_b)
@@ -531,7 +581,7 @@ def test_tenant_a_never_sees_tenant_b_round_trip_ids(tmp_path) -> None:
             # The same rule holds for the single-record route and for the
             # other read surfaces.
             status, _body = _call(
-                base, "GET", "/api/trader/trades/RT-TOY-B-1", headers=tenant_a
+                base, "GET", "/api/trader/trades/" + next(iter(ids_b)), headers=tenant_a
             )
             assert status == 404
             status, summary_a = _call(
@@ -632,7 +682,56 @@ def test_market_bars_returns_a_series_and_caches_it_for_the_tenant(tmp_path) -> 
         assert cached[0]["provider"] == "stooq"
 
 
+def test_the_trade_list_pages_round_trips_not_the_fills_behind_them(tmp_path) -> None:
+    """The newest fills close almost no round trips, so paging fills emptied the list.
+
+    This is the regression that made the overview page report "no closed trades"
+    over a journal holding hundreds: it asked for the newest 24 rows, got buys,
+    and the matcher returned no round trips. A page of the newest round trips is
+    what the caller asked for, so that is what the route must return.
+    """
+    with _serve(tmp_path) as (base, _trader):
+        # Six closed round trips, each a buy followed by a later sell of the same
+        # size, so every one of them matches. The newest row overall is a BUY,
+        # which is what used to empty the page.
+        rows: list[dict[str, object]] = []
+        for index in range(6):
+            day = 3 + index
+            rows.append(_buy(
+                f"B-{index}",
+                trade_date=f"2026-08-{day:02d}",
+                trade_time="09:40:00",
+            ))
+            rows.append(_sell(
+                f"S-{index}",
+                date=f"2026-08-{day + 1:02d}",
+                price=11.0,
+            ))
+        status, _ = _call(base, "POST", "/api/trader/trades/import", body={"rows": rows})
+        assert status == 200
+
+        # A page of two returns two round trips, not zero.
+        status, body = _call(base, "GET", "/api/trader/trades?limit=2")
+        assert status == 200
+        assert body["count"] == 6
+        assert len(body["trades"]) == 2
+
+        # Newest close first, so the page is the most recent activity rather than
+        # the oldest rows of a chronological ledger.
+        exits = [trip["exit_time"] for trip in body["trades"]]
+        assert exits == sorted(exits, reverse=True)
+
+        # The offset walks the same paged list without repeating a row.
+        status, second = _call(base, "GET", "/api/trader/trades?limit=2&offset=2")
+        assert status == 200
+        assert len(second["trades"]) == 2
+        first_ids = {trip["round_trip_id"] for trip in body["trades"]}
+        second_ids = {trip["round_trip_id"] for trip in second["trades"]}
+        assert not (first_ids & second_ids)
+
+
 def test_market_providers_lists_the_four_keyless_sources(tmp_path) -> None:
+
     with _serve(tmp_path) as (base, _trader):
         status, body = _call(base, "GET", "/api/trader/market/providers")
         assert status == 200

@@ -97,7 +97,6 @@ grades the project; it never ships as a bundled dependency. The core release kee
 | [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | `documented-adapter` / `optional-bridge` | 多智能体交易分析框架。用户自行运行生成报告后导入为只读复盘材料；harness 不代管其 LLM 密钥。 | 用户自备 LLM/API key 并在本仓库之外配置；harness 不保存、不收集、不上传密钥；其输出只能作为复盘证据，不得转成订单意图或执行计划。 |
 | [wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | `recommended-companion` | 外部分析技能与叙述灵感，输出可本地保存后进入 reviewer/challenger 流程。 | 只能描述为推荐搭配与生态接入位；不得称为内置依赖，不得把结论变成买卖指令。 |
 | [shy3130/tick-stock-panel](https://github.com/shy3130/tick-stock-panel) | `recommended-companion` | Tick 级行情面板项目，作为只读行情可视化参考实现。 | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
-| [vnpy/vnpy](https://github.com/vnpy/vnpy) | `recommended-companion` | 交易框架。因其自身包含下单与账户能力，harness 只把它作为 companion 记录，永不挂载为运行时插件。 | 本项目自带下单与账户能力，因此 harness 绝不安装、挂载或调用它；仅作为对照参考记录在册。执行禁令绝对不变。 |
 
 ## UZI-Skill Positioning
 

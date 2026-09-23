@@ -6,6 +6,7 @@ import type {
 import { Badge, Panel } from '../components/common';
 import { effortLabel } from '../components/ModelPicker';
 import { PluginsView } from './PluginsView';
+import { useLegacyI18n } from '../locales/legacy';
 
 // Settings -> 模型 Providers, rebuilt against DSH's Settings -> Models page.
 //
@@ -276,6 +277,7 @@ export function SettingsView({
   onToggleScheme?: () => void;
   onToggleTheme?: () => void;
 }) {
+  const { t } = useLegacyI18n();
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [protocols, setProtocols] = useState<ProtocolOption[]>([]);
@@ -458,9 +460,9 @@ export function SettingsView({
       {/* Top action header: aligned with DSH Settings modal header */}
       <div className="dsh-settings-topbar">
         <div>
-          <h2 className="dsh-settings-heading">设置</h2>
+          <h2 className="dsh-settings-heading">{t('settings.title')}</h2>
           <span className="muted" style={{ fontSize: 12 }}>
-            配置模型提供方、Agent 预设、外观与系统选项
+            {t('settings.subtitle')}
           </span>
         </div>
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
@@ -468,12 +470,12 @@ export function SettingsView({
             className="dsh-open-config-btn"
             onClick={() => void handleOpenFile()}
             disabled={openingFile}
-            title="学习 DSH 交互：在本地文本编辑器中直接打开配置文件"
+            title={t('settings.openFile')}
           >
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginRight: 6 }}>
               <path d="M2 4a1 1 0 0 1 1-1h4l2 2h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z" />
             </svg>
-            {openingFile ? '正在打开...' : '打开配置文件'}
+            {openingFile ? t('settings.opening') : t('settings.openFile')}
           </button>
         </div>
       </div>
@@ -488,14 +490,14 @@ export function SettingsView({
             className={'dsh-nav-tab' + (activeSection === 'general' ? ' active' : '')}
             onClick={() => { setActiveSection('general'); setError(''); }}
           >
-            <span>通用设置</span>
+            <span>{t('settings.general')}</span>
           </button>
 
           <button
             className={'dsh-nav-tab' + (activeSection === 'models' ? ' active' : '')}
             onClick={() => { setActiveSection('models'); setError(''); }}
           >
-            <span>模型</span>
+            <span>{t('settings.models')}</span>
             <span className="dsh-tab-badge">{providers.length}</span>
           </button>
 
@@ -503,21 +505,21 @@ export function SettingsView({
             className={'dsh-nav-tab' + (activeSection === 'plugins' ? ' active' : '')}
             onClick={() => { setActiveSection('plugins'); setError(''); }}
           >
-            <span>插件</span>
+            <span>{t('settings.plugins')}</span>
           </button>
 
           <button
             className={'dsh-nav-tab' + (activeSection === 'agent' ? ' active' : '')}
             onClick={() => { setActiveSection('agent'); setError(''); }}
           >
-            <span>Agent 预设</span>
+            <span>{t('settings.agent')}</span>
           </button>
 
           <button
             className={'dsh-nav-tab' + (activeSection === 'privacy' ? ' active' : '')}
             onClick={() => { setActiveSection('privacy'); setError(''); }}
           >
-            <span>隐私与诊断</span>
+            <span>{t('settings.privacy')}</span>
           </button>
         </nav>
 
@@ -525,23 +527,23 @@ export function SettingsView({
         <div className="dsh-settings-content">
           {/* 1. 通用设置 */}
           {activeSection === 'general' ? (
-            <Panel title="通用设置">
+            <Panel title={t('settings.general')}>
               <div className="grid" style={{ gap: 16 }}>
                 <div className="provider-form">
                   <div className="field">
-                    <label>涨跌配色显示</label>
+                    <label>{t('settings.schemeLabel')}</label>
                     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                       <button
                         className={scheme === 'cn' ? 'primary' : 'ghost'}
                         onClick={onToggleScheme}
                       >
-                        红涨绿跌（国内惯例）
+                        {t('settings.schemeCn')}
                       </button>
                       <button
                         className={scheme === 'intl' ? 'primary' : 'ghost'}
                         onClick={onToggleScheme}
                       >
-                        绿涨红跌（国际惯例）
+                        {t('settings.schemeIntl')}
                       </button>
                     </div>
                   </div>
@@ -553,22 +555,22 @@ export function SettingsView({
                         className={theme === 'dark' ? 'primary' : 'ghost'}
                         onClick={onToggleTheme}
                       >
-                        深色模式 (Dark)
+                        {t('settings.dark')}
                       </button>
                       <button
                         className={theme === 'light' ? 'primary' : 'ghost'}
                         onClick={onToggleTheme}
                       >
-                        浅色模式 (Light)
+                        {t('settings.light')}
                       </button>
                     </div>
                   </div>
                 </div>
 
                 <div className="stage-row" style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 500, marginBottom: 6 }}>单账本与离线持久化机制</div>
+                  <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('settings.persistenceTitle')}</div>
                   <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-                    SmartMoney-Cub 遵循单人本地优先原则，所有交易记录、回放行情与复盘会话均离线存储在本地 SQLite 数据库中，不向任何中心化服务器回传明细。
+                    {t('settings.persistenceText')}
                   </div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
                     安全合约声明：<code>READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</code>
@@ -580,9 +582,9 @@ export function SettingsView({
 
           {/* 2. 模型设置 */}
           {activeSection === 'models' ? (
-            <Panel title={'模型提供方（' + providers.length + '）'}>
+            <Panel title={t('settings.modelsTitle', { count: providers.length })}>
               <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-                填入各提供方的 API 密钥即可使用其模型。密钥只写入本机凭据文件，界面绝不回显。
+                {t('settings.modelsHint')}
               </div>
 
               <div className="grid" style={{ gap: 10 }}>
@@ -614,7 +616,7 @@ export function SettingsView({
                   )
                 ))}
                 {providers.length === 0 ? (
-                  <div className="muted">还没有配置任何 Provider。用下面的按钮从内置目录添加，或手工声明自定义路由。</div>
+                  <div className="muted">{t('settings.noProviders')}</div>
                 ) : null}
               </div>
 
@@ -647,8 +649,8 @@ export function SettingsView({
 
               {addMode === null ? (
                 <div className="add-row" style={{ marginTop: 12 }}>
-                  <button className="add-card" onClick={() => { setAddMode('catalog'); setError(''); }}>+ 添加提供方</button>
-                  <button className="add-card" onClick={() => { setAddMode('custom'); setError(''); }}>+ 添加自定义提供方</button>
+                  <button className="add-card" onClick={() => { setAddMode('catalog'); setError(''); }}>{t('settings.addProvider')}</button>
+                  <button className="add-card" onClick={() => { setAddMode('custom'); setError(''); }}>{t('settings.addCustom')}</button>
                 </div>
               ) : null}
             </Panel>
@@ -661,44 +663,39 @@ export function SettingsView({
 
           {/* 4. Agent 预设 */}
           {activeSection === 'agent' ? (
-            <Panel title="复盘助手 Agent 预设">
+            <Panel title={t('settings.agentTitle')}>
               <div className="grid" style={{ gap: 16 }}>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  自定义复盘助手的思考偏好与系统指令。此处的设定会在创建新复盘会话时自动注入。
+                  {t('settings.agentHint')}
                 </div>
 
                 <div className="provider-form">
                   <div className="field">
-                    <label>默认推理思考强度</label>
+                    <label>{t('settings.effort')}</label>
                     <select
                       value={agentPresets.default_effort}
                       onChange={(e) => setAgentPresets((prev) => ({ ...prev, default_effort: e.target.value }))}
                     >
-                      <option value="off">不思考（直接作答）</option>
-                      <option value="low">低推理（轻量推理）</option>
-                      <option value="medium">中等推理（均衡主力）</option>
-                      <option value="high">高推理（深入归因）</option>
-                      <option value="max">最大推理（极限推理）</option>
+                      <option value="off">{t('settings.effortOff')}</option><option value="low">{t('settings.effortLow')}</option><option value="medium">{t('settings.effortMedium')}</option><option value="high">{t('settings.effortHigh')}</option><option value="max">{t('settings.effortMax')}</option>
                     </select>
                   </div>
 
                   <div className="field">
-                    <label>上下文压缩策略</label>
+                    <label>{t('settings.contextStrategy')}</label>
                     <select
                       value={agentPresets.context_strategy}
                       onChange={(e) => setAgentPresets((prev) => ({ ...prev, context_strategy: e.target.value }))}
                     >
-                      <option value="summary_compact">结构化摘要压缩 (默认)</option>
-                      <option value="full_recent">仅保留最近轮次全文</option>
+                      <option value="summary_compact">{t('settings.contextSummary')}</option><option value="full_recent">{t('settings.contextRecent')}</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>系统提示词定制要求 (Agent Prompt)</label>
+                  <label>{t('settings.promptLabel')}</label>
                   <textarea
                     style={{ minHeight: 120, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5 }}
-                    placeholder="在此输入您期望复盘助手始终遵守的分析风格或特定要求（例如：注重盈亏比分析，严格指出执行计划外交易的错误...）"
+                    placeholder={t('settings.promptPlaceholder')}
                     value={agentPresets.system_prompt}
                     onChange={(e) => setAgentPresets((prev) => ({ ...prev, system_prompt: e.target.value }))}
                   />
@@ -711,14 +708,14 @@ export function SettingsView({
                       style={{ fontSize: 11 }}
                       onClick={() => setAgentPresets((prev) => ({ ...prev, system_prompt: '' }))}
                     >
-                      清空定制要求
+                      {t('settings.clearPrompt')}
                     </button>
                   </div>
                 </div>
 
                 <div>
                   <button className="primary" onClick={() => void saveAgentPresets()}>
-                    保存 Agent 预设
+                    {t('settings.saveAgent')}
                   </button>
                 </div>
               </div>
@@ -728,7 +725,7 @@ export function SettingsView({
           {/* 5. 隐私与诊断 */}
           {activeSection === 'privacy' ? (
             <div className="grid" style={{ gap: 14 }}>
-              <Panel title="隐私与脱敏">
+              <Panel title={t('settings.privacyTitle')}>
                 <div className="grid" style={{ gap: 8 }}>
                   <div>外发策略：<strong>{meta?.redaction_policy || 'redaction.v1'}</strong></div>
                   <div className="muted" style={{ fontSize: 12 }}>
@@ -745,9 +742,9 @@ export function SettingsView({
                 </div>
               </Panel>
 
-              <Panel title={'外发审计（最近 ' + audits.length + ' 条）'}>
+              <Panel title={t('settings.auditTitle', { count: audits.length })}>
                 {audits.length === 0 ? (
-                  <div className="muted">还没有向外部模型发送过请求。未配置可路由模型时，助手会停在设置引导，不会发起请求。</div>
+                  <div className="muted">{t('settings.auditEmpty')}</div>
                 ) : (
                   <div className="scroll-x">
                     <table>
@@ -760,7 +757,7 @@ export function SettingsView({
                             <td className="muted">{audit.model || '—'}</td>
                             <td className="num">{audit.sent_keys.length}</td>
                             <td className="muted">{String(audit.redaction_summary?.total ?? 0)} 处替换</td>
-                            <td>{audit.blocked ? <Badge kind="error">已阻断</Badge> : <Badge kind="ok">已发送</Badge>}</td>
+                            <td>{audit.blocked ? <Badge kind="error">{t('settings.blocked')}</Badge> : <Badge kind="ok">{t('settings.sent')}</Badge>}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -769,21 +766,21 @@ export function SettingsView({
                 )}
               </Panel>
 
-              <Panel title="本地系统诊断">
+              <Panel title={t('settings.diagnostics')}>
                 {doctor ? (
                   <table>
-                    <thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead>
+                    <thead><tr><th>{t('settings.check')}</th><th>{t('settings.status')}</th><th>{t('settings.detail')}</th></tr></thead>
                     <tbody>
                       {((doctor.checks as { name: string; status: string; detail: string }[] | undefined) || []).map((check) => (
                         <tr key={check.name}>
                           <td>{check.name}</td>
                           <td>
                             {check.status === 'ok' ? (
-                              <Badge kind="ok">正常</Badge>
+                              <Badge kind="ok">{t('settings.ok')}</Badge>
                             ) : check.status === 'warn' ? (
-                              <Badge kind="warn">提示</Badge>
+                              <Badge kind="warn">{t('settings.warn')}</Badge>
                             ) : (
-                              <Badge kind="error">异常</Badge>
+                              <Badge kind="error">{t('settings.error')}</Badge>
                             )}
                           </td>
                           <td className="muted">{check.detail}</td>
@@ -792,7 +789,7 @@ export function SettingsView({
                     </tbody>
                   </table>
                 ) : (
-                  <div className="muted">未能读取诊断信息。</div>
+                  <div className="muted">{t('settings.noDoctor')}</div>
                 )}
               </Panel>
             </div>

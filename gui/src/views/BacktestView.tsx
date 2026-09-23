@@ -152,11 +152,27 @@ export function BacktestView({ scheme }: { scheme: 'cn' | 'intl' }) {
               <select value={provider} onChange={(event) => setProvider(event.target.value)}>
                 {providers.length === 0 ? <option value="">没有可用来源</option> : null}
                 {providers.map((item) => (
-                  <option key={item.provider_id} value={item.provider_id}>
+                  /* A source that cannot answer keeps its place and says why.
+                     Dropping it would leave a reader wondering whether the app
+                     ever had it; offering it unmarked would promise a fetch that
+                     cannot succeed. */
+                  <option
+                    key={item.provider_id}
+                    value={item.provider_id}
+                    disabled={Boolean(item.availability) && item.availability !== 'available'}
+                  >
                     {item.label}（{item.source_quality}）
+                    {item.availability && item.availability !== 'available'
+                      ? ' · 不可用：' + (item.availability_reason || item.availability)
+                      : ''}
                   </option>
                 ))}
               </select>
+              {unavailableNotice(providers, provider) ? (
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  {unavailableNotice(providers, provider)}
+                </div>
+              ) : null}
             </div>
             <div className="grid split" style={{ gap: 10 }}>
               <div className="field">
@@ -302,4 +318,19 @@ function pctMetric(metrics: Record<string, number | string | null> | undefined, 
 function number(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Why the selected source cannot answer, or an empty string when it can.
+ *
+ * The catalogue is shipped everywhere but the network is not, so a source may be
+ * listed and unreachable. Saying so beside the picker is the difference between a
+ * reader who knows the fetch will fail and a reader who concludes the app is
+ * broken.
+ */
+function unavailableNotice(providers: MarketProvider[], selected: string): string {
+  const item = providers.find((candidate) => candidate.provider_id === selected);
+  if (!item) return '';
+  if (!item.availability || item.availability === 'available') return '';
+  return '当前来源不可用：' + (item.availability_reason || item.availability);
 }

@@ -71,6 +71,13 @@ CATALOG: tuple[dict[str, Any], ...] = (
     ),
     catalog_entry(
         plugin_id="tushare-pro",
+        credential_mode="managed_local",
+        credential_requirements=[{
+            "name": "TOKEN", "label": "TuShare token", "required": True,
+            "obtain_url": "https://tushare.pro/document/1?doc_id=40",
+            "help": "Create a personal token in your TuShare account. Data access depends on your account permissions.",
+            "scopes": ["market_data_read"],
+        }],
         name="TuShare Pro",
         category=CATEGORY_DATA,
         description="TuShare Pro 历史行情与财务数据，需要官方 token。",
@@ -149,6 +156,13 @@ CATALOG: tuple[dict[str, Any], ...] = (
     ),
     catalog_entry(
         plugin_id="fred",
+        credential_mode="managed_local",
+        credential_requirements=[{
+            "name": "FRED_API_KEY", "label": "FRED API key", "required": True,
+            "obtain_url": "https://fred.stlouisfed.org/docs/api/fred/v2/api_key.html",
+            "help": "Request a personal API key from the Federal Reserve Bank of St. Louis.",
+            "scopes": ["economic_data_read"],
+        }],
         name="FRED 宏观数据",
         category=CATEGORY_DATA,
         description="圣路易斯联储 FRED 宏观时间序列，需要免费 API key。",
@@ -429,6 +443,8 @@ CATALOG: tuple[dict[str, Any], ...] = (
     ),
     catalog_entry(
         plugin_id="tradingagents",
+        credential_mode="external_only",
+        credential_setup_url="https://github.com/TauricResearch/TradingAgents#installation-and-setup",
         name="TradingAgents",
         category=CATEGORY_AGENT,
         description=(
@@ -488,27 +504,6 @@ CATALOG: tuple[dict[str, Any], ...] = (
         network_required=True,
         execution_risk="low",
         boundary=_READ_ONLY_DATA_BOUNDARY,
-    ),
-    catalog_entry(
-        plugin_id="vnpy",
-        name="vn.py",
-        category=CATEGORY_AGENT,
-        description=(
-            "交易框架。因其自身包含下单与账户能力，harness 只把它作为 companion 记录，"
-            "永不挂载为运行时插件。"
-        ),
-        repo="https://github.com/vnpy/vnpy",
-        install=install_spec(INSTALL_GIT, repo="https://github.com/vnpy/vnpy", module="vnpy"),
-        license_name="MIT",
-        level=LEVEL_COMPANION,
-        capabilities=["market_context"],
-        requires_credentials=True,
-        network_required=True,
-        execution_risk="high",
-        boundary=(
-            "本项目自带下单与账户能力，因此 harness 绝不安装、挂载或调用它；"
-            "仅作为对照参考记录在册。执行禁令绝对不变。"
-        ),
     ),
 )
 

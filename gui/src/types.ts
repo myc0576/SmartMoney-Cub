@@ -41,6 +41,9 @@ export interface RoundTrip {
 }
 
 export interface OpenPosition {
+  currency?: string;
+  account_id?: string;
+  position_side?: 'LONG' | 'SHORT';
   position_id: string;
   symbol: string;
   name: string;
@@ -367,6 +370,16 @@ export interface MarketProvider {
   requires_key: boolean;
   source_quality: string;
   description: string;
+  /**
+   * Whether this source can actually be reached from here.
+   *
+   * The catalogue lists sources that are configured, not sources that answer:
+   * two of the four built-in ones are unreachable from some networks. A picker
+   * that offers them as ordinary choices turns a network fact into a mystery
+   * failure, so the state and its reason travel with the entry.
+   */
+  availability?: 'available' | 'unavailable' | 'restricted' | string;
+  availability_reason?: string;
 }
 
 export interface MarketProviders extends SafetyEnvelope {
@@ -407,6 +420,10 @@ export interface MarketBars extends SafetyEnvelope {
  * execution has no exit, and a partially reviewed row has no tags.
  */
 export interface TradeLogEntry {
+  currency?: string;
+  instrument_id?: string;
+  position_side?: 'LONG' | 'SHORT';
+  fees_known?: boolean;
   trade_id?: string;
   round_trip_id?: string;
   account_id?: string;
@@ -429,6 +446,15 @@ export interface TradeLogEntry {
   regime?: string;
   tags?: string[];
   thesis?: string;
+  /**
+   * The invalidation price the position was opened with.
+   *
+   * The journal stores it per fill and the round trip carries the first leg's
+   * value forward, so it is often null on old rows. A null here is a fact about
+   * the record, not a zero: the plan-versus-actual panel says 未记录 rather than
+   * printing a stop the trader never set.
+   */
+  invalidation_price?: number | null;
   created_at?: string;
   mae?: number | null;
   mfe?: number | null;
@@ -594,6 +620,10 @@ export interface Playbook {
   tags: string[];
   created_at: string;
   updated_at: string;
+  dimension?: string;
+  key?: string;
+  defined?: boolean;
+  has_journal_data?: boolean;
 }
 
 export interface Playbooks extends SafetyEnvelope {
@@ -660,34 +690,204 @@ export interface BacktestRunDetail extends SafetyEnvelope {
   bar_count?: number;
   initial_cash?: number;
   final_equity?: number;
+  /** Older persisted runs contain a spec, metrics and curve but no trade ledger. */
+  historical_summary?: boolean;
 }
 
 export interface ReplaySession extends SafetyEnvelope {
   session_id: string;
+  mode: 'review' | 'training';
+  parent_session_id?: string | null;
+  account_id?: string | null;
   symbol: string;
   interval: string;
   provider: string;
-  start_time: string;
-  end_time: string;
+  provider_id?: string;
+  source?: string;
+  source_quality?: string;
+  fetched_at?: string;
+  historical_evidence?: string;
+  warnings?: string[];
+  provenance?: Record<string, unknown>;
+  start_time?: string;
+  end_time?: string;
   cursor: number;
   bar_count: number;
   bars: MarketBar[];
   markers: ReplayMarker[];
-  notes: string;
+  unmatched_marker_count?: number;
+  training?: ReplayTraining | null;
+  notes?: string;
   created_at: string;
 }
 
 /** A trade annotation drawn on the replay chart. */
 export interface ReplayMarker {
   marker_id?: string;
+  trade_id?: string;
+  index?: number;
   time: string;
   price: number;
   kind: string;
+  side?: string;
+  quantity?: number;
+  account_id?: string;
+  time_precision?: string;
   label?: string;
+}
+
+export interface ReplayTraining {
+  branch_id: string;
+  initial_cash: number;
+  cash: number;
+  position?: number;
+  positions: { symbol: string; quantity: number }[];
+  orders: {
+    order_id: string;
+    submitted_index: number;
+    side: string;
+    quantity: number;
+    status: string;
+    reason?: string;
+  }[];
+  fills: {
+    order_id: string;
+    index: number;
+    time: string;
+    side: string;
+    quantity: number;
+    price: number;
+    simulated_only: true;
+  }[];
+  currency: string;
+  fill_policy: string;
+  cost_model: string;
+  simulated_only: true;
 }
 
 export interface ReplaySessions extends SafetyEnvelope {
   sessions: ReplaySession[];
+}
+
+// ---- read-only connections ----------------------------------------------
+
+export interface ConnectionManifest {
+  schema: string;
+  provider_id: string;
+  name: string;
+  description: string;
+  official_links: { label: string; url: string }[];
+  auth: {
+    mode: string;
+    fields: Array<string | { name: string; label?: string; required?: boolean; secret?: boolean }>;
+    secret_storage: string;
+    read_only: boolean;
+    scope: string;
+    notes?: string;
+  };
+  supported_assets: string[];
+  capabilities: string[];
+  history: { start?: string | null; end?: string | null; precision?: string; timezones?: string[] };
+  validation: { status: string; checked_at?: string | null; issues: string[] };
+  safety: string;
+}
+
+export interface ConnectionAccount {
+  account_id: string;
+  display_name: string;
+  provider: string;
+  asset_class: string;
+  currency: string;
+  permissions: string[];
+  status: string;
+}
+
+export interface ConnectionSyncResult {
+  provider_id: string;
+  cursor?: string | null;
+  events: number | NormalizedEvent[];
+  positions: number | ConnectionPosition[];
+  duplicate_count: number;
+  updated_count: number;
+  partial: boolean;
+  errors: string[];
+  attempts: number;
+  disconnected: boolean;
+  safety: string;
+}
+
+export interface NormalizedEvent {
+  external_id: string;
+  revision?: string | number;
+  account_id: string;
+  asset: string;
+  symbol: string;
+  event_type: string;
+  side?: string;
+  quantity?: number;
+  price?: number;
+  currency?: string;
+  fee?: number;
+  occurred_at?: string;
+  available_at?: string;
+  data_quality: string;
+  source: string;
+  metadata?: Record<string, unknown>;
+  safety: string;
+}
+
+export interface ConnectionPosition {
+  account_id: string;
+  asset: string;
+  symbol: string;
+  quantity: number;
+  average_price?: number;
+  market_value?: number;
+  currency: string;
+  as_of?: string;
+  data_quality: string;
+  source: string;
+  safety: string;
+}
+
+export interface ConnectionsResponse extends SafetyEnvelope {
+  manifests: ConnectionManifest[];
+  accounts: ConnectionAccount[];
+  sync?: ConnectionSyncResult[];
+  statuses?: ConnectionStatus[];
+}
+
+export interface ConnectionStatus {
+  partial?: boolean;
+  errors?: string[];
+  watch_active?: boolean;
+  remote_revocation_pending?: boolean;
+  provider_id: string;
+  connected: boolean;
+  revoked: boolean;
+  credential_fields: string[];
+  credential_values: Record<string, string>;
+  cursor?: string | null;
+  event_count?: number;
+  scope?: {
+    allowed?: boolean;
+    status?: 'missing' | 'unverified' | 'verified' | 'denied' | string;
+    required?: string[];
+    granted?: string[];
+    missing?: string[];
+    issues?: string[];
+    safety?: string;
+  } | null;
+  safety: string;
+}
+
+export interface Preferences {
+  locale: string;
+  timezone: string;
+  currency: string;
+  number_format: string;
+  color_scheme: 'cn' | 'intl';
+  theme: 'light' | 'dark';
 }
 
 /* ---- plugin marketplace (real install channel) ---------------------- */
@@ -733,6 +933,9 @@ export interface PluginMarketEntry {
   level: string;
   capabilities: string[];
   requires_credentials: boolean;
+  credential_mode?: 'none' | 'managed_local' | 'external_only';
+  credential_setup_url?: string | null;
+  credential_requirements?: PluginCredentialRequirement[];
   network_required: boolean;
   execution_risk: string;
   boundary: string;
@@ -747,6 +950,15 @@ export interface PluginMarketEntry {
   health?: string | null;
   last_error?: string | null;
   updated_at?: string | null;
+}
+
+export interface PluginCredentialRequirement {
+  name: string;
+  label: string;
+  obtain_url: string;
+  help: string;
+  required: boolean;
+  scopes: string[];
 }
 
 export interface PluginMarketResponse extends SafetyEnvelope {
@@ -1010,4 +1222,132 @@ export interface BenchmarkLatestResponse extends SafetyEnvelope {
   systems?: BenchmarkSystem[];
   images?: BenchmarkImageItem[];
   image_urls?: Record<string, string>;
+}
+
+// ---- insight: repeated mistakes and the edges that pay ----------------
+
+/** How one mistake cluster was found: the field, the comparison, and the value. */
+export interface InsightEvidence {
+  field: string;
+  comparator: string;
+  threshold: string | number;
+  observed: string | number;
+}
+
+/**
+ * The non-silent observation envelope every insight row carries.
+ *
+ * The repository contract requires an observation to state how it would be
+ * invalidated, when it expires, where the data came from, when that data was
+ * available, and how good it is. A row that cannot answer one of these says so
+ * instead of leaving the field out, because a missing answer reads as "none".
+ */
+export interface InsightObservation {
+  invalidation: string;
+  time_stop: string;
+  give_up: string;
+  data_source: string;
+  available_at: string;
+  data_quality: string;
+}
+
+export interface MistakeCluster extends InsightObservation {
+  cluster_id: string;
+  kind: string;
+  /** The readable name for this trigger. */
+  label: string;
+  /**
+   * The fills that triggered the cluster. These are the evidence: the trigger
+   * fires on an execution, so the execution is what proves it fired.
+   */
+  trade_ids: string[];
+  /**
+   * The closed round trips those fills belong to.
+   *
+   * Sent beside the fill ids because the two answer different questions: the
+   * fills are why the cluster exists, and the round trip is what the detail
+   * route can open. A caller that navigated by fill id would ask for a record
+   * the route cannot fetch.
+   */
+  round_trip_ids?: string[];
+  count: number;
+  net_pnl: number;
+  avg_return_pct: number;
+  first_at: string;
+  last_at: string;
+  evidence: InsightEvidence[];
+}
+
+export interface InsightTrigger {
+  kind: string;
+  label: string;
+  matched: number;
+  skipped_reason?: string;
+}
+
+export interface MistakeResponse extends SafetyEnvelope {
+  status: string;
+  count: number;
+  rows: MistakeCluster[];
+  /**
+   * Which deterministic triggers were evaluated, including the ones that found
+   * nothing. A trigger that produced no cluster is a fact about the journal, and
+   * a reader who cannot see it cannot tell a clean book from an unchecked one.
+   */
+  triggers?: InsightTrigger[];
+  clusters?: MistakeCluster[];
+}
+
+export interface EdgeRow extends InsightObservation {
+  edge_id: string;
+  dimension: string;
+  key: string;
+  name?: string;
+  trade_count: number;
+  win_rate: number;
+  net_pnl: number;
+  avg_return_pct: number;
+  profit_factor: number | null;
+  small_sample: boolean;
+}
+
+export interface EdgeResponse extends SafetyEnvelope {
+  status: string;
+  count: number;
+  rows: EdgeRow[];
+  dimensions?: string[];
+  edges?: EdgeRow[];
+}
+
+export interface PatternCandidate extends InsightObservation {
+  pattern_id: string;
+  round_trip_id?: string;
+  account_id?: string;
+  axis: string;
+  label: string;
+  original_label?: string;
+  status: 'observed' | 'inferred' | 'confirmed' | 'rejected' | string;
+  confidence: string;
+  evidence: Array<Record<string, unknown>>;
+  trade_ids: string[];
+  missing_data: string[];
+  version: string;
+  decision?: { state?: string; label?: string; playbook_id?: string | null; updated_at?: string };
+}
+
+export interface PatternProfile {
+  sample_count: number;
+  account_count: number;
+  axes: Record<string, { counts: Record<string, number>; dominant?: string | null; label?: string }>;
+  data_quality: string;
+  limitations: string[];
+}
+
+export interface InsightPatternsResponse extends SafetyEnvelope {
+  status: string;
+  profile: PatternProfile;
+  candidates: PatternCandidate[];
+  version: string;
+  filters?: Record<string, unknown>;
+  truncated?: boolean;
 }

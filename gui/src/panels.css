@@ -1,0 +1,243 @@
+/*
+ * Panels that the navigation convergence introduced.
+ *
+ * This file exists rather than more rules in styles.css because styles.css is
+ * being reshaped in the same change: the design-token pass rewrites its panel
+ * and badge rules, and two writers on one sheet is how a rule silently wins over
+ * a newer one. The classes here are new names, so they cannot collide, and they
+ * read the same tokens as everything else — no raw colour values.
+ */
+
+/* The secondary tab row inside a page (洞察, 策略实验室, 演练). It is a row of
+   buttons rather than <select> so the options stay visible and clickable in one
+   gesture; aria-selected carries the state a screen reader needs. */
+.subnav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.subnav-item {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.subnav-item:hover { color: var(--text); background: var(--panel-2); }
+
+.subnav-item.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+/* Settings sits below the working groups in the sidebar. The rule keeps it
+   pinned to the bottom of the nav column so it does not drift with the groups
+   above it. */
+.nav-group-foot {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* A mistake cluster. It is a panel that carries its own evidence, so it is
+   bordered once and never nests another panel inside. */
+.insight-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--panel);
+  padding: 12px 14px;
+}
+
+/* A chip that does something. The default .chip is a label; these open a trade
+   or reveal the rest of a list, so they need the affordances of a control. */
+.chip-action {
+  cursor: pointer;
+  color: var(--accent);
+  border-color: var(--color-border-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.chip-action:hover { background: var(--panel-2); }
+
+/* The observation envelope under a cluster: how it was found, when it expires,
+   where the data came from. Laid out as a definition list because each row is a
+   label and its answer, and the answers must stay readable as sentences rather
+   than being truncated into a table cell. */
+.observation {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.observation > div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.observation dt { color: var(--muted); margin: 0; }
+
+.observation dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+
+/* The drawer holds a chart and three blocks of text, so it needs more room than
+   the narrow record panel it grew out of. The clamp keeps it inside a small
+   window instead of overflowing. */
+.trade-drawer-wide { width: min(760px, 92vw); }
+
+/* ---- the copilot head -------------------------------------------------
+   The state of the assistant before anything is asked: which page, which
+   trade, how much has been read, and the three questions worth asking. It is
+   an inset surface rather than a panel so it does not compete with the
+   transcript below it. */
+.copilot-head {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--panel-2);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.copilot-context { line-height: 1.6; overflow-wrap: anywhere; }
+
+/* ---- agent activity steps --------------------------------------------
+   A vertical list of what the assistant did. The left rail is the timeline;
+   each dot is one step's state. It reads top to bottom the way the work
+   happened, which is why it is an ordered list and not a set of cards. */
+.steps { list-style: none; margin: 0 0 10px; padding: 0; }
+
+.step {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 8px;
+  padding: 5px 0 5px 0;
+  position: relative;
+  font-size: 12px;
+}
+
+/* The connector between two steps, drawn behind the dots. The last step has
+   no line below it, which is what stops the rail from trailing off. */
+.step + .step::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: -6px;
+  height: 12px;
+  width: 1px;
+  background: var(--border);
+}
+
+.step-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  justify-self: center;
+}
+
+.step.running .step-dot {
+  background: var(--accent);
+  animation: step-pulse 1.4s var(--motion-ease) infinite;
+}
+
+.step.failed .step-dot { background: var(--neg); }
+
+@keyframes step-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+.step-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; min-width: 0; }
+.step-title { font-weight: 600; }
+.step-summary { color: var(--muted); overflow-wrap: anywhere; }
+
+.step-detail { flex-basis: 100%; min-width: 0; }
+.step-detail > summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.step-detail pre {
+  margin: 6px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Motion is a nicety here, not information: a reader who asked the system to
+   stop animating still gets the dot and the state word. */
+@media (prefers-reduced-motion: reduce) {
+  .step.running .step-dot { animation: none; }
+}
+
+/* Today's three action cards. A card is one thing to do, so it is a column with
+   a title, a sentence of evidence, and one action -- not a panel with a table. */
+.today-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+/* When the assistant is open the page loses about 400px. The cards collapse to
+   two columns there and to one on a narrow window, rather than each keeping a
+   third of a shrinking row and overflowing. */
+@media (max-width: 1420px) { .today-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .today-cards { grid-template-columns: minmax(0, 1fr); } }
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  background: var(--panel);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.action-kicker { color: var(--muted); font-size: 11px; letter-spacing: 0.02em; }
+.action-title { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.action-body { color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+
+/* The action sits at the bottom so the three cards' buttons line up however
+   long their sentences are. */
+.action-go { align-self: flex-start; margin-top: auto; font-size: 11px; }
+
+.today-head { line-height: 1.8; }
+.today-line strong { font-weight: 600; }
+
+/* The model seat, collapsed to one line. It opens into the picker rather than
+   occupying the composer: the panel asks what to review, not which model to
+   review it with. */
+.assistant-seat { min-width: 0; }
+.assistant-seat > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-seat > summary::-webkit-details-marker { display: none; }
+.assistant-seat[open] > summary { color: var(--text); border-color: var(--color-border-strong); }
+.assistant-seat-body {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  padding: 10px;
+  background: var(--panel-2);
+}
+

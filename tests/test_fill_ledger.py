@@ -55,7 +55,7 @@ def test_simple_round_trip_is_matched_across_days() -> None:
 
 
 def test_t_plus_one_same_day_sell_is_blocked() -> None:
-    ledger = build_fill_ledger([_buy("000001", "2026-09-01", 10.0, 1000), _sell("000001", "2026-09-01", 11.0, 1000)])
+    ledger = build_fill_ledger([_buy("000001", "2026-09-01", 10.0, 1000), _sell("000001", "2026-09-01", 11.0, 1000)], market="CN-A")
     assert ledger["status"] == "needs_review"
     assert "t_plus_one_violation" in _issue_codes(ledger)
     assert ledger["counts"]["round_trips"] == 0
@@ -185,7 +185,7 @@ def test_limit_board_and_suspension_markers_are_surfaced() -> None:
 
 
 def test_fees_are_estimated_when_not_declared_and_used_when_declared() -> None:
-    estimated = build_fill_ledger([_buy("600111", "2026-09-01", 10.0, 1000)])
+    estimated = build_fill_ledger([_buy("600111", "2026-09-01", 10.0, 1000)], market="CN-A")
     assert "fees_estimated" in _issue_codes(estimated)
 
     declared = build_fill_ledger(
@@ -211,7 +211,7 @@ def test_fees_reduce_realised_return() -> None:
         [
             _buy("600111", "2026-09-01", 10.0, 1000),
             _sell("600111", "2026-09-02", 11.0, 1000),
-        ]
+        ], market="CN-A"
     )
     assert with_fees["round_trips"][0]["net_pnl"] < gross["round_trips"][0]["net_pnl"]
 
@@ -282,4 +282,85 @@ def test_empty_input_yields_empty_ledger() -> None:
     assert ledger["status"] == "ok"
     assert ledger["counts"]["fills"] == 0
     assert ledger["round_trips"] == []
+
+
+def test_fractional_quantity_and_global_instrument_metadata_round_trip() -> None:
+    ledger = build_fill_ledger(
+        [{"date": "2026-09-01", "symbol": "TOY-ETF", "side": "BUY", "price": 10, "quantity": 0.25,
+          "currency": "USD", "multiplier": 100, "time_precision": "millisecond"}],
+        market="US",
+    )
+    fill = ledger["fills"][0]
+    assert fill["quantity"] == 0.25
+    assert fill["currency"] == "USD"
+    assert fill["multiplier"] == 100.0
+    assert fill["time_precision"] == "millisecond"
+    assert fill["trade_time"] == ""
     assert ledger["safety"] == SAFETY_DECLARATION
+
+
+def test_non_cn_policy_allows_same_day_fractional_close() -> None:
+    ledger = build_fill_ledger(
+        [_buy("TOY-ETF", "2026-09-01", 10, 0.25), _sell("TOY-ETF", "2026-09-01", 11, 0.25)],
+        market="US", market_policy="none",
+    )
+    assert ledger["status"] == "ok"
+    assert ledger["round_trips"][0]["quantity"] == 0.25
+
+
+def test_account_and_currency_scope_are_not_cross_matched() -> None:
+    ledger = build_fill_ledger([
+        _buy("TOY", "2026-09-01", 10, 1, account_id="A", currency="USD"),
+        _sell("TOY", "2026-09-02", 11, 1, account_id="B", currency="USD"),
+    ], market="US", market_policy="none")
+    assert "sell_without_position" in _issue_codes(ledger)
+
+
+def test_identical_economic_fills_in_distinct_accounts_are_retained() -> None:
+    ledger = build_fill_ledger([
+        _buy("TOY", "2026-09-01", 10, 1, account_id="A", currency="USD"),
+        _buy("TOY", "2026-09-01", 10, 1, account_id="B", currency="USD"),
+    ], market="US", market_policy="none")
+    assert ledger["counts"]["fills"] == 2
+    assert {(row["account_id"], row["quantity"]) for row in ledger["open_positions"]} == {
+        ("A", 1.0), ("B", 1.0)
+    }
+    assert len({row["position_id"] for row in ledger["open_positions"]}) == 2
+
+
+def test_explicit_fractional_short_open_and_cover_uses_multiplier() -> None:
+    ledger = build_fill_ledger([
+        _sell("FUT-X", "2026-09-01", 100, 0.5, side="SELL_OPEN", time="09:00:00", instrument_id="FUT-X-SEP", account_id="A", currency="USD", multiplier=10, fee=0),
+        _buy("FUT-X", "2026-09-01", 90, 0.5, side="BUY_CLOSE", instrument_id="FUT-X-SEP", account_id="A", currency="USD", multiplier=10, fee=0),
+    ], market="FUTURES", allow_shorts=True)
+    assert ledger["status"] == "ok"
+    trip = ledger["round_trips"][0]
+    assert trip["position_side"] == "SHORT"
+    assert trip["quantity"] == 0.5
+    assert trip["multiplier"] == 10
+    assert trip["gross_pnl"] == 50
+    assert ledger["open_positions"] == []
+
+
+def test_partial_short_cover_keeps_negative_signed_position_then_closes() -> None:
+    ledger = build_fill_ledger([
+        _sell("FUT-X", "2026-09-01", 100, 1.5, side="SELL_OPEN", time="09:00:00", account_id="A", currency="USD", multiplier=10, fee=0),
+        _buy("FUT-X", "2026-09-01", 90, 0.5, side="BUY_CLOSE", account_id="A", currency="USD", multiplier=10, fee=0),
+    ], market="FUTURES", allow_shorts=True)
+    assert ledger["open_positions"][0]["position_side"] == "SHORT"
+    assert ledger["open_positions"][0]["quantity"] == -1.0
+
+
+def test_short_cover_before_open_is_not_future_matched() -> None:
+    ledger = build_fill_ledger([
+        _buy("FUT-X", "2026-09-01", 90, 0.5, side="BUY_CLOSE", time="09:00:00", account_id="A", currency="USD", multiplier=10, fee=0),
+        _sell("FUT-X", "2026-09-01", 100, 0.5, side="SELL_OPEN", time="09:40:00", account_id="A", currency="USD", multiplier=10, fee=0),
+    ], market="FUTURES", allow_shorts=True)
+    assert "sell_without_position" in _issue_codes(ledger)
+    assert ledger["round_trips"] == []
+
+
+def test_unknown_market_does_not_apply_cn_t_plus_one() -> None:
+    ledger = build_fill_ledger([_buy("TOY", "2026-09-01", 10, 1), _sell("TOY", "2026-09-01", 11, 1)], market="unknown")
+    assert "t_plus_one_violation" not in _issue_codes(ledger)
+    assert ledger["counts"]["round_trips"] == 1

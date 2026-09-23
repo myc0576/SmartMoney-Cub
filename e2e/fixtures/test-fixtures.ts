@@ -234,9 +234,19 @@ const PLUGIN_MARKET_ENTRIES = [
     mounted: true,
     health: 'healthy',
     last_error: null,
-    updated_at: '2026-09-21T10:00:00+08:00',
+  updated_at: '2026-09-21T10:00:00+08:00',
   },
 ];
+
+/**
+ * The last question sent to the assistant, held across the turn and the reload.
+ *
+ * The panel posts a question, streams the answer, then re-reads the transcript
+ * from the server. A mock that forgets the question between those two calls makes
+ * the reload erase what the test just watched the page do, so the question is
+ * remembered here and returned by the detail call.
+ */
+let lastTurnText = '';
 
 export const pluginMarketFixture = {
   entries: PLUGIN_MARKET_ENTRIES,
@@ -347,12 +357,89 @@ export const test = base.extend<CustomFixtures>({
             }),
           });
         } else if (url.includes('/api/assistant/sessions')) {
+          // Creating a session is a POST to the same path as the list, and the
+          // two answer different shapes. The mock used to return the list body
+          // for both, so the panel's create call read session_id off an object
+          // that has none -- which surfaced as "无法新建会话" rather than as the
+          // fixture gap it was.
+          const method = route.request().method();
+          // The stream path is /messages; /resume is the retry path for a stream
+          // that dropped, and answers the same shape.
+          const turn = /\/api\/assistant\/sessions\/[^/]+\/(messages|resume)/.test(url);
+          const detail = !turn && method === 'GET'
+            && /\/api\/assistant\/sessions\/[^?/]+(\?.*)?$/.test(url);
+          if (turn) {
+            // The turn is a Server-Sent Events stream, not JSON. Answering it with
+            // a JSON body made the reader parse zero frames and the panel then
+            // reload the transcript from the detail call, which the mock was also
+            // answering with the session list -- so a question a test had just
+            // asked disappeared. Both shapes are answered here now.
+            const posted = route.request().postDataJSON() || {};
+            lastTurnText = String(posted.text || '');
+            const frames = [
+              { kind: 'turn_started', safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE' },
+              { kind: 'delta', text: '已读取台账，正在整理。' },
+              { kind: 'turn_completed', safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE' },
+              { kind: 'done', safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE' },
+            ];
+            await route.fulfill({
+              status: 200,
+              contentType: 'text/event-stream',
+              body: frames.map((frame) => 'data: ' + JSON.stringify(frame) + '\n\n').join(''),
+            });
+            return;
+          }
+          if (detail) {
+            // The transcript the store would hold: the question that was asked and
+            // the answer that came back, which is what the panel re-reads after a
+            // turn finishes.
+            await route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                session: {
+                  session_id: 'e2e-session-1',
+                  title: lastTurnText.slice(0, 18) || 'e2e',
+                  status: 'active',
+                  provider_id: 'alphatech',
+                  model: '',
+                  reasoning: 'off',
+                },
+                events: lastTurnText
+                  ? [
+                      {
+                        event_id: 1, seq: 1, kind: 'user_message', role: 'user',
+                        payload: { text: lastTurnText }, created_at: '2026-01-01T00:00:00+00:00',
+                      },
+                      {
+                        event_id: 2, seq: 2, kind: 'assistant_message', role: 'assistant',
+                        payload: { text: '已读取台账，正在整理。' }, created_at: '2026-01-01T00:00:01+00:00',
+                      },
+                    ]
+                  : [],
+                safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE',
+              }),
+            });
+            return;
+          }
+          const creatingSession = method === 'POST';
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({
-              sessions: [],
-            }),
+            body: JSON.stringify(creatingSession
+              ? {
+                  session: {
+                    session_id: 'e2e-session-1',
+                    title: 'e2e',
+                    status: 'active',
+                    provider_id: 'alphatech',
+                    model: '',
+                    reasoning: 'off',
+                    created_at: '2026-01-01T00:00:00+00:00',
+                  },
+                  safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE',
+                }
+              : { sessions: [] }),
           });
         } else if (url.includes('/api/trader/health')) {
           await route.fulfill({
@@ -369,7 +456,41 @@ export const test = base.extend<CustomFixtures>({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
+              // A routable seat, because the assistant refuses to send without
+              // one -- and it is right to. The panel gates the composer on this
+              // meta, so a fixture that omits providers tests the refusal path in
+              // every spec that expects a question to go through, which is how a
+              // missing provider looked like a missing feature.
+              app: 'smartmoney-cub-workbench',
+              version: '1.0.0',
               safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE',
+              redaction_policy: 'identity_and_size_redacted',
+              engine: {},
+              providers: [
+                {
+                  provider_id: 'alphatech',
+                  label: 'AlphaTech API',
+                  protocol: 'openai',
+                  protocol_label: 'OpenAI 兼容',
+                  base_url: '',
+                  routing: 'direct',
+                  routable: true,
+                  available: true,
+                  models: [
+                    {
+                      id: 'e2e-model',
+                      label: 'E2E Model',
+                      reasoning_efforts: ['off', 'medium'],
+                      default_reasoning: 'off',
+                    },
+                  ],
+                },
+              ],
+              default_provider: 'alphatech',
+              default_model: 'e2e-model',
+              default_reasoning: 'off',
+              store_counts: {},
+              trend_color_scheme: 'cn',
               read_only: true,
               tenant: 'e2e-test',
               mode: 'offline',
@@ -507,4 +628,3 @@ export const test = base.extend<CustomFixtures>({
 });
 
 export { expect };
-

@@ -85,6 +85,9 @@ def _synthetic_fills(trades: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]
                 "fill_id": f"BT-{index}-BUY",
                 "symbol": symbol,
                 "name": symbol,
+                # Internal simulation units, never inferred USD/CNY. Every
+                # price in this one-instrument run uses the same model unit.
+                "currency": "SIM",
                 "side": "BUY",
                 "trade_date": _date_text(entry_day),
                 "trade_time": "09:30:00",
@@ -98,6 +101,7 @@ def _synthetic_fills(trades: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]
                 "fill_id": f"BT-{index}-SELL",
                 "symbol": symbol,
                 "name": symbol,
+                "currency": "SIM",
                 "side": "SELL",
                 "trade_date": _date_text(exit_day),
                 "trade_time": "15:00:00",

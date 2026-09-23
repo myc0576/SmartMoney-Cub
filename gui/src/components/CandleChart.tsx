@@ -39,6 +39,8 @@ export interface ChartBar {
 
 export interface CandleChartProps {
   bars: ChartBar[];
+  /** Red-up/green-down for domestic markets, or green-up/red-down globally. */
+  scheme?: 'cn' | 'intl';
   width?: number;
   height?: number;
   markers?: CandleMarker[];
@@ -66,6 +68,7 @@ function number(value: unknown): number {
 
 export function CandleChart({
   bars,
+  scheme = 'cn',
   width = 720,
   height = 300,
   markers = [],
@@ -149,7 +152,7 @@ export function CandleChart({
           d={linePath}
           className={
             'chart-line ' +
-            (number(usable[usable.length - 1].close) >= number(usable[0].close) ? 'candle-up' : 'candle-down')
+            ((number(usable[usable.length - 1].close) >= number(usable[0].close)) === (scheme === 'cn') ? 'candle-up' : 'candle-down')
           }
           fill="none"
           strokeWidth="1.5"
@@ -158,16 +161,11 @@ export function CandleChart({
 
       {!line
         ? usable.map((bar, index) => {
-            // The candle colour is fixed: rising red, falling green, the A-share
-            // convention and this product's default. The journal's red-up /
-            // green-up toggle is deliberately not applied here — the chart is a
-            // pure function of its props, and threading a display preference
-            // through would re-render every series on a preference change.
             const rising = number(bar.close) >= number(bar.open);
             // Colours come from classes, not presentation attributes:
             // `stroke="var(--pos)"` is not a value the SVG attribute grammar
             // accepts, while a class resolves through the cascade everywhere.
-            const toneClass = rising ? 'candle-up' : 'candle-down';
+            const toneClass = rising === (scheme === 'cn') ? 'candle-up' : 'candle-down';
             const bodyTop = toY(Math.max(number(bar.open), number(bar.close)));
             const bodyBottom = toY(Math.min(number(bar.open), number(bar.close)));
             const centerX = toX(index);

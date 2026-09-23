@@ -4,7 +4,7 @@
 # Starts the product, seeds it with toy data, drives every view in Chromium, and
 # writes screenshots plus report.json to artifacts/visual/. Exits non-zero if any
 # view fails to open, overflows horizontally, or logs a console error.
-set -uo pipefail
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -18,8 +18,8 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 3
 fi
 
-STATE_DIR="$ROOT/artifacts/visual/tmp-state"
-mkdir -p "$STATE_DIR" "$ROOT/artifacts/visual"
+mkdir -p "$ROOT/artifacts/visual"
+STATE_DIR="$(mktemp -d "$ROOT/artifacts/visual/toy-state.XXXXXX")"
 
 "$PYTHON_BIN" -m smartmoney_cub_harness.cli trader serve \
   --port "$PORT" --no-browser --state-dir "$STATE_DIR" > "$ROOT/artifacts/visual/server.log" 2>&1 &
@@ -45,6 +45,6 @@ curl -fsS -X POST "http://127.0.0.1:$PORT/api/trader/trades/import" -H 'Content-
 # its empty state. Without one that view is a single short notice, which the
 # harness's size heuristic reads as a broken page.
 curl -fsS -X POST "http://127.0.0.1:$PORT/api/trader/playbooks" -H 'Content-Type: application/json' \
-  -d '{"name":"toy-breakout","description":"A toy plan used by the visual pass.","setup":"Breakout above the prior day high on rising volume.","entry_rules":"Wait for the close above the level.\nEnter on the next open.","exit_rules":"Exit below the breakout level.","risk_rules":"Risk no more than one percent per trade.","tags":["toy"]}' >/dev/null
+  -d '{"name":"toy-breakout","description":"A toy plan used by the visual pass.","setup":"Breakout above the prior day high on rising volume.","entry_rules":["Wait for the close above the level.","Enter on the next open."],"exit_rules":["Exit below the breakout level."],"risk_rules":["Risk no more than one percent per trade."],"tags":["toy"]}' >/dev/null
 
 node "$ROOT/scripts/visual-check.cjs" "http://127.0.0.1:$PORT" "$ROOT/artifacts/visual"

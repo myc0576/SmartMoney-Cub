@@ -19,6 +19,9 @@ drift in what a trade or a bar means.
 
 from __future__ import annotations
 
+import math
+from decimal import Decimal, InvalidOperation
+
 import json
 import uuid
 from dataclasses import dataclass, fields
@@ -92,7 +95,12 @@ def optional_text(value: Any) -> str:
 
 def require_float(value: Any, field: str) -> float:
     try:
-        return float(value)
+        if isinstance(value, bool):
+            raise ValueError("boolean is not a number")
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("nonfinite number")
+        return number
     except (TypeError, ValueError) as exc:
         raise StoreError(f"{field} must be a number, got {value!r}") from exc
 
@@ -101,6 +109,35 @@ def optional_float(value: Any, field: str) -> float | None:
     if value is None or value == "":
         return None
     return require_float(value, field)
+
+
+def preserve_decimal_sources(raw: Mapping[str, Any], normalized: dict[str, Any]) -> None:
+    """Keep source decimals in JSON alongside legacy numeric SQL columns.
+
+    Additive and backwards compatible for both storage engines; old rows cannot
+    recover digits already lost, and are explicitly marked legacy precision.
+    """
+    exact = {}
+    aliases = {"quantity": "qty", "fee": "commission"}
+    for key in ("price", "quantity", "fee", "multiplier", "invalidation_price"):
+        value = raw.get(key + "_exact")
+        if value is None:
+            value = raw.get(key, raw.get(aliases.get(key, "")))
+        if value is None or value == "":
+            exact[key + "_exact"] = "1" if key == "multiplier" else None
+            continue
+        try:
+            parsed = Decimal(str(value))
+            if isinstance(value, bool) or not parsed.is_finite():
+                raise ValueError()
+        except (InvalidOperation, ValueError):
+            raise StoreError(key + " must be a finite decimal") from None
+        if key in ("price", "quantity", "multiplier") and parsed <= 0:
+            raise StoreError(key + " must be positive")
+        exact[key + "_exact"] = format(parsed, "f")
+        normalized[key] = float(parsed)
+    normalized["provenance"] = {**normalized["provenance"], "decimal_sources": exact}
+    normalized["_decimal_identity"] = exact
 
 
 def encode_json(value: Any, default: Any) -> str:
@@ -172,7 +209,7 @@ class AccountRecord(Row):
             account_id=str(row["account_id"]),
             name=str(row["name"] or ""),
             broker=str(row["broker"] or ""),
-            currency=str(row["currency"] or "CNY"),
+            currency=str(row["currency"] or "UNKNOWN"),
             initial_balance=float(row["initial_balance"] or 0.0),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
@@ -187,16 +224,39 @@ class TradeRecord(Row):
     symbol: str
     name: str
     side: str
+    position_effect: str
+    instrument_id: str
+    market: str
+    timezone: str
+    source_record_id: str
+    source_batch_id: str
     trade_date: str
     trade_time: str
     price: float
     quantity: float
+    asset_class: str
+    currency: str
+    multiplier: float
+    source_precision: str
+    provenance: dict[str, Any]
     fee: float
     thesis: str
     invalidation_price: float | None
     regime: str
     tags: list[str]
     created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        result = super().to_dict()
+        exact = self.provenance.get("decimal_sources")
+        if isinstance(exact, dict):
+            result.update(exact)
+            result["fee_declared"] = exact.get("fee_exact") is not None
+            if exact.get("fee_exact") is None:
+                result["fee"] = None
+        else:
+            result["numeric_precision"] = "legacy_float"
+        return result
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> TradeRecord:
@@ -207,10 +267,21 @@ class TradeRecord(Row):
             symbol=str(row["symbol"]),
             name=str(row["name"] or ""),
             side=str(row["side"]),
+            position_effect=str(row["position_effect"] or "AUTO"),
+            instrument_id=str(row["instrument_id"] or ""),
+            market=str(row["market"] or ""),
+            timezone=str(row["timezone"] or ""),
+            source_record_id=str(row["source_record_id"] or ""),
+            source_batch_id=str(row["source_batch_id"] or ""),
             trade_date=str(row["trade_date"]),
             trade_time=str(row["trade_time"] or ""),
             price=float(row["price"]),
             quantity=float(row["quantity"]),
+            asset_class=str(row["asset_class"] or "unknown"),
+            currency=str(row["currency"] or ""),
+            multiplier=float(row["multiplier"] or 1.0),
+            source_precision=str(row["source_precision"] or "unknown"),
+            provenance=decode_json(row["provenance"], {}),
             fee=float(row["fee"] or 0.0),
             thesis=str(row["thesis"] or ""),
             invalidation_price=(
@@ -386,6 +457,21 @@ class TenantStore(Protocol):
         detail: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Append one tenant-scoped audit entry."""
+
+    def put_document(
+        self, user_id: str, kind: str, document_id: str, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Upsert one tenant-owned JSON document."""
+
+    def get_document(
+        self, user_id: str, kind: str, document_id: str
+    ) -> dict[str, Any] | None:
+        """Read one tenant-owned JSON document, or None."""
+
+    def list_documents(
+        self, user_id: str, kind: str, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """List one tenant's documents of a kind, newest first."""
 
     def update_trade_names(
         self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False

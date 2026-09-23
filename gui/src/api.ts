@@ -8,8 +8,16 @@ import type {
   BacktestRunDetail, BacktestRuns, MarketBars, MarketProviders, Playbook,
   Playbooks, ReplaySession, TraderAccounts, TraderBreakdown, TraderBreakdownMap,
   TraderCalendar, TradeLogDetail, TraderHealth, TraderImportResult, TraderMeta,
-  TraderSummaryEnvelope, TraderTrades,
+  TraderSummaryEnvelope, TraderTrades, MistakeResponse, EdgeResponse,
+  ConnectionsResponse, ConnectionManifest, ConnectionAccount, ConnectionStatus, Preferences, InsightPatternsResponse,
 } from './types';
+
+let activeAccountId = '';
+export function setTraderAccountScope(accountId: string): void { activeAccountId = accountId; }
+export function getTraderAccountScope(): string { return activeAccountId; }
+function withAccount(params: Record<string, unknown> = {}): Record<string, unknown> {
+  return activeAccountId && !params.account_id ? { ...params, account_id: activeAccountId } : params;
+}
 
 // Every call goes to the local service on 127.0.0.1. There is no telemetry and
 // no third-party endpoint anywhere in this file.
@@ -41,7 +49,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(text.slice(0, 300) || 'invalid response');
   }
   if (!response.ok) {
-    throw new Error(payload?.error || 'request failed: ' + response.status);
+    throw Object.assign(new Error(payload?.error || 'request failed: ' + response.status), { status: response.status });
   }
   return payload as T;
 }
@@ -62,7 +70,7 @@ export const trader = {
   trades: (params: {
     account_id?: string; symbol?: string; from?: string; to?: string;
     limit?: number; offset?: number;
-  } = {}) => request<TraderTrades>('/api/trader/trades?' + new URLSearchParams(clean(params)).toString()),
+  } = {}) => request<TraderTrades>('/api/trader/trades?' + new URLSearchParams(clean(withAccount(params))).toString()),
   trade: (roundTripId: string) =>
     request<TradeLogDetail>('/api/trader/trades/' + encodeURIComponent(roundTripId)),
   /** Writes fills into the tenant journal. Send rows, or raw CSV text. */
@@ -87,21 +95,36 @@ export const trader = {
   // directly, and the counts ride along on the returned object so the shell can
   // report how many executions the journal holds without a second request.
   summary: (params: { from?: string; to?: string; account_id?: string } = {}) =>
-    request<TraderSummaryEnvelope>('/api/trader/analytics/summary?' + new URLSearchParams(clean(params)).toString())
+    request<TraderSummaryEnvelope>('/api/trader/analytics/summary?' + new URLSearchParams(clean(withAccount(params))).toString())
       .then((envelope) => ({ ...envelope.summary, counts: envelope.counts })),
-  breakdown: (params: { dimension: string; from?: string; to?: string }) =>
-    request<TraderBreakdown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
+  breakdown: (params: { dimension: string; from?: string; to?: string; account_id?: string }) =>
+    request<unknown>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(withAccount(params))).toString()).then((payload) => normalizeBreakdown(payload, params.dimension)),
   // An unnamed dimension asks the same route for every group at once, which is
   // the shape the grouping view renders. The named form above stays for the
   // callers that want one dimension.
   // The refresh flag asks the server to reconcile symbol names against the live
   // quote feed before grouping, which is how a rename or an ST change lands.
   breakdownAll: (params: { from?: string; to?: string; refresh?: string } = {}) =>
-    request<TraderBreakdownMap>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(params)).toString()),
-  calendar: (params: { year: number; month: number }) =>
-    request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(params)).toString()),
+    request<TraderBreakdownMap>('/api/trader/analytics/breakdown?' + new URLSearchParams(clean(withAccount(params))).toString()),
+  calendar: (params: { year: number; month: number; account_id?: string }) =>
+    request<TraderCalendar>('/api/trader/calendar?' + new URLSearchParams(clean(withAccount(params))).toString()),
 
-  playbooks: () => request<Playbooks>('/api/trader/playbooks'),
+  playbooks: () => request<unknown>('/api/trader/playbooks?' + new URLSearchParams(clean(withAccount())).toString()).then(normalizePlaybooks),
+
+  // The two insight reads. Each returns clusters rather than rows of trades, and
+  // each names how it was found, so a caller can show the trigger beside the
+  // number instead of asking the reader to trust a list.
+  insightMistakes: (params: { from?: string; to?: string; account_id?: string } = {}) =>
+    request<unknown>('/api/trader/insight/mistakes?' + new URLSearchParams(clean(withAccount(params))).toString()).then(normalizeMistakes),
+  insightEdges: (params: { from?: string; to?: string; account_id?: string } = {}) =>
+    request<unknown>('/api/trader/insight/edges?' + new URLSearchParams(clean(withAccount(params))).toString()).then(normalizeEdges),
+  insightPatterns: (params: { from?: string; to?: string; account_id?: string } = {}) =>
+    request<InsightPatternsResponse>('/api/trader/insight/patterns?' + new URLSearchParams(clean(withAccount(params))).toString()),
+  decidePattern: (payload: { pattern_id: string; action: 'confirm' | 'reject' | 'rename'; label?: string; playbook_id?: string }) =>
+    request<{ status: string; decision: Record<string, unknown>; safety: string }>('/api/trader/insight/patterns/decisions', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+
   createPlaybook: (payload: Partial<Playbook> & { name: string }) =>
     request<{ playbook: Playbook; safety: string }>('/api/trader/playbooks', {
       method: 'POST', body: JSON.stringify(payload),
@@ -109,16 +132,19 @@ export const trader = {
 
   runBacktest: (payload: { strategy: Record<string, unknown>; provider?: string; symbol?: string; interval?: string;
     start?: string; end?: string; initial_cash?: number; fees_bps?: number }) =>
-    request<BacktestRunDetail>('/api/trader/backtest/run', { method: 'POST', body: JSON.stringify(payload) }),
+    request<BacktestEnvelope>('/api/trader/backtest/run', { method: 'POST', body: JSON.stringify(payload) }).then(normalizeBacktest),
   backtestRuns: () => request<BacktestRuns>('/api/trader/backtest/runs'),
   backtestRun: (runId: string) =>
-    request<BacktestRunDetail>('/api/trader/backtest/runs/' + encodeURIComponent(runId)),
+    request<BacktestEnvelope>('/api/trader/backtest/runs/' + encodeURIComponent(runId)).then(normalizeBacktest),
 
   createReplaySession: (payload: { provider: string; symbol: string; interval: string;
-    start?: string; end?: string; limit?: number; notes?: string }) =>
-    request<ReplaySession>('/api/trader/replay/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+    start?: string; end?: string; limit?: number; notes?: string; mode?: 'review' | 'training'; initial_cash?: number; account_id?: string; fills?: unknown[] }) =>
+    request<ReplayEnvelope>('/api/trader/replay/sessions', { method: 'POST', body: JSON.stringify(withAccount(payload)) }).then(normalizeReplay),
   replaySession: (sessionId: string) =>
-    request<ReplaySession>('/api/trader/replay/sessions/' + encodeURIComponent(sessionId)),
+    request<ReplayEnvelope>('/api/trader/replay/sessions/' + encodeURIComponent(sessionId)).then(normalizeReplay),
+  replaySessions: () => request<{ sessions: unknown[] }>('/api/trader/replay/sessions').then((payload) => ({ ...payload, sessions: payload.sessions.map((item) => normalizeReplay(item as ReplayEnvelope)) })),
+  replayAction: (sessionId: string, payload: Record<string, unknown>) =>
+    request<ReplayEnvelope>('/api/trader/replay/sessions/' + encodeURIComponent(sessionId) + '/actions', { method: 'POST', body: JSON.stringify(payload) }).then(normalizeReplay),
 };
 
 export const api = {
@@ -262,6 +288,34 @@ export const api = {
     }),
   benchmarkLatest: () => request<BenchmarkLatestResponse>('/api/benchmark/latest'),
 
+  // Connections are optional in the offline core. A 404 is intentionally left
+  // as an error so the UI can distinguish "not installed" from "no accounts".
+  connections: () => request<ConnectionsResponse>('/api/trader/connections'),
+  connectionManifests: () => request<{ manifests: ConnectionManifest[] }>('/api/trader/connections/manifests'),
+  connectionAccounts: () => request<{ accounts: ConnectionAccount[] }>('/api/trader/connections/accounts'),
+  connectAccount: (providerId: string, payload: { credentials?: Record<string, string>; config?: Record<string, unknown> }) =>
+    request<{ status: string; connection?: ConnectionStatus; scope?: ConnectionStatus['scope']; error?: string; safety: string }>(
+      '/api/trader/connections/' + encodeURIComponent(providerId) + '/connect',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  syncAccount: (providerId: string) =>
+    request<{ status: string; connection?: ConnectionStatus; imported_count?: number; updated_count?: number; partial?: boolean; errors?: string[]; safety: string }>(
+      '/api/trader/connections/' + encodeURIComponent(providerId) + '/sync',
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  disconnectAccount: (providerId: string) =>
+    request<{ status: string; connection?: ConnectionStatus; journal_preserved?: boolean; safety: string }>(
+      '/api/trader/connections/' + encodeURIComponent(providerId) + '/disconnect',
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  snaptradeOAuthStart: (redirectUri: string) =>
+    request<{ status: string; authorization_url: string; state: string; expires_in: number; safety: string }>(
+      '/api/trader/connections/snaptrade-personal-mcp/oauth/start',
+      { method: 'POST', body: JSON.stringify({ redirect_uri: redirectUri }) },
+    ),
+  preferences: () => request<{ preferences: Preferences; safety?: string }>('/api/preferences'),
+  updatePreferences: (preferences: Partial<Preferences>) => request<{ preferences: Preferences; safety?: string }>('/api/preferences', { method: 'POST', body: JSON.stringify(preferences) }),
+
   cancelTurn: (id: string) =>
     request<{ status: string; session: SessionSummary }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '/cancel',
@@ -279,6 +333,129 @@ function clean(params: Record<string, unknown>): Record<string, string> {
     if (value !== undefined && value !== null && value !== '') out[key] = String(value);
   }
   return out;
+}
+
+export type BacktestEnvelope = BacktestRunDetail | {
+  status?: string;
+  run_id?: string;
+  data?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  run?: Record<string, unknown>;
+  safety?: string;
+};
+
+export type ReplayEnvelope = ReplaySession | { status?: string; session?: Record<string, unknown>; frame?: Record<string, unknown> | null; safety?: string };
+
+function normalizeBacktest(raw: BacktestEnvelope): BacktestRunDetail {
+  const envelope = raw as Record<string, unknown>;
+  const source = (envelope.result || envelope.run || raw) as Record<string, unknown>;
+  const data = (envelope.data || {}) as Record<string, unknown>;
+  return {
+    ...(source as unknown as BacktestRunDetail),
+    run_id: String(source.run_id || envelope.run_id || ''),
+    symbol: String(source.symbol || data.symbol || ''),
+    interval: String(source.interval || data.interval || ''),
+    strategy_name: String(source.strategy_name || ''),
+    started_at: String(source.started_at || ''),
+    spec: (source.spec || {}) as Record<string, unknown>,
+    metrics: (source.metrics || {}) as Record<string, number | string | null>,
+    equity_curve: Array.isArray(source.equity_curve) ? source.equity_curve as BacktestRunDetail['equity_curve'] : [],
+    trades: Array.isArray(source.trades) ? source.trades as BacktestRunDetail['trades'] : [],
+    bar_count: Number(source.bar_count || data.bar_count || 0) || undefined,
+    initial_cash: Number(source.initial_cash || 0) || undefined,
+    final_equity: Number(source.final_equity || 0) || undefined,
+    safety: String(envelope.safety || source.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+    historical_summary: !('trades' in source) && Boolean(envelope.run),
+  };
+}
+
+function normalizeReplay(raw: ReplayEnvelope): ReplaySession {
+  const envelope = raw as Record<string, unknown>;
+  const source = (envelope.session || raw) as Record<string, unknown>;
+  const bars = Array.isArray(source.bars) ? source.bars : [];
+  const providerId = String(source.provider_id || source.provider || '');
+  return {
+    ...(source as unknown as ReplaySession),
+    session_id: String(source.session_id || ''),
+    mode: source.mode === 'training' ? 'training' : 'review',
+    symbol: String(source.symbol || ''),
+    interval: String(source.interval || ''),
+    provider: providerId,
+    provider_id: providerId,
+    source: String(source.source || ''),
+    cursor: Number(source.cursor ?? source.index ?? 0),
+    bar_count: Number(source.bar_count ?? source.frame_count ?? bars.length),
+    bars: bars as ReplaySession['bars'],
+    markers: Array.isArray(source.markers) ? source.markers as ReplaySession['markers'] : [],
+    warnings: Array.isArray(source.warnings) ? source.warnings as string[] : [],
+    created_at: String(source.created_at || ''),
+    safety: String(envelope.safety || source.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+  };
+}
+
+function normalizeMistakes(raw: unknown): MistakeResponse {
+  const envelope = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const rows = Array.isArray(envelope.rows) ? envelope.rows : Array.isArray(envelope.clusters) ? envelope.clusters : [];
+  return {
+    ...(envelope as unknown as MistakeResponse),
+    status: String(envelope.status || 'ok'),
+    count: rows.length,
+    rows: rows as MistakeResponse['rows'],
+    safety: String(envelope.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+  };
+}
+
+function normalizeEdges(raw: unknown): EdgeResponse {
+  const envelope = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const rows = Array.isArray(envelope.rows) ? envelope.rows : Array.isArray(envelope.edges) ? envelope.edges : [];
+  return {
+    ...(envelope as unknown as EdgeResponse),
+    status: String(envelope.status || 'ok'),
+    count: rows.length,
+    rows: rows as EdgeResponse['rows'],
+    safety: String(envelope.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+  };
+}
+
+function normalizePlaybooks(raw: unknown): Playbooks {
+  const envelope = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const list = Array.isArray(envelope.playbooks) ? envelope.playbooks : [];
+  const stats = (envelope.stats && typeof envelope.stats === 'object' ? envelope.stats : {}) as Record<string, unknown>;
+  return {
+    ...(envelope as unknown as Playbooks),
+    playbooks: list.map((item) => {
+      const row = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+      const rules = Array.isArray(row.rules) ? row.rules.map(String) : [];
+      const tags = Array.isArray(row.tags) ? row.tags.map(String) : [];
+      return {
+        ...(row as unknown as Playbook),
+        playbook_id: String(row.playbook_id || ''),
+        name: String(row.name || row.key || row.playbook_id || ''),
+        description: String(row.description || ''),
+        setup: String(row.setup || row.dimension || ''),
+        entry_rules: Array.isArray(row.entry_rules) ? row.entry_rules.map(String) : rules,
+        exit_rules: Array.isArray(row.exit_rules) ? row.exit_rules.map(String) : [],
+        risk_rules: Array.isArray(row.risk_rules) ? row.risk_rules.map(String) : [],
+        tags,
+        created_at: String(row.created_at || ''),
+        updated_at: String(row.updated_at || ''),
+      };
+    }),
+    stats: stats as Playbooks['stats'],
+    safety: String(envelope.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+  };
+}
+
+function normalizeBreakdown(raw: unknown, dimension: string): TraderBreakdown {
+  const envelope = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const grouped = (envelope.breakdown && typeof envelope.breakdown === 'object' ? envelope.breakdown : {}) as Record<string, unknown>;
+  const rows = Array.isArray(envelope.rows) ? envelope.rows : Array.isArray(grouped[dimension]) ? grouped[dimension] : [];
+  return {
+    ...(envelope as unknown as TraderBreakdown),
+    dimension: String(envelope.dimension || dimension),
+    rows: rows as TraderBreakdown['rows'],
+    safety: String(envelope.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'),
+  };
 }
 
 export interface StreamHandlers {

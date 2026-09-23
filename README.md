@@ -399,7 +399,6 @@ refused as future leakage.
 | TradingAgents | [https://github.com/TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) | `git clone --depth 1 https://github.com/TauricResearch/TradingAgents` | Apache-2.0 | 用户自备 LLM/API key 并在本仓库之外配置；harness 不保存、不收集、不上传密钥；其输出只能作为复盘证据，不得转成订单意图或执行计划。 |
 | UZI-Skill | [https://github.com/wbh604/UZI-Skill](https://github.com/wbh604/UZI-Skill) | `git clone --depth 1 https://github.com/wbh604/UZI-Skill` | unverified | 只能描述为推荐搭配与生态接入位；不得称为内置依赖，不得把结论变成买卖指令。 |
 | tick-stock-panel | [https://github.com/shy3130/tick-stock-panel](https://github.com/shy3130/tick-stock-panel) | `git clone --depth 1 https://github.com/shy3130/tick-stock-panel` | unverified | 只读行情/财务数据，输出仅作为复盘证据；不连接券商、不下单、不改账户。 |
-| vn.py | [https://github.com/vnpy/vnpy](https://github.com/vnpy/vnpy) | `git clone --depth 1 https://github.com/vnpy/vnpy` | MIT | 本项目自带下单与账户能力，因此 harness 绝不安装、挂载或调用它；仅作为对照参考记录在册。执行禁令绝对不变。 |
 
 ## Review Workspace and Share Pack
 

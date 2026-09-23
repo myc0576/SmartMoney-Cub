@@ -24,6 +24,8 @@ trusted:
 from __future__ import annotations
 
 import threading
+import hashlib
+import json
 from contextlib import contextmanager
 from typing import Any, Iterator, Mapping, Sequence
 
@@ -36,6 +38,7 @@ from smartmoney_cub_harness.trader.storage.base import (
     TradeRecord,
     UserRecord,
     encode_json,
+    decode_json,
     iter_statements,
     new_id,
     now_iso,
@@ -45,7 +48,9 @@ from smartmoney_cub_harness.trader.storage.base import (
     require_text,
     safety_envelope,
     schema_sql,
+    preserve_decimal_sources,
 )
+from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 DATABASE_URL_PREFIXES = ("postgres://", "postgresql://", "postgresql+psycopg://")
 
@@ -123,7 +128,7 @@ class PostgresTenantStore:
 
     @contextmanager
     def _transaction(self) -> Iterator[Any]:
-        """Run one write atomically, rolling back on any failure."""
+        """Finish one operation atomically, rolling back on any failure."""
         with self._lock:
             conn = self._connection()
             try:
@@ -145,13 +150,15 @@ class PostgresTenantStore:
         return resolved
 
     def _fetchall(self, sql: str, params: Sequence[Any]) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._connection().execute(sql, tuple(params)).fetchall()
+        # SELECT starts a transaction too. Release its table locks before another
+        # server instance runs schema migrations against the shared database.
+        with self._transaction() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
     def _fetchone(self, sql: str, params: Sequence[Any]) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._connection().execute(sql, tuple(params)).fetchone()
+        with self._transaction() as conn:
+            row = conn.execute(sql, tuple(params)).fetchone()
         return None if row is None else dict(row)
 
     def _write_audit(
@@ -188,6 +195,15 @@ class PostgresTenantStore:
         statements = iter_statements(schema_sql())
         with self._transaction() as conn:
             for statement in statements:
+                conn.execute(statement)
+            for statement in (
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS position_effect TEXT NOT NULL DEFAULT 'AUTO'",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS instrument_id TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source_record_id TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS source_batch_id TEXT NOT NULL DEFAULT ''",
+            ):
                 conn.execute(statement)
             tables = [
                 str(row["table_name"])
@@ -268,7 +284,7 @@ class PostgresTenantStore:
             " AND (%s = '' OR symbol = %s)"
             " AND (%s = '' OR trade_date >= %s)"
             " AND (%s = '' OR trade_date <= %s)"
-            " ORDER BY trade_date DESC, trade_time DESC, created_at DESC LIMIT %s OFFSET %s"
+            " ORDER BY trade_date DESC, trade_time DESC, created_at DESC, trade_id DESC LIMIT %s OFFSET %s"
         )
         params: list[Any] = [
             resolved,
@@ -297,11 +313,18 @@ class PostgresTenantStore:
         updated: list[str] = []
         with self._transaction() as conn:
             self._require_user(conn, resolved)
-            for raw in rows:
-                record = self._normalize_trade(resolved, raw)
+            normalized = [self._normalize_trade(resolved, raw) for raw in rows]
+            occurrences: dict[str, int] = {}
+            for record in normalized:
+                if record.get("_generated_id"):
+                    base = record["trade_id"]
+                    occurrences[base] = occurrences.get(base, 0) + 1
+                    record["trade_id"] = f"{base}-o{occurrences[base]:02d}"
+            for record in normalized:
                 cursor = conn.execute(
-                    "UPDATE trades SET account_id = %s, symbol = %s, name = %s, side = %s,"
-                    " trade_date = %s, trade_time = %s, price = %s, quantity = %s, fee = %s,"
+                    "UPDATE trades SET account_id = %s, symbol = %s, name = %s, side = %s, position_effect = %s, instrument_id = %s, market = %s, timezone = %s, source_record_id = %s, source_batch_id = %s,"
+                    " trade_date = %s, trade_time = %s, price = %s, quantity = %s,"
+                    " asset_class = %s, currency = %s, multiplier = %s, source_precision = %s, provenance = %s, fee = %s,"
                     " thesis = %s, invalidation_price = %s, regime = %s, tags = %s"
                     " WHERE user_id = %s AND trade_id = %s",
                     (
@@ -309,10 +332,17 @@ class PostgresTenantStore:
                         record["symbol"],
                         record["name"],
                         record["side"],
+                        record["position_effect"],
+                        record["instrument_id"], record["market"], record["timezone"], record["source_record_id"], record["source_batch_id"],
                         record["trade_date"],
                         record["trade_time"],
                         record["price"],
                         record["quantity"],
+                        record["asset_class"],
+                        record["currency"],
+                        record["multiplier"],
+                        record["source_precision"],
+                        encode_json(record["provenance"], {}),
                         record["fee"],
                         record["thesis"],
                         record["invalidation_price"],
@@ -325,9 +355,9 @@ class PostgresTenantStore:
                 if cursor.rowcount == 0:
                     conn.execute(
                         "INSERT INTO trades (user_id, trade_id, account_id, symbol, name,"
-                        " side, trade_date, trade_time, price, quantity, fee, thesis,"
+                        " side, position_effect, instrument_id, market, timezone, source_record_id, source_batch_id, trade_date, trade_time, price, quantity, asset_class, currency, multiplier, source_precision, provenance, fee, thesis,"
                         " invalidation_price, regime, tags, created_at)"
-                        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                         (
                             resolved,
                             record["trade_id"],
@@ -335,10 +365,17 @@ class PostgresTenantStore:
                             record["symbol"],
                             record["name"],
                             record["side"],
+                            record["position_effect"],
+                            record["instrument_id"], record["market"], record["timezone"], record["source_record_id"], record["source_batch_id"],
                             record["trade_date"],
                             record["trade_time"],
                             record["price"],
                             record["quantity"],
+                            record["asset_class"],
+                            record["currency"],
+                            record["multiplier"],
+                            record["source_precision"],
+                            encode_json(record["provenance"], {}),
                             record["fee"],
                             record["thesis"],
                             record["invalidation_price"],
@@ -373,7 +410,13 @@ class PostgresTenantStore:
         This mirrors the SQLite engine deliberately: both must accept the same
         import row. Keep the two in step when a field is added.
         """
-        side = optional_text(raw.get("side")).upper()
+        raw_side = optional_text(raw.get("side")).upper()
+        inferred_effect = "AUTO"
+        if raw_side.endswith("_OPEN"):
+            inferred_effect, raw_side = "OPEN", raw_side[:-5]
+        elif raw_side.endswith("_CLOSE"):
+            inferred_effect, raw_side = "CLOSE", raw_side[:-6]
+        side = raw_side
         side = SIDE_ALIASES.get(side, side)
         if side not in ("BUY", "SELL"):
             raise StoreError(f"side must be BUY or SELL, got {raw.get('side')!r}")
@@ -383,20 +426,30 @@ class PostgresTenantStore:
         quantity = raw.get("quantity")
         if quantity is None:
             quantity = raw.get("qty")
-        return {
+        normalized = {
             "user_id": user_id,
-            "trade_id": optional_text(raw.get("trade_id") or raw.get("fill_id"))
-            or new_id("TRD"),
+            "trade_id": optional_text(raw.get("trade_id") or raw.get("fill_id")),
             "account_id": optional_text(raw.get("account_id")),
             "symbol": require_text(raw.get("symbol"), "symbol"),
             "name": optional_text(raw.get("name")),
             "side": side,
+            "position_effect": optional_text(raw.get("position_effect") or raw.get("offset") or inferred_effect).upper(),
+            "instrument_id": optional_text(raw.get("instrument_id") or raw.get("contract_id") or raw.get("symbol")),
+            "market": optional_text(raw.get("market") or raw.get("venue")),
+            "timezone": optional_text(raw.get("timezone") or raw.get("time_zone")),
+            "source_record_id": optional_text(raw.get("source_record_id") or raw.get("source_id")),
+            "source_batch_id": optional_text(raw.get("source_batch_id") or raw.get("batch_id")),
             "trade_date": require_text(
                 raw.get("trade_date") or raw.get("date"), "trade_date"
             ),
             "trade_time": optional_text(raw.get("trade_time") or raw.get("time")),
             "price": require_float(raw.get("price"), "price"),
             "quantity": require_float(quantity, "quantity"),
+            "asset_class": optional_text(raw.get("asset_class") or raw.get("instrument_type")) or "unknown",
+            "currency": optional_text(raw.get("currency") or raw.get("quote_currency")),
+            "multiplier": require_float(raw.get("multiplier") or 1.0, "multiplier"),
+            "source_precision": optional_text(raw.get("source_precision") or raw.get("timestamp_precision")) or "unknown",
+            "provenance": dict(raw.get("provenance") or {}),
             "fee": require_float(fee, "fee"),
             "thesis": optional_text(raw.get("thesis")),
             "invalidation_price": optional_float(
@@ -406,6 +459,15 @@ class PostgresTenantStore:
             "tags": list(raw.get("tags") or []),
             "created_at": optional_text(raw.get("created_at")) or now_iso(),
         }
+        preserve_decimal_sources(raw, normalized)
+        if not normalized["trade_id"]:
+            identity = {key: normalized[key] for key in ("account_id", "instrument_id", "symbol", "side", "position_effect", "trade_date", "trade_time", "currency", "asset_class", "_decimal_identity")}
+            digest = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()[:20]
+            normalized["trade_id"] = f"TRD-{digest}"
+            normalized["_generated_id"] = True
+        else:
+            normalized["_generated_id"] = False
+        return normalized
 
     # ---- accounts ------------------------------------------------------
 
@@ -431,7 +493,7 @@ class PostgresTenantStore:
                 (
                     name,
                     optional_text(account.get("broker")),
-                    optional_text(account.get("currency")) or "CNY",
+                    optional_text(account.get("currency")) or "UNKNOWN",
                     require_float(account.get("initial_balance") or 0.0, "initial_balance"),
                     stamp,
                     resolved,
@@ -448,7 +510,7 @@ class PostgresTenantStore:
                         account_id,
                         name,
                         optional_text(account.get("broker")),
-                        optional_text(account.get("currency")) or "CNY",
+                optional_text(account.get("currency")) or "UNKNOWN",
                         require_float(
                             account.get("initial_balance") or 0.0, "initial_balance"
                         ),
@@ -692,6 +754,26 @@ class PostgresTenantStore:
             (require_text(user_id, "user_id"), max(1, int(limit))),
         )
         return [AuditRecord.from_row(row).to_dict() for row in rows]
+
+    def put_document(self, user_id: str, kind: str, document_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        resolved, doc_kind, doc_id = require_text(user_id, "user_id"), require_text(kind, "kind"), require_text(document_id, "document_id")
+        stamp = now_iso()
+        with self._transaction() as conn:
+            self._require_user(conn, resolved)
+            row = conn.execute("SELECT created_at FROM tenant_documents WHERE user_id = %s AND document_kind = %s AND document_id = %s", (resolved, doc_kind, doc_id)).fetchone()
+            created = str(row["created_at"]) if row else stamp
+            conn.execute("INSERT INTO tenant_documents (user_id, document_kind, document_id, payload, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (user_id, document_kind, document_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at WHERE tenant_documents.user_id = EXCLUDED.user_id", (resolved, doc_kind, doc_id, encode_json(dict(payload), {}), created, stamp))
+        return {"user_id": resolved, "kind": doc_kind, "document_id": doc_id, "payload": dict(payload), "created_at": created, "updated_at": stamp, "safety": SAFETY_DECLARATION}
+
+    def get_document(self, user_id: str, kind: str, document_id: str) -> dict[str, Any] | None:
+        rows = self._fetchall("SELECT * FROM tenant_documents WHERE user_id = %s AND document_kind = %s AND document_id = %s", (require_text(user_id, "user_id"), require_text(kind, "kind"), require_text(document_id, "document_id")))
+        if not rows: return None
+        row = rows[0]
+        return {"user_id": str(row["user_id"]), "kind": str(row["document_kind"]), "document_id": str(row["document_id"]), "payload": decode_json(row["payload"], {}), "created_at": str(row["created_at"]), "updated_at": str(row["updated_at"]), "safety": SAFETY_DECLARATION}
+
+    def list_documents(self, user_id: str, kind: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        rows = self._fetchall("SELECT document_id FROM tenant_documents WHERE user_id = %s AND document_kind = %s ORDER BY updated_at DESC, document_id DESC LIMIT %s", (require_text(user_id, "user_id"), require_text(kind, "kind"), max(1, int(limit))))
+        return [self.get_document(user_id, kind, str(row["document_id"])) for row in rows]
 
     def update_trade_names(
         self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False

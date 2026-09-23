@@ -46,7 +46,7 @@ def test_catalog_never_declares_execution_capabilities() -> None:
 
 def test_high_execution_risk_projects_stay_companion_only() -> None:
     high = [entry for entry in catalog_entries() if entry["execution_risk"] == "high"]
-    assert high, "vnpy is kept in the catalog precisely as the high-risk example"
+    assert "vnpy" not in catalog_index(), "execution frameworks are not marketplace products"
     for entry in high:
         assert entry["level"] == LEVEL_COMPANION, entry["plugin_id"]
         assert entry["install"]["kind"] == INSTALL_GIT, entry["plugin_id"]
@@ -112,3 +112,18 @@ def test_catalog_index_is_keyed_by_plugin_id() -> None:
     index = catalog_index()
     assert set(index) == {entry["plugin_id"] for entry in catalog_entries()}
     assert index["akshare"]["install"]["package"] == "akshare"
+
+
+def test_credentials_have_official_obtain_links_and_explicit_ownership() -> None:
+    index = catalog_index()
+    for plugin_id, key in (("tushare-pro", "TOKEN"), ("fred", "FRED_API_KEY")):
+        entry = index[plugin_id]
+        assert entry["credential_mode"] == "managed_local"
+        requirement = entry["credential_requirements"][0]
+        assert requirement["name"] == key
+        assert requirement["obtain_url"].startswith("https://")
+        assert requirement["required"] is True
+    external = index["tradingagents"]
+    assert external["credential_mode"] == "external_only"
+    assert external["credential_requirements"] == []
+    assert external["credential_setup_url"].startswith("https://github.com/TauricResearch/")

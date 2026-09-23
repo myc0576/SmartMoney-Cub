@@ -116,6 +116,9 @@ def catalog_entry(
     execution_risk: str,
     boundary: str,
     docs_url: str | None = None,
+    credential_mode: str = "none",
+    credential_requirements: list[dict[str, Any]] | None = None,
+    credential_setup_url: str | None = None,
 ) -> dict[str, Any]:
     """Build one catalog entry, refusing anything outside the contract."""
     kind = str(install.get("kind") or "")
@@ -141,6 +144,14 @@ def catalog_entry(
         # A project whose own code can place orders stays a companion: the
         # harness may read its reports, never host it as a runtime plugin.
         raise ValueError(plugin_id + ": high execution risk must stay a companion")
+    if credential_mode not in ("none", "managed_local", "external_only"):
+        raise ValueError(plugin_id + ": unknown credential mode")
+    requirements = credential_requirements or []
+    if credential_mode == "managed_local" and not requirements:
+        raise ValueError(plugin_id + ": managed credentials need named requirements")
+    for requirement in requirements:
+        if not requirement.get("name") or not str(requirement.get("obtain_url", "")).startswith("https://"):
+            raise ValueError(plugin_id + ": credential requires a name and official HTTPS obtain URL")
     return {
         "plugin_id": plugin_id,
         "name": name,
@@ -153,6 +164,9 @@ def catalog_entry(
         "level": level,
         "capabilities": list(capabilities),
         "requires_credentials": bool(requires_credentials),
+        "credential_mode": credential_mode,
+        "credential_requirements": [dict(item) for item in requirements],
+        "credential_setup_url": credential_setup_url,
         "network_required": bool(network_required),
         "execution_risk": execution_risk,
         "boundary": boundary,
