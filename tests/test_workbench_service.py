@@ -310,7 +310,10 @@ def test_committing_a_reviewed_extraction_writes_the_rows(tmp_path) -> None:
 
         overview = service.overview({})
         assert overview["summary"]["trade_count"] == 1
-        assert overview["summary"]["total_net_pnl"] == 1000.0
+        # This statement declares neither market nor currency. Preserve the
+        # matched price difference, but do not publish an unknown-unit total.
+        assert overview["summary"]["total_net_pnl"] is None
+        assert overview["summary"]["currency"] == "UNKNOWN"
         assert overview["recent_documents"][0]["file_name"] == "fills.csv"
     finally:
         service.close()
@@ -383,8 +386,9 @@ def test_trade_detail_returns_the_revision_history(tmp_path) -> None:
         service.store.add_fills(
             [_fill(trade_date="2026-09-03", side="SELL", price=11.0)]
         )
-        detail = service.trade_detail("RT-600111-1")
-        assert detail["trade"]["round_trip_id"] == "RT-600111-1"
+        trip_id = service.trades({})["trades"][0]["round_trip_id"]
+        detail = service.trade_detail(trip_id)
+        assert detail["trade"]["round_trip_id"] == trip_id
         revisions = detail["fill_revisions"]
         assert len(revisions) == 3
         # The corrected buy keeps its earlier revision, marked as superseded.

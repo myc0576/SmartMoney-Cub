@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { TraderCalendarDay } from '../types';
 import { Panel, formatMoney, toneOf } from '../components/common';
+import { useLegacyI18n } from '../locales/legacy';
 
 /**
  * The review calendar: closed round trips aggregated by exit day.
@@ -14,21 +15,33 @@ import { Panel, formatMoney, toneOf } from '../components/common';
  * read the journal the import filled.
  */
 
-const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-
 export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initial: { year: number; month: number } }) {
+  const { locale, t } = useLegacyI18n();
+  const weekdayFormatter = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+  const weekdays = Array.from({ length: 7 }, (_, index) => weekdayFormatter.format(new Date(2024, 0, index + 1)));
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [days, setDays] = useState<TraderCalendarDay[]>([]);
   const [selected, setSelected] = useState<TraderCalendarDay | null>(null);
+  const [error, setError] = useState(false);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    // A month the route cannot answer empties the grid rather than the page.
+    let cancelled = false;
+    setError(false);
     void trader
       .calendar({ year, month })
-      .then((result) => setDays(result.days || []))
-      .catch(() => setDays([]));
-  }, [year, month]);
+      .then((result) => {
+        if (!cancelled) setDays(result.days || []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDays([]);
+          setError(true);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [year, month, revision]);
 
   const first = new Date(year, month - 1, 1);
   const startOffset = (first.getDay() + 6) % 7;
@@ -53,19 +66,25 @@ export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initi
   return (
     <div className="grid" style={{ gap: 14 }}>
       <Panel
-        title={year + ' 年 ' + month + ' 月'}
+        title={t('calendar.month', { year, month })}
         actions={
           <div className="row">
             <span className={'muted'} style={{ marginRight: 8 }}>
-              当月合计 <span className={toneOf(monthTotal, scheme)}>{formatMoney(monthTotal)}</span>
+              {t('calendar.total')} <span className={toneOf(monthTotal, scheme)}>{formatMoney(monthTotal)}</span>
             </span>
-            <button className="ghost" onClick={() => shift(-1)}>上月</button>
-            <button className="ghost" onClick={() => shift(1)}>下月</button>
+            <button className="ghost" onClick={() => shift(-1)}>{t('calendar.previous')}</button>
+            <button className="ghost" onClick={() => shift(1)}>{t('calendar.next')}</button>
           </div>
         }
       >
+        {error ? (
+          <div className="banner" role="alert" style={{ marginBottom: 12 }}>
+            日历数据读取失败。请检查本地服务后重试。{' '}
+            <button className="ghost" onClick={() => setRevision((value) => value + 1)}>重试</button>
+          </div>
+        ) : null}
         <div className="calendar">
-          {WEEKDAYS.map((weekday) => <div key={weekday} className="weekday">{weekday}</div>)}
+          {weekdays.map((weekday) => <div key={weekday} className="weekday">{weekday}</div>)}
         </div>
         <div className="calendar" style={{ marginTop: 4 }}>
           {cells.map((day, index) => {
@@ -82,7 +101,7 @@ export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initi
                 {active ? (
                   <>
                     <div className={'pnl ' + toneOf(day.net_pnl, scheme)}>{formatMoney(day.net_pnl, 0)}</div>
-                    <div className="muted" style={{ fontSize: 10 }}>{day.trade_count} 笔 · 胜 {day.win_count}</div>
+                    <div className="muted" style={{ fontSize: 10 }}>{t('calendar.trades', { count: day.trade_count })} · {t('calendar.wins', { count: day.win_count })}</div>
                   </>
                 ) : null}
               </button>
@@ -92,10 +111,10 @@ export function CalendarView({ scheme, initial }: { scheme: 'cn' | 'intl'; initi
       </Panel>
 
       {selected ? (
-        <Panel title={'当日明细 · ' + selected.date}>
-          {selected.trades.length === 0 ? <div className="muted">这一天没有已确认的平仓交易。</div> : (
+        <Panel title={t('calendar.detail', { date: selected.date })}>
+          {selected.trades.length === 0 ? <div className="muted">{t('calendar.empty')}</div> : (
             <table>
-              <thead><tr><th>标的</th><th className="num">收益</th><th className="num">净盈亏</th></tr></thead>
+              <thead><tr><th>{t('calendar.symbol')}</th><th className="num">{t('calendar.return')}</th><th className="num">{t('calendar.netPnl')}</th></tr></thead>
               <tbody>
                 {selected.trades.map((trade) => (
                   <tr key={trade.round_trip_id}>

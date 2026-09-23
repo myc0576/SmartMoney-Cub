@@ -60,6 +60,18 @@ __all__ = [
     "snippet",
 ]
 
+# Whether a source can actually answer a request from where this process runs.
+#
+# This is deliberately not part of the provider's identity: the same catalogue is
+# shipped everywhere, and which endpoints answer depends on the network the
+# process is on. Binance refuses requests from some regions with HTTP 451, and
+# stooq.com failed its TLS handshake from the machine this was verified on. A
+# picker that lists them as ordinary choices turns a network fact into a mystery
+# failure, so the catalogue states the availability and why.
+AVAILABILITY_AVAILABLE = "available"
+AVAILABILITY_UNAVAILABLE = "unavailable"
+AVAILABILITY_RESTRICTED = "restricted"
+
 # Identify ourselves honestly. A blank or improvised User-Agent is what gets a
 # keyless endpoint to refuse a request outright.
 USER_AGENT = "Mozilla/5.0 (compatible; smartmoney-cub-harness/0.1; read-only market data)"
@@ -139,6 +151,19 @@ class ProviderResult:
     fetched_at: str
     source_quality: str
     warnings: list[str]
+    available_at: str | None = None
+    decision_time: str | None = None
+    historical_evidence: str = "unverified"
+
+    def __post_init__(self) -> None:
+        if self.available_at and self.decision_time:
+            try:
+                available = datetime.fromisoformat(self.available_at.replace("Z", "+00:00"))
+                decision = datetime.fromisoformat(self.decision_time.replace("Z", "+00:00"))
+                if available > decision:
+                    raise MarketDataError("available_at is later than decision_time")
+            except (ValueError, TypeError):
+                raise MarketDataError("availability and decision timestamps must have comparable timezone precision") from None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -148,6 +173,9 @@ class ProviderResult:
             "fetched_at": self.fetched_at,
             "source_quality": self.source_quality,
             "warnings": list(self.warnings),
+            "available_at": self.available_at,
+            "decision_time": self.decision_time,
+            "historical_evidence": self.historical_evidence,
             "bars": [bar.to_dict() for bar in self.bars],
         }
 
@@ -212,6 +240,13 @@ PROVIDER_SPECS: tuple[dict[str, Any], ...] = (
             "Daily CSV history for US and European symbols. Free and unadjusted; "
             "the page is delayed and sometimes rate limited."
         ),
+        # Verified on 2026-09-21: the TLS handshake to stooq.com fails
+        # (UNEXPECTED_EOF_WHILE_READING), so no request through it can succeed.
+        # The source stays in the catalogue because the failure may be
+        # network-specific, and a reader is owed the reason rather than a
+        # silently missing option.
+        "availability": AVAILABILITY_UNAVAILABLE,
+        "availability_reason": "stooq.com 的 TLS 握手在当前网络失败，取不到行情",
         "module": "smartmoney_cub_harness.trader.market.stooq",
     },
     {
@@ -224,6 +259,10 @@ PROVIDER_SPECS: tuple[dict[str, Any], ...] = (
             "Binance spot klines from the exchange itself. 1-minute to 1-month "
             "intervals, no key required for public market data."
         ),
+        # Verified on 2026-09-21: api.binance.com answers HTTP 451 from this
+        # region, which is a refusal by the exchange rather than a bug here.
+        "availability": AVAILABILITY_RESTRICTED,
+        "availability_reason": "币安按地区拒绝服务（HTTP 451），当前地区取不到行情",
         "module": "smartmoney_cub_harness.trader.market.binance",
     },
 )
@@ -249,6 +288,11 @@ def catalog_entry(spec: dict[str, Any]) -> dict[str, Any]:
         "requires_key": spec["requires_key"],
         "source_quality": spec["source_quality"],
         "description": spec["description"],
+        # A source with no declared availability is assumed reachable: absence of
+        # a finding is not a finding, and the two sources known to fail say so in
+        # their own spec.
+        "availability": spec.get("availability", AVAILABILITY_AVAILABLE),
+        "availability_reason": spec.get("availability_reason", ""),
     }
 
 

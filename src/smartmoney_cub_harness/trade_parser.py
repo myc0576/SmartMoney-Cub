@@ -96,7 +96,7 @@ def normalize_trade_record(raw: dict[str, Any], idx: int) -> dict[str, Any]:
         or raw.get("代码")
         or raw.get("symbol")
         or raw.get("code")
-        or f"00000{idx}"
+        or ""
     ).strip()
     name = str(
         raw.get("证券名称")
@@ -110,20 +110,23 @@ def normalize_trade_record(raw: dict[str, Any], idx: int) -> dict[str, Any]:
         or raw.get("买卖标志")
         or raw.get("业务名称")
         or raw.get("action")
-        or "买入"
+        or raw.get("side")
+        or ""
     ).strip()
 
     date_str = str(
         raw.get("成交日期")
         or raw.get("发生日期")
         or raw.get("date")
-        or datetime.now().strftime("%Y-%m-%d")
+        or raw.get("trade_date")
+        or ""
     ).strip()
     time_str = str(
         raw.get("成交时间")
         or raw.get("委托时间")
         or raw.get("time")
-        or "09:30:00"
+        or raw.get("trade_time")
+        or ""
     ).strip()
 
     price = float(
@@ -131,17 +134,16 @@ def normalize_trade_record(raw: dict[str, Any], idx: int) -> dict[str, Any]:
         or raw.get("成交价格")
         or raw.get("价格")
         or raw.get("price")
-        or 10.0
+        or 0
     )
     volume = abs(
-        int(
             float(
                 raw.get("成交数量")
                 or raw.get("数量")
                 or raw.get("volume")
-                or 1000
+                or raw.get("quantity")
+                or 0
             )
-        )
     )
     amount = float(
         raw.get("成交金额")
@@ -150,12 +152,13 @@ def normalize_trade_record(raw: dict[str, Any], idx: int) -> dict[str, Any]:
         or (price * volume)
     )
 
-    thesis = str(raw.get("买入理由") or raw.get("thesis") or "盘中跟随资金开仓")
+    thesis = str(raw.get("买入理由") or raw.get("thesis") or "")
     invalidation = raw.get("止损价") or raw.get("invalidation_price")
     invalidation_price = float(invalidation) if invalidation is not None else None
-    regime = str(raw.get("情绪周期") or raw.get("regime") or "生长")
+    regime = str(raw.get("情绪周期") or raw.get("regime") or "")
 
     return {
+        **raw,
         "index": idx,
         "symbol": symbol,
         "name": name,

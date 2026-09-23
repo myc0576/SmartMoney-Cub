@@ -10,8 +10,125 @@ import type { Meta, SessionEvent, SessionSummary } from '../types';
 
 interface TurnState {
   text: string;
-  toolCalls: { callId: string; name: string; arguments: string; result?: unknown }[];
+  toolCalls: {
+    callId: string;
+    name: string;
+    arguments: string;
+    result?: unknown;
+    /** The backend's readable step line, when it sent one. */
+    title?: string;
+    summary?: string;
+    status?: string;
+    durationMs?: number;
+  }[];
   error?: string;
+}
+
+/**
+ * The three questions this panel is opened to ask.
+ *
+ * They are not generic prompts: each one is a question the journal can answer
+ * from the trader's own rows, and each fires the read-only tools the assistant
+ * already has. A shortcut that could not be answered would be worse than no
+ * shortcut, because it would teach the reader the assistant guesses.
+ */
+const QUICK_ACTIONS: { label: string; prompt: string }[] = [
+  { label: '今日复盘', prompt: '复盘我今天的交易：做了什么、和计划差在哪里、下一步该注意什么。' },
+  // The prompt repeats the button's own words on purpose. The transcript is read
+  // later, next to a sidebar of shortcuts, and a question whose wording does not
+  // match the action that asked it reads like a different question.
+  { label: '找重复错误', prompt: '在我的台账里找出重复错误，请引用具体的交易编号作为证据。' },
+  { label: '检查规则执行', prompt: '对照我的 Champion 规则，检查最近这些交易里哪些出现了规则偏离。' },
+];
+
+/** What a tool call is doing, said in the reader's terms. The backend sends a
+ *  title with each result; this map is the fallback for a stream that predates
+ *  that field, or for a tool the map does not know, where the raw name is
+ *  shown rather than "undefined". */
+const TOOL_LABELS: Record<string, string> = {
+  list_trades: '检索交易',
+  get_trade: '读取单笔交易',
+  analytics_summary: '汇总绩效指标',
+  calendar_month: '读取月度日历',
+  open_positions: '读取未配对持仓',
+  list_rules: '读取规则库',
+  data_quality_report: '检查数据质量',
+  propose_challenger_rule: '提出 Challenger 规则',
+  search_memory: '检索复盘记忆',
+  read_ledger: '读取进化账本',
+};
+
+function toolLabel(name: string): string {
+  return TOOL_LABELS[name] || name.replace(/_/g, ' ');
+}
+
+/** What the assistant is pointed at, in one line.
+ *
+ * The shell sends the page and, when one is open, the round trip. The label is
+ * built here rather than in the shell so the panel can say "整个账本" for a page
+ * that carries no subject — a silent empty string would read as a bug.
+ */
+function contextLabel(context: Record<string, unknown>): string {
+  const page = String(context.page_label || context.page || '').trim();
+  const trade = String(context.round_trip_id || '').trim();
+  if (trade) return page ? page + ' · 这一笔交易 ' + trade : '这一笔交易 ' + trade;
+  return page ? page + ' · 整个账本' : '整个账本';
+}
+
+/** What has been read so far, from counts the panel already holds. It reports
+ *  what exists rather than a fixed claim: no session and no message is a real
+ *  state, and saying "已读取 0" beats hiding the line. */
+function contextSummary(context: Record<string, unknown>, eventCount: number, sessionCount: number): string {
+  const parts: string[] = [];
+  if (context.round_trip_id) parts.push('已锁定 1 笔交易');
+  if (eventCount > 0) parts.push('本会话 ' + eventCount + ' 条事件');
+  if (sessionCount > 0) parts.push('本地会话 ' + sessionCount + ' 个');
+  parts.push('台账 · 规则 · 数据质量随本轮校验');
+  return parts.join(' / ');
+}
+
+/**
+ * One step of the agent's activity, as a row rather than a payload.
+ *
+ * The default face is the thing a person asked for: what it looked up, what it
+ * found, and whether it is still working. The arguments and the raw result are
+ * one click away, which is where a debugger belongs — visible on request and not
+ * in the way of reading the answer. Every field it does not have is simply
+ * absent rather than printed as the string "undefined".
+ */
+function renderStep(input: {
+  key: string | number;
+  name: string;
+  title?: string;
+  summary?: string;
+  status?: string;
+  durationMs?: number;
+  arguments?: unknown;
+  result?: unknown;
+  state: 'running' | 'done' | 'unknown';
+}) {
+  const title = input.title || toolLabel(input.name);
+  const failed = input.status === 'error';
+  const seconds = typeof input.durationMs === 'number' ? (input.durationMs / 1000).toFixed(1) + 's' : '';
+  return (
+    <li
+      key={input.key}
+      className={'step' + (input.state === 'running' ? ' running' : '') + (failed ? ' failed' : '')}
+    >
+      <span className="step-dot" />
+      <span className="step-body">
+        <span className="step-title">{title}</span>
+        {input.summary ? <span className="step-summary">{input.summary}</span> : null}
+        {seconds ? <span className="muted">{seconds}</span> : null}
+        {/* A running step says so; a finished one does not need to. */}
+        {input.state === 'running' ? <span className="muted">进行中</span> : null}
+        <details className="step-detail">
+          <summary>查看技术细节</summary>
+          <pre>{JSON.stringify({ name: input.name, arguments: input.arguments, result: input.result }, null, 2)}</pre>
+        </details>
+      </span>
+    </li>
+  );
 }
 
 export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
@@ -136,22 +253,19 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     setShowSessions(false);
   };
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (explicit?: string) => {
+    // A quick action sends its own question; the composer sends what is typed.
+    // One code path serves both, so the transcript, the session title, and the
+    // busy state cannot differ between a typed question and a clicked one.
+    const text = (explicit ?? input).trim();
     if (!text || busy) return;
-    let sessionId = activeId;
-    if (!sessionId) {
-      const created = await api.createSession({
-        title: text.slice(0, 18),
-        context,
-        provider_id: selection.provider_id,
-        model: selection.model,
-        reasoning: selection.reasoning,
-      });
-      sessionId = created.session.session_id;
-      setActiveId(sessionId);
-      await loadSessions();
-    }
+
+    // The question is shown before the session is created, and that order is
+    // deliberate. Creating a session is a round trip that can fail -- a closed
+    // trust boundary, a store error -- and this used to append the message only
+    // after it succeeded, so a failed create swallowed what the trader had
+    // written and showed nothing at all. The transcript now records the question
+    // first, where the trader can see it and retry it.
     setInput('');
     setBusy(true);
     setCurrentAction('正在连接模型');
@@ -167,23 +281,65 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       },
     ]);
 
+    let sessionId = activeId;
+    if (!sessionId) {
+      try {
+        const created = await api.createSession({
+          title: text.slice(0, 18),
+          context,
+          provider_id: selection.provider_id,
+          model: selection.model,
+          reasoning: selection.reasoning,
+        });
+        sessionId = created.session.session_id;
+        setActiveId(sessionId);
+        await loadSessions();
+      } catch (failure) {
+        // The question stays on screen with the reason it went nowhere.
+        const message = failure instanceof Error ? failure.message : String(failure);
+        setBusy(false);
+        setCurrentAction('');
+        setTurn({ text: '', toolCalls: [], error: '无法新建会话：' + message });
+        return;
+      }
+    }
+
     await streamTurn(sessionId, text, {
       signal: controller.signal,
       onEvent: (event) => {
         if (event.kind === 'delta') {
           setTurn((prev) => ({ text: (prev?.text || '') + event.text, toolCalls: prev?.toolCalls || [] }));
         } else if (event.kind === 'tool_call') {
-          setCurrentAction('正在调用 ' + String(event.name || '工具'));
+          setCurrentAction(toolLabel(String(event.name || '')));
           setTurn((prev) => ({
             text: prev?.text || '',
-            toolCalls: [...(prev?.toolCalls || []), { callId: event.call_id, name: event.name, arguments: event.arguments }],
+            toolCalls: [...(prev?.toolCalls || []), {
+              callId: event.call_id,
+              name: event.name,
+              arguments: event.arguments,
+              // The backend sends a readable title with the call; the local map
+              // is the fallback for a stream that predates the field.
+              title: event.title,
+            }],
           }));
         } else if (event.kind === 'tool_result') {
           setCurrentAction('证据已返回，正在整理');
           setTurn((prev) => ({
             text: prev?.text || '',
             toolCalls: (prev?.toolCalls || []).map((call) =>
-              call.callId === event.call_id ? { ...call, result: event.result } : call,
+              call.callId === event.call_id
+                ? {
+                    ...call,
+                    result: event.result,
+                    // The step line and its numbers come from the backend, which
+                    // is the only place that can count what a tool actually
+                    // returned. The number is never computed here from the
+                    // rendered payload.
+                    summary: event.step_summary,
+                    status: event.status,
+                    durationMs: event.duration_ms,
+                  }
+                : call,
             ),
           }));
         } else if (event.kind === 'error') {
@@ -232,6 +388,16 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   const providers = (meta?.providers || []).filter((provider) => provider.protocol !== 'offline');
   const seatModel = findModel(providers, selection.provider_id, selection.model);
   const seatProvider = providers.find((item) => item.provider_id === selection.provider_id);
+  // What the seat is, in one line. It is a label rather than a control: the
+  // provider, the model, and the reasoning effort are configuration, and the
+  // place configuration is changed is the settings page. Keeping them out of the
+  // composer leaves the panel asking one question -- what do you want reviewed --
+  // instead of two.
+  const seatLabel = [
+    seatProvider ? seatProvider.label : '未配置 Provider',
+    seatModel ? (seatModel.label || seatModel.id) : '',
+    seatModel && seatModel.reasoning_efforts.length > 1 ? effortLabel(selection.reasoning) : '',
+  ].filter(Boolean).join(' · ');
 
   const hasRoutableModel = Boolean(
     seatModel && seatProvider && seatProvider.protocol !== 'offline' && seatProvider.routable === true,
@@ -323,13 +489,37 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       ) : null}
 
       <div className="assistant-body" ref={bodyRef}>
-        {expanded ? (
-          <div className="assistant-context-rail">
-            <span className="eyebrow">LIVE CONTEXT</span>
-            <span>{context.round_trip_id ? '已锁定一笔交易' : '当前未锁定交易'}</span>
-            <span className="muted">台账 · 规则 · 数据质量会随本轮请求一起校验</span>
+        {/* What the assistant is looking at, stated before anything is asked.
+            This is the difference between a chat box and a copilot: the reader
+            can see which page, which trade, and which book the answer will be
+            about, instead of having to describe it in the prompt. */}
+        <div className="copilot-head assistant-target-bar">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <strong style={{ fontSize: 12 }}>AI 复盘副驾</strong>
+            <span className="muted" style={{ fontSize: 11 }}>
+              {busy ? '正在分析' : '已就绪'}
+            </span>
           </div>
-        ) : null}
+          <div className="muted copilot-context" style={{ fontSize: 11 }}>
+            正在分析：{contextLabel(context)}
+          </div>
+          <div className="muted copilot-context" style={{ fontSize: 11 }}>
+            {contextSummary(context, events.length, sessions.length)}
+          </div>
+          <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                className="chip chip-action assistant-quick-chip"
+                disabled={busy || Boolean(unavailable)}
+                title={action.prompt}
+                onClick={() => void send(action.prompt)}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {unavailable ? (
           <div className="notice" style={{ fontSize: 12, lineHeight: 1.7 }}>
             复盘助手在这个部署里不可用：{unavailable}
@@ -368,12 +558,17 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
             const result = events.find(
               (other) => other.kind === 'tool_result' && other.payload.call_id === event.payload.call_id,
             );
-            return (
-              <details key={event.event_id} className="tool-card">
-                <summary>工具调用 · {String(event.payload.name || '')}</summary>
-                <pre>{JSON.stringify({ arguments: event.payload.arguments, result: result?.payload.result }, null, 2)}</pre>
-              </details>
-            );
+            return renderStep({
+              key: event.event_id,
+              name: String(event.payload.name || ''),
+              title: event.payload.title ? String(event.payload.title) : undefined,
+              summary: result?.payload.step_summary ? String(result.payload.step_summary) : undefined,
+              status: result?.payload.status ? String(result.payload.status) : undefined,
+              durationMs: typeof result?.payload.duration_ms === 'number' ? result.payload.duration_ms : undefined,
+              arguments: event.payload.arguments,
+              result: result?.payload.result,
+              state: result ? 'done' : 'unknown',
+            });
           }
           if (event.kind === 'error') {
             return <div key={event.event_id} className="bubble error">{String(event.payload.text || event.payload.error || '本轮失败')}</div>;
@@ -387,17 +582,33 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
 
         {turn ? (
           <>
-            {turn.toolCalls.map((call) => (
-              <details key={call.callId} className="tool-card" open>
-                <summary>
-                  工具调用 · {call.name} {call.result === undefined ? <span className="muted">（进行中）</span> : null}
-                </summary>
-                <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
-              </details>
-            ))}
+            {/* The live stream renders the same step row as the restored
+                transcript: one line a reader can scan, with the payload one
+                click away. */}
+            <ol className="steps">
+              {turn.toolCalls.map((call) => renderStep({
+                key: call.callId,
+                name: call.name,
+                title: call.title,
+                summary: call.summary,
+                status: call.status,
+                durationMs: call.durationMs,
+                arguments: call.arguments,
+                result: call.result,
+                state: call.result === undefined ? 'running' : 'done',
+              }))}
+              {busy ? (
+                <li className="step running">
+                  <span className="step-dot" />
+                  <span className="step-body">
+                    <span className="step-title">{currentAction || '正在分析本地证据'}</span>
+                    <span className="muted">可随时停止</span>
+                  </span>
+                </li>
+              ) : null}
+            </ol>
             {turn.text ? <div className="bubble assistant"><Markdown text={turn.text} /></div> : null}
             {turn.error ? <div className="bubble error">{turn.error}</div> : null}
-            {busy ? <div className="assistant-progress"><span className="breathing-dot" /><span>{currentAction || '正在分析本地证据'}</span><span className="muted">可随时停止</span></div> : null}
           </>
         ) : null}
         {liveArtifacts.map((artifact, index) => renderArtifact(artifact, 'live-' + index))}
@@ -417,26 +628,35 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
           }}
         />
         <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-          <ModelPicker
-            providers={providers}
-            selection={selection}
-            onSelect={(next) => void applySelection(next)}
-          />
+          {/* One line for the seat, one control for sending. The picker stays
+              available behind this chip: a trader changing models mid-review is
+              a real thing to do, and hiding the control entirely would force a
+              trip to settings for it. What is gone is the picker as a permanent
+              third of the composer. */}
+          <details className="assistant-seat">
+            <summary className="assistant-model-chip" title="模型与推理强度">
+              {seatLabel || '未配置模型'}
+            </summary>
+            <div className="assistant-seat-body">
+              <ModelPicker
+                providers={providers}
+                selection={selection}
+                onSelect={(next) => void applySelection(next)}
+              />
+              <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                默认模型保存在设置页；这里的改动只影响当前会话。
+              </div>
+            </div>
+          </details>
           <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             {busy ? (
               <button className="ghost" onClick={stop}>停止</button>
             ) : (
-              <button className="primary" onClick={send} disabled={!input.trim() || Boolean(unavailable) || !hasRoutableModel}>发送</button>
+              <button className="primary" onClick={() => void send()} disabled={!input.trim() || Boolean(unavailable) || !hasRoutableModel}>发送</button>
             )}
           </div>
         </div>
         <div className="muted" style={{ fontSize: 10.5, lineHeight: 1.6 }}>
-          {seatProvider ? seatProvider.label : '未选择 Provider'}
-          {seatModel ? ' · ' + (seatModel.label || seatModel.id) : ''}
-          {seatModel && seatModel.reasoning_efforts.length > 1
-            ? ' · 推理强度 ' + effortLabel(selection.reasoning)
-            : ''}
-          <br />
           原文只在本机解析 · 外发字段已脱敏
         </div>
       </div>

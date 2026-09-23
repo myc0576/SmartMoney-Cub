@@ -121,7 +121,9 @@ GOLDEN_CLOSES = (
     14.64, 14.31, 14.1, 14.03, 14.1, 14.33, 14.71, 15.23, 15.86, 16.57,
     17.33, 18.11, 18.85, 19.53, 20.11, 20.56, 20.88, 21.03, 21.04, 20.9,
 )
-GOLDEN_SHA256 = "739dfd3d76db6407d7f923760fd0b8d7ed2d1b7289679ca0d6de84d5e7217a99"
+# Global Decimal ledger: sum the exact per-trade amounts before cent rounding.
+# This changes expectancy from 2788.065 to 2788.07, matching final equity.
+GOLDEN_SHA256 = "6e185982baf73e1379d34103f98974d1fae37b43e745bbfb8e1eb77323bb6e11"
 
 
 def golden_bars() -> list[ToyBar]:
@@ -465,6 +467,7 @@ def independent_ledger(result: BacktestResult) -> dict:
             {
                 "fill_id": f"X-{index}-A",
                 "symbol": symbol,
+                "currency": "SIM",  # Explicit shared simulation units, not unknown money.
                 "side": "BUY",
                 "trade_date": f"2026-01-{day:02d}",
                 "trade_time": "09:30:00",
@@ -478,6 +481,7 @@ def independent_ledger(result: BacktestResult) -> dict:
             {
                 "fill_id": f"X-{index}-B",
                 "symbol": symbol,
+                "currency": "SIM",
                 "side": "SELL",
                 "trade_date": f"2026-01-{exit_day:02d}",
                 "trade_time": "15:00:00",
@@ -511,8 +515,10 @@ def test_each_trade_net_pnl_matches_its_ledger_round_trip() -> None:
     trips = independent_ledger(result)["round_trips"]
     assert len(trips) == len(result.trades)
     for trade, trip in zip(result.trades, trips):
-        assert trade["net_pnl"] == trip["net_pnl"]
-        assert trade["gross_pnl"] == trip["gross_pnl"]
+        # The backtest presents money to cents; the global ledger now retains
+        # sub-cent amounts plus exact Decimal strings until aggregation.
+        assert trade["net_pnl"] == round(trip["net_pnl"], 2)
+        assert trade["gross_pnl"] == round(trip["gross_pnl"], 2)
 
 
 def test_metrics_layer_and_the_test_disagree_if_fees_drift() -> None:
@@ -559,6 +565,7 @@ def test_golden_run_matches_the_frozen_output() -> None:
     assert second["net_pnl"] == 6196.01
 
     assert result.metrics["win_rate"] == 50.0
+    assert result.metrics["expectancy"] == 2788.07
     assert result.metrics["profit_factor"] == 10.0
     assert result.metrics["max_drawdown"] == -619.88
     assert result.metrics["cagr_pct"] == 25.6

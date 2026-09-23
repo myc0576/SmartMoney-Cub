@@ -188,9 +188,9 @@ def test_csv_import_surfaces_needs_review_instead_of_inventing_trades() -> None:
 
 def test_csv_import_pairs_real_round_trip_with_t_plus_one() -> None:
     state = DashboardState()
-    csv_text = """成交日期,成交时间,证券代码,证券名称,操作,成交均价,成交数量,买入理由
-2026-09-01,09:40:00,600111,北方稀土,买入,10.00,1000,主线龙头
-2026-09-01,14:00:00,600111,北方稀土,卖出,11.00,1000,
+    csv_text = """成交日期,成交时间,证券代码,证券名称,操作,成交均价,成交数量,买入理由,market
+2026-09-01,09:40:00,600111,北方稀土,买入,10.00,1000,主线龙头,CN-A
+2026-09-01,14:00:00,600111,北方稀土,卖出,11.00,1000,,CN-A
 """
     state.load_trades_from_csv(csv_text)
     assert state.ledger is not None

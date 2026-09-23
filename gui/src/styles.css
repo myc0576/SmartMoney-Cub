@@ -180,7 +180,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 button.primary {
   background: var(--accent); border: none; border-radius: 7px; padding: 7px 14px;
-  color: var(--color-content-inverse);
+  color: var(--color-content-on-accent);
   transition: background var(--motion-fast) var(--motion-ease);
 }
 button.primary:hover { background: var(--color-accent-hover); }
@@ -190,6 +190,15 @@ button.ghost {
   transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 button.ghost:hover { background: var(--panel-2); }
+a.ghost {
+  display: inline-flex; align-items: center;
+  color: var(--color-content-primary); text-decoration: none;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 10px;
+}
+a.ghost:hover { background: var(--panel-2); border-color: var(--color-border-strong); }
+.connection-grid { display: grid; gap: 14px; min-width: 0; }
+.connection-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; color: var(--muted); font-size: 11px; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }

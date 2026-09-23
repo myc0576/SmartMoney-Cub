@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { BreakdownRow, TraderCalendar, TraderSummary } from '../types';
 import { Bars, Empty, Kpi, Panel, Sparkline, formatCost, formatMoney, formatPct, toneOf } from '../components/common';
+import { useLegacyI18n } from '../locales/legacy';
 
 /**
  * Reports: performance, risk, symbols, and day-time.
@@ -22,6 +23,7 @@ const TABS: { key: ReportTab; label: string }[] = [
 ];
 
 export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
+  const { t } = useLegacyI18n();
   const [tab, setTab] = useState<ReportTab>('performance');
   const [summary, setSummary] = useState<TraderSummary | null>(null);
   const [calendar, setCalendar] = useState<TraderCalendar | null>(null);
@@ -58,13 +60,13 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
     return (
       <div className="grid" style={{ gap: 14 }}>
         <div className="notice">
-          报告数据读取失败：{error}
-          <button className="ghost" style={{ marginLeft: 10, fontSize: 11 }} onClick={() => void load()}>重试</button>
+          {t('reports.readFailed', { error })}
+          <button className="ghost" style={{ marginLeft: 10, fontSize: 11 }} onClick={() => void load()}>{t('reports.retry')}</button>
         </div>
       </div>
     );
   }
-  if (!summary) return <div className="muted">加载中…</div>;
+  if (!summary) return <div className="muted">{t('reports.loading')}</div>;
 
   const days = calendar ? calendar.days.filter((day) => day.trade_count > 0) : [];
   const bestDay = days.reduce<TraderCalendar['days'][number] | null>(
@@ -80,13 +82,13 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
   return (
     <div className="grid" style={{ gap: 14 }}>
       <div className="row">
-        {TABS.map((item) => (
+          {TABS.map((item) => (
           <button
             key={item.key}
             className={'chip' + (tab === item.key ? ' active' : '')}
             onClick={() => setTab(item.key)}
           >
-            {item.label}
+            {t('reports.' + item.key as Parameters<typeof t>[0])}
           </button>
         ))}
         <div className="spacer" style={{ flex: 1 }} />
@@ -96,44 +98,44 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
       {tab === 'performance' ? (
         <>
           <div className="grid kpi">
-            <Kpi label="交易笔数" value={summary.trade_count + ' 笔'} note={summary.win_count + ' 胜 / ' + summary.loss_count + ' 负 / ' + summary.flat_count + ' 平'} />
-            <Kpi label="净盈亏" value={formatMoney(summary.total_net_pnl)} tone={toneOf(summary.total_net_pnl, scheme)} />
-            <Kpi label="胜率" value={summary.win_rate + '%'} />
-            <Kpi label="单笔期望" value={formatMoney(expectancy)} tone={toneOf(expectancy, scheme)} note="净盈亏 / 笔数" />
-            <Kpi label="平均收益" value={formatPct(summary.avg_return_pct)} tone={toneOf(summary.avg_return_pct, scheme)} />
-            <Kpi label="手续费合计" value={formatCost(summary.total_fees)} />
+            <Kpi label={t('reports.tradeCount')} value={summary.trade_count + ' ' + t('reports.tradeUnit')} note={summary.win_count + ' ' + t('reports.wins') + ' / ' + summary.loss_count + ' ' + t('reports.losses') + ' / ' + summary.flat_count + ' ' + t('reports.flat')} />
+            <Kpi label={t('reports.netPnl')} value={formatMoney(summary.total_net_pnl)} tone={toneOf(summary.total_net_pnl, scheme)} />
+            <Kpi label={t('reports.winRate')} value={summary.win_rate + '%'} />
+            <Kpi label={t('reports.expectancy')} value={formatMoney(expectancy)} tone={toneOf(expectancy, scheme)} note={t('reports.expectancyNote')} />
+            <Kpi label={t('reports.avgReturn')} value={formatPct(summary.avg_return_pct)} tone={toneOf(summary.avg_return_pct, scheme)} />
+            <Kpi label={t('reports.fees')} value={formatCost(summary.total_fees)} />
           </div>
           <div className="grid split">
-            <Panel title="盈利与亏损">
+            <Panel title={t('reports.gross')}>
               <table>
                 <tbody>
-                  <tr><td>总盈利</td><td className={'num ' + toneOf(grossProfit, scheme)}>{formatMoney(grossProfit)}</td></tr>
-                  <tr><td>总亏损</td><td className={'num ' + toneOf(-grossLoss, scheme)}>{formatMoney(-grossLoss)}</td></tr>
-                  <tr><td>平均盈利</td><td className={'num ' + toneOf(summary.avg_win_pct, scheme)}>{formatPct(summary.avg_win_pct)}</td></tr>
-                  <tr><td>平均亏损</td><td className={'num ' + toneOf(summary.avg_loss_pct, scheme)}>{formatPct(summary.avg_loss_pct)}</td></tr>
-                  <tr><td>盈亏比</td><td className="num">{summary.profit_factor === null ? '—' : summary.profit_factor}</td></tr>
+                  <tr><td>{t('reports.grossProfit')}</td><td className={'num ' + toneOf(grossProfit, scheme)}>{formatMoney(grossProfit)}</td></tr>
+                  <tr><td>{t('reports.grossLoss')}</td><td className={'num ' + toneOf(-grossLoss, scheme)}>{formatMoney(-grossLoss)}</td></tr>
+                  <tr><td>{t('reports.avgWin')}</td><td className={'num ' + toneOf(summary.avg_win_pct, scheme)}>{formatPct(summary.avg_win_pct)}</td></tr>
+                  <tr><td>{t('reports.avgLoss')}</td><td className={'num ' + toneOf(summary.avg_loss_pct, scheme)}>{formatPct(summary.avg_loss_pct)}</td></tr>
+                  <tr><td>{t('reports.profitFactor')}</td><td className="num">{summary.profit_factor === null ? '—' : summary.profit_factor}</td></tr>
                 </tbody>
               </table>
               {summary.profit_factor === null ? <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>{summary.profit_factor_note}</div> : null}
             </Panel>
-            <Panel title="当月最佳与最差">
-              {days.length === 0 ? <Empty text="这个月还没有平仓交易" /> : (
+            <Panel title={t('reports.monthBestWorst')}>
+              {days.length === 0 ? <Empty text={t('reports.noClosedThisMonth')} /> : (
                 <table>
                   <tbody>
                     <tr>
-                      <td>最佳交易日</td>
+                      <td>{t('reports.bestDay')}</td>
                       <td className="muted">{bestDay ? bestDay.date : '—'}</td>
                       <td className={'num ' + toneOf(bestDay ? bestDay.net_pnl : 0, scheme)}>{formatMoney(bestDay ? bestDay.net_pnl : 0)}</td>
                     </tr>
                     <tr>
-                      <td>最差交易日</td>
+                      <td>{t('reports.worstDay')}</td>
                       <td className="muted">{worstDay ? worstDay.date : '—'}</td>
                       <td className={'num ' + toneOf(worstDay ? worstDay.net_pnl : 0, scheme)}>{formatMoney(worstDay ? worstDay.net_pnl : 0)}</td>
                     </tr>
                     <tr>
-                      <td>盈利天数</td>
-                      <td className="muted">{days.filter((day) => day.net_pnl > 0).length} 天</td>
-                      <td className="num muted">{days.filter((day) => day.net_pnl < 0).length} 天亏损</td>
+                      <td>{t('reports.profitableDays')}</td>
+                      <td className="muted">{days.filter((day) => day.net_pnl > 0).length} {t('reports.days')}</td>
+                      <td className="num muted">{days.filter((day) => day.net_pnl < 0).length} {t('reports.lossDays')}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -146,34 +148,28 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
       {tab === 'risk' ? (
         <>
           <div className="grid kpi">
-            <Kpi label="最大回撤" value={formatMoney(summary.max_drawdown)} tone={toneOf(summary.max_drawdown, scheme)} note="按平仓顺序累计" />
-            <Kpi label="平均持有" value={summary.avg_holding_days + ' 天'} />
-            <Kpi label="未配对持仓" value={summary.open_position_count + ' 个'} note="尚无平仓结果" />
-            <Kpi label="手续费占净盈亏" value={feeShare(summary)} />
+            <Kpi label={t('reports.maxDrawdown')} value={formatMoney(summary.max_drawdown)} tone={toneOf(summary.max_drawdown, scheme)} note={t('reports.drawdownNote')} />
+            <Kpi label={t('reports.avgHolding')} value={summary.avg_holding_days + ' ' + t('reports.days')} />
+            <Kpi label={t('reports.openPositions')} value={summary.open_position_count + ' ' + t('reports.positions')} note={t('reports.noClosedResult')} />
+            <Kpi label={t('reports.feeShare')} value={feeShare(summary)} />
           </div>
-          <Panel title="回撤与费用">
+          <Panel title={t('reports.drawdownFees')}>
             <div className="grid split">
               <div>
-                <div className="kpi-label">回撤来源</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 6 }}>
-                  最大回撤按平仓顺序累计，衡量的是已实现权益从峰值回落的最大幅度。
-                  它不包含未平仓浮亏，也不预测未来风险。
-                </div>
+                <div className="kpi-label">{t('reports.drawdownSource')}</div>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 6 }}>{t('reports.drawdownSourceText')}</div>
               </div>
               <div>
-                <div className="kpi-label">费用结构</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 6 }}>
-                  手续费合计 {formatCost(summary.total_fees)}，覆盖 {summary.trade_count} 笔平仓交易。
-                  费用会直接压低净盈亏，报告里的净值已经是扣费后的数字。
-                </div>
+                <div className="kpi-label">{t('reports.feeStructure')}</div>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.8, marginTop: 6 }}>{t('reports.feeStructureText', { fees: formatCost(summary.total_fees), count: summary.trade_count })}</div>
               </div>
             </div>
           </Panel>
-          <Panel title="累计盈亏曲线">
+          <Panel title={t('reports.equityCurve')}>
             <Sparkline points={(summary.equity_curve || []).map((point) => point.cumulative_pnl)} scheme={scheme} />
             {(summary.equity_curve || []).length >= 2 ? (
               <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-                曲线按平仓时间累计，每笔已扣手续费。它反映已实现盈亏，不含未平仓浮盈浮亏。
+                {t('reports.equityCurveText')}
               </div>
             ) : null}
           </Panel>
@@ -181,8 +177,8 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
       ) : null}
 
       {tab === 'symbols' ? (
-        <Panel title="按标的">
-          {symbols.length === 0 ? <Empty text="还没有可以按标的归因的样本" /> : (
+        <Panel title={t('reports.bySymbol')}>
+          {symbols.length === 0 ? <Empty text={t('reports.noSymbolSamples')} /> : (
             <BreakdownTable rows={symbols} scheme={scheme} />
           )}
         </Panel>
@@ -190,18 +186,18 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
 
       {tab === 'daytime' ? (
         <div className="grid" style={{ gap: 14 }}>
-          <Panel title="按星期">
-            {weekdays.length === 0 ? <Empty text="还没有可以按星期归因的样本" /> : (
+          <Panel title={t('reports.byWeekday')}>
+            {weekdays.length === 0 ? <Empty text={t('reports.noWeekdaySamples')} /> : (
               <>
                 <Bars rows={weekdays} scheme={scheme} />
                 <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-                  带 * 的分组样本不足 5 笔，只作提示，不构成规律。
+                  {t('reports.smallSample')}
                 </div>
               </>
             )}
           </Panel>
-          <Panel title="按持有周期">
-            {holdings.length === 0 ? <Empty text="还没有可以按持有周期归因的样本" /> : (
+          <Panel title={t('reports.byHolding')}>
+            {holdings.length === 0 ? <Empty text={t('reports.noHoldingSamples')} /> : (
               <BreakdownTable rows={holdings} scheme={scheme} />
             )}
           </Panel>
@@ -212,13 +208,14 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
 }
 
 function BreakdownTable({ rows, scheme }: { rows: BreakdownRow[]; scheme: 'cn' | 'intl' }) {
+  const { t } = useLegacyI18n();
   return (
     <div className="scroll-x">
       <table>
         <thead>
           <tr>
-            <th>分组</th><th className="num">笔数</th><th className="num">胜率</th>
-            <th className="num">净盈亏</th><th className="num">平均收益</th><th className="num">盈亏比</th>
+            <th>{t('reports.group')}</th><th className="num">{t('reports.count')}</th><th className="num">{t('reports.winRate')}</th>
+            <th className="num">{t('reports.netPnl')}</th><th className="num">{t('reports.avgReturn')}</th><th className="num">{t('reports.profitFactor')}</th>
           </tr>
         </thead>
         <tbody>

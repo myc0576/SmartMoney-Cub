@@ -349,6 +349,34 @@ class WorkbenchService:
             workspace.close()
         return {"status": "ok", "rules": rules, "safety": SAFETY_DECLARATION}
 
+    def rules_timeline(self) -> dict[str, Any]:
+        """The rule library's history, one ordered event stream per rule.
+
+        The rule table answers what a rule IS; this answers how it got there. It
+        reads both stores and sorts by each event's own timestamp, so a ledger
+        whose lines were written out of order still reads forwards. Nothing is
+        synthesized for a stage that never happened -- a rule that was never
+        verified shows no verification step.
+        """
+        from smartmoney_cub_harness.evolution_ledger import read_ledger  # noqa: PLC0415
+        from smartmoney_cub_harness.rule_timeline import build_timeline  # noqa: PLC0415
+        from smartmoney_cub_harness.workspace import Workspace  # noqa: PLC0415
+
+        workspace = Workspace(self.workspace_db)
+        try:
+            rules = workspace.list_rules()
+        finally:
+            workspace.close()
+        entries = read_ledger(self.root / "workspace" / "evolution_ledger.jsonl")
+        from smartmoney_cub_harness.agent.tools import LEDGER_FILENAME  # noqa: PLC0415
+
+        # The runtime writes the ledger beside the journal rather than under the
+        # workspace directory, so both locations are read and merged. A missing
+        # file reads as no events, which is a real state and not an error.
+        entries = entries + read_ledger(self.root / "journal" / LEDGER_FILENAME)
+        timeline = build_timeline(rules=rules, ledger_entries=entries)
+        return {"status": "ok", "timeline": timeline, "count": len(timeline), "safety": SAFETY_DECLARATION}
+
     def promote_rule(self, rule_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Promote one challenger rule to champion behind the human gate.
 
@@ -1720,6 +1748,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/rules":
                 self._json(self.service.rules())
                 return
+            if path == "/api/rules/timeline":
+                # Read-only, and listed before the promotion route so the two
+                # cannot be confused: this one takes no rule id and writes
+                # nothing.
+                self._json(self.service.rules_timeline())
+                return
             if path == "/api/governance":
                 self._json(self.service.governance_view())
                 return
@@ -2135,6 +2169,10 @@ def start_workbench(
         pass
     finally:
         server.server_close()
+        if trader_service is not None:
+            close_trader = getattr(trader_service, "close", None)
+            if callable(close_trader):
+                close_trader()
         service.close()
         if owned_trader_store is not None:
             close = getattr(owned_trader_store, "close", None)

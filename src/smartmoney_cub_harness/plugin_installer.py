@@ -84,6 +84,14 @@ class PluginInstaller:
         """Check health of a plugin without installing or mutating disk."""
         spec = entry.get("install") if isinstance(entry.get("install"), dict) else {}
         kind = spec.get("kind")
+        if kind == INSTALL_GIT and entry.get("level") == "companion":
+            source = self._ensure_within_root(self.sources_dir / str(entry["plugin_id"]))
+            healthy = source.is_dir() and (source / ".git").is_dir()
+            return {
+                "status": "ok" if healthy else "error", "healthy": healthy,
+                "detail": "source checkout present; configure and run upstream separately" if healthy else "source checkout is missing",
+                "runtime_integrated": False, "safety": SAFETY_DECLARATION,
+            }
         if kind == INSTALL_BUILTIN:
             return {
                 "status": "ok",
@@ -211,9 +219,19 @@ class PluginInstaller:
             }
         )
 
-        # Store credentials if provided
-        if credentials and isinstance(credentials, dict):
-            self._save_plugin_credentials(plugin_id, credentials)
+        mode = curated_entry.get("credential_mode", "none")
+        supplied = credentials if isinstance(credentials, dict) else {}
+        requirements = curated_entry.get("credential_requirements") or []
+        allowed = {item["name"] for item in requirements}
+        error = None
+        if supplied and mode != "managed_local":
+            error = "external_credentials_not_accepted" if mode == "external_only" else "credentials_not_accepted"
+        elif set(supplied) - allowed:
+            error = "unknown_credential_fields"
+        elif any(item.get("required") and not str(supplied.get(item["name"]) or "").strip() for item in requirements):
+            error = "credentials_required"
+        if error:
+            return {"status": "error", "steps": steps, "error": error, "safety": SAFETY_DECLARATION}
 
         with self._lock:
             spec = curated_entry.get("install") if isinstance(curated_entry.get("install"), dict) else {}
@@ -273,10 +291,15 @@ class PluginInstaller:
                     target = self.sources_dir / plugin_id
                     self._ensure_within_root(target)
                     git_target_dir = target
-                    fetch_cleanup_needed = True
-
                     if target.exists():
-                        shutil.rmtree(target)
+                        # The checkout may contain user changes or configuration.
+                        # Reinstallation must not erase them, even on a failed probe.
+                        health = self.probe(curated_entry, timeout=min(60, timeout))
+                        steps.append({"step": "fetch", "status": "skipped", "detail": "existing source checkout preserved"})
+                        steps.append({"step": "health", "status": "ok" if health["healthy"] else "failed", "detail": health["detail"]})
+                        return {"status": "ok" if health["healthy"] else "error", "steps": steps,
+                                "health": health, "safety": SAFETY_DECLARATION}
+                    fetch_cleanup_needed = True
                     self.sources_dir.mkdir(parents=True, exist_ok=True)
 
                     cmd = ["git", "clone", "--depth", "1"]
@@ -304,8 +327,8 @@ class PluginInstaller:
                             "safety": SAFETY_DECLARATION,
                         }
 
-                    # We ensure venv exists and point python_path or install
-                    self._ensure_venv()
+                    # Source companions are not runtime integrations. Checking
+                    # out code does not authorize importing or running it.
                     steps.append(
                         {
                             "step": "fetch",
@@ -356,6 +379,9 @@ class PluginInstaller:
                         "detail": probe_res.get("detail", "health probe ok"),
                     }
                 )
+                # Commit credentials only after installation and health verification.
+                if supplied:
+                    self._save_plugin_credentials(plugin_id, supplied)
                 return {
                     "status": "ok",
                     "steps": steps,
@@ -422,4 +448,3 @@ class PluginInstaller:
                 "plugin_id": plugin_id,
                 "safety": SAFETY_DECLARATION,
             }
-

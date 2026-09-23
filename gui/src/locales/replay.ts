@@ -1,0 +1,45 @@
+import { LOCALES, useLocale } from '../i18n';
+type Copy = readonly [string, string, string, string, string, string, string, string, string];
+const messages = {
+  settings: ['回放设置','Replay settings','回放設定','リプレイ設定','리플레이 설정','Ajustes de repetición','Configurações do replay','Replay-Einstellungen','Réglages de relecture'],
+  notice: ['逐根揭示历史行情，不修改源数据。回退会创建独立分支；历史数据的可得时间若未验证，会明确标注。','Historical bars are revealed one at a time without changing source data. Rewinding creates a separate branch. Unverified historical availability is marked.','逐根揭示歷史行情，不修改來源資料。回退會建立獨立分支；未驗證的歷史可得時間會標註。','元データを変更せず足を順に表示します。巻き戻しは別分岐を作成します。過去の利用可能時刻が未検証なら明示します。','원본 변경 없이 과거 봉을 순서대로 공개합니다. 되감기는 별도 분기를 생성하며 검증되지 않은 과거 가용 시점은 표시합니다.','Las velas se revelan sin modificar el origen. Retroceder crea una rama independiente. La disponibilidad histórica no verificada se indica.','As velas são reveladas sem alterar a origem. Voltar cria uma ramificação separada. A disponibilidade histórica não verificada é indicada.','Historische Kerzen werden schrittweise ohne Datenänderung gezeigt. Zurückspulen erzeugt einen Zweig. Ungeprüfte historische Verfügbarkeit wird markiert.','Les bougies sont révélées sans modifier la source. Revenir crée une branche distincte. La disponibilité historique non vérifiée est signalée.'],
+  purpose: ['用途','Purpose','用途','用途','용도','Uso','Finalidade','Zweck','Usage'],
+  source: ['行情来源','Market data source','行情來源','相場データ提供元','시세 출처','Fuente de mercado','Fonte de mercado','Marktdatenquelle','Source des cours'],
+  noSources: ['没有可用来源','No available sources','沒有可用來源','利用可能な提供元なし','사용 가능한 출처 없음','Sin fuentes disponibles','Nenhuma fonte disponível','Keine verfügbare Quelle','Aucune source disponible'],
+  symbol: ['标的','Symbol','標的','銘柄','종목','Instrumento','Ativo','Instrument','Instrument'],
+  interval: ['周期','Interval','週期','時間足','주기','Intervalo','Intervalo','Intervall','Intervalle'],
+  speed: ['播放速度','Playback speed','播放速度','再生速度','재생 속도','Velocidad','Velocidade','Wiedergabegeschwindigkeit','Vitesse'],
+  replay: ['回放','Replay','回放','リプレイ','리플레이','Repetición','Replay','Replay','Relecture'],
+  empty: ['选择来源、标的和周期，开始回放，或恢复历史会话。','Select a source, symbol and interval to start, or resume a saved session.','選擇來源、標的和週期以開始，或恢復歷史工作階段。','提供元・銘柄・時間足を選んで開始するか、保存済みセッションを再開します。','출처, 종목, 주기를 선택하거나 저장된 세션을 재개하세요.','Seleccione fuente, instrumento e intervalo, o reanude una sesión.','Selecione fonte, ativo e intervalo, ou retome uma sessão.','Quelle, Instrument und Intervall wählen oder Sitzung fortsetzen.','Choisissez une source, un instrument et un intervalle, ou reprenez une session.'],
+  noBars: ['该会话没有可显示的 K 线','No bars available in this session','此工作階段沒有可顯示的 K 線','このセッションに表示できる足はありません','이 세션에 표시할 봉이 없습니다','No hay velas en esta sesión','Nenhuma vela nesta sessão','Keine Kerzen in dieser Sitzung','Aucune bougie dans cette session'],
+  cursor: ['回放游标','Replay cursor','回放游標','再生位置','재생 위치','Posición de repetición','Posição do replay','Replay-Position','Position de relecture'],
+  current: ['当前位置','Current bar','目前位置','現在の足','현재 봉','Vela actual','Vela atual','Aktuelle Kerze','Bougie actuelle'],
+  open: ['开盘','Open','開盤','始値','시가','Apertura','Abertura','Eröffnung','Ouverture'],
+  high: ['最高','High','最高','高値','고가','Máximo','Máxima','Hoch','Plus haut'],
+  low: ['最低','Low','最低','安値','저가','Mínimo','Mínima','Tief','Plus bas'],
+  close: ['收盘','Close','收盤','終値','종가','Cierre','Fechamento','Schluss','Clôture'],
+  change: ['区间涨跌','Interval change','區間漲跌','区間騰落率','구간 변동률','Variación del intervalo','Variação do intervalo','Intervalländerung','Variation sur l’intervalle'],
+  markers: ['交易标记','Trade markers','交易標記','取引マーカー','거래 표시','Marcas de operaciones','Marcações de operações','Handelsmarkierungen','Repères d’opérations'],
+  noMarkers: ['当前区间没有进出场标记','No entry or exit markers in this interval','目前區間沒有進出場標記','この区間に売買マーカーはありません','이 구간에 진입·청산 표시가 없습니다','Sin marcas de entrada o salida','Sem marcações de entrada ou saída','Keine Ein- oder Ausstiegsmarkierungen','Aucun repère d’entrée ou de sortie'],
+  markerNote: ['标记来自已记录的成交时间与价格；不补造缺失成交。','Markers use recorded execution times and prices; missing fills are not invented.','標記來自已記錄的成交時間與價格；不虛構缺失成交。','記録された約定時刻と価格を使用し、不足する約定は補いません。','기록된 체결 시각과 가격을 사용하며 누락된 체결을 만들어내지 않습니다.','Se usan horas y precios registrados, sin inventar ejecuciones ausentes.','São usados horários e preços registrados, sem inventar execuções ausentes.','Markierungen nutzen erfasste Zeiten und Preise; fehlende Ausführungen werden nicht erfunden.','Les repères utilisent les heures et prix enregistrés, sans inventer les exécutions manquantes.'],
+  type: ['类型','Type','類型','種類','유형','Tipo','Tipo','Typ','Type'],
+  time: ['时间','Time','時間','時刻','시간','Hora','Hora','Zeit','Heure'],
+  price: ['价格','Price','價格','価格','가격','Precio','Preço','Preis','Prix'],
+  description: ['说明','Description','說明','説明','설명','Descripción','Descrição','Beschreibung','Description'],
+  entry: ['进场','Entry','進場','エントリー','진입','Entrada','Entrada','Einstieg','Entrée'],
+  exit: ['离场','Exit','離場','決済','청산','Salida','Saída','Ausstieg','Sortie'],
+  buy: ['模拟买入','Simulate buy','模擬買入','模擬買い','모의 매수','Simular compra','Simular compra','Kauf simulieren','Simuler un achat'],
+  sell: ['模拟卖出','Simulate sell','模擬賣出','模擬売り','모의 매도','Simular venta','Simular venda','Verkauf simulieren','Simuler une vente'],
+  quantity: ['模拟数量','Simulation quantity','模擬數量','模擬数量','모의 수량','Cantidad simulada','Quantidade simulada','Simulationsmenge','Quantité simulée'],
+  fills: ['已模拟成交','Simulated fills','已模擬成交','模擬約定','모의 체결','Ejecuciones simuladas','Execuções simuladas','Simulierte Ausführungen','Exécutions simulées'],
+  pending: ['待下一根开盘成交','Pending next bar open','待下一根開盤成交','次の足の始値で約定予定','다음 봉 시가 체결 대기','Pendiente de la próxima apertura','Aguardando a próxima abertura','Nächste Kerzeneröffnung abwarten','En attente de l’ouverture suivante'],
+  noHistory: ['没有已保存会话','No saved sessions','沒有已儲存工作階段','保存済みセッションなし','저장된 세션 없음','Sin sesiones guardadas','Nenhuma sessão salva','Keine gespeicherten Sitzungen','Aucune session enregistrée'],
+  resume: ['恢复','Resume','恢復','再開','재개','Reanudar','Retomar','Fortsetzen','Reprendre'],
+  historyError: ['历史会话读取失败','Session history could not be read','歷史工作階段讀取失敗','履歴の読込に失敗','세션 기록을 읽을 수 없습니다','No se pudo leer el historial','Falha ao ler histórico','Sitzungsverlauf nicht lesbar','Impossible de lire l’historique'],
+  failed: ['回放操作失败','Replay operation failed','回放操作失敗','リプレイ操作に失敗','리플레이 작업 실패','Error de repetición','Falha no replay','Replay-Vorgang fehlgeschlagen','Échec de l’opération de relecture'],
+  unverified: ['历史可得时间未验证：适合图表复盘，不应视作严格时点回测证据。','Historical availability is unverified: suitable for chart review, not strict point-in-time backtest evidence.','歷史可得時間未驗證：適合圖表複盤，不是嚴格時點回測證據。','過去の利用可能時刻は未検証です。チャート確認用であり、厳密な時点バックテストの根拠にはなりません。','과거 가용 시점은 미검증입니다. 차트 복기용이며 엄격한 시점 백테스트 근거가 아닙니다.','Disponibilidad histórica no verificada: revisión gráfica, no prueba retrospectiva estricta sin información futura.','Disponibilidade histórica não verificada: revisão gráfica, não evidência temporal rigorosa de backtest.','Historische Verfügbarkeit ungeprüft: für Chart-Rückblicke, nicht als strenger zeitpunktbezogener Backtest-Beleg.','Disponibilité historique non vérifiée : revue graphique, pas une preuve de test historique strictement datée.'],
+} satisfies Record<string, Copy>;
+export function useReplayCopy() {
+  const [locale] = useLocale();
+  return (key: keyof typeof messages) => messages[key][LOCALES.indexOf(locale)];
+}

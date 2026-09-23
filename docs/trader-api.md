@@ -51,16 +51,31 @@ A request with no verifiable identity is refused with `401`:
     GET /api/trader/trades/{round_trip_id}
     GET /api/trader/accounts
     POST /api/trader/accounts
+    GET /api/trader/connections
+    GET /api/trader/connections/manifests
+    GET /api/trader/connections/accounts
+    POST /api/trader/connections/{provider_id}/connect
+    POST /api/trader/connections/{provider_id}/sync
+    POST /api/trader/connections/{provider_id}/disconnect
+    POST /api/trader/connections/snaptrade-personal-mcp/oauth/start
+    POST /api/trader/connections/snaptrade-personal-mcp/oauth/complete
+    GET /api/trader/connections/snaptrade-personal-mcp/oauth/callback
     GET /api/trader/analytics/summary?from=&to=&account_id=
     GET /api/trader/analytics/breakdown?dimension=&from=&to=
     GET /api/trader/calendar?year=&month=
+    GET /api/trader/insight/mistakes?from=&to=&account_id=
+    GET /api/trader/insight/edges?from=&to=&account_id=
+    GET /api/trader/insight/patterns?from=&to=&account_id=
+    POST /api/trader/insight/patterns/decisions
     GET /api/trader/playbooks
     POST /api/trader/playbooks
     POST /api/trader/backtest/run
     GET /api/trader/backtest/runs
     GET /api/trader/backtest/runs/{run_id}
     POST /api/trader/replay/sessions
+    GET /api/trader/replay/sessions
     GET /api/trader/replay/sessions/{session_id}
+    POST /api/trader/replay/sessions/{session_id}/actions
 
 The method and path of each line above are the route table in
 `src/smartmoney_cub_harness/trader/api/routes.py`, and a test asserts the two
@@ -130,6 +145,17 @@ backtester uses for win rate, profit factor, drawdown, and trade counts.
 - GET /api/trader/calendar?year=&month= - closed round trips aggregated by exit
   day for one month. Defaults to the current month.
 
+### Insight
+
+- GET /api/trader/insight/mistakes?from=&to=&account_id= - deterministic candidate
+  mistake clusters identified from journal executions: broken invalidation unstopped,
+  early morning exit, one-day holding, and revenge reentry. Every cluster carries the
+  non-silent observation envelope: `invalidation`, `time_stop`, `give_up`,
+  `data_source`, `available_at`, and `data_quality`.
+- GET /api/trader/insight/edges?from=&to=&account_id= - profitable edges extracted
+  from journal performance grouped by `tag`, `regime`, and `holding`. Each edge
+  carries the non-silent observation envelope and `small_sample` indicator.
+
 ### Playbooks
 
 - GET /api/trader/playbooks - the tenant's declared playbooks, each scored against
@@ -161,11 +187,21 @@ backtester uses for win rate, profit factor, drawdown, and trade counts.
 
 - POST /api/trader/replay/sessions - the body carries `symbol`, `interval`, one
   of `bars`, `provider`, or `cached: true`, and optional `index` (starting
-  frame). The response holds the session and its bars.
+  frame), `mode: review|training`, optional `account_id` and `initial_cash`.
+  The response holds only bars and actual markers through the current cursor.
+- GET /api/trader/replay/sessions - list persisted session metadata without future bars.
 - GET /api/trader/replay/sessions/{session_id}?index= - steps the session to a
-  frame index and returns that frame. Sessions live in memory and are dropped on
-  restart; each is owned by the tenant that created it, and another tenant's
-  session id answers `404`.
+  frame index and returns that frame. Sessions survive restarts; another tenant's
+  session id answers `404`. Historical availability is explicitly unverified
+  unless the source supplies point-in-time provenance; fetched time is not
+  presented as historical availability.
+- POST /api/trader/replay/sessions/{session_id}/actions - `action` is `step`,
+  `seek`, `rewind`, or `simulate`. Seek/rewind use `index`. Simulation accepts
+  `side: BUY|SELL` and a positive fractional `quantity` only in training mode.
+  The request fills on the next revealed bar's open in a separate, unleveraged
+  paper ledger (zero fees/slippage, explicitly labeled). A training rewind
+  creates a new session branch and preserves the original experiment. None of
+  these records enter imported real executions or call an external trade API.
 
 ## Running it
 

@@ -7,8 +7,10 @@ respect to the user's own journal**. The journal, notes, and backtest runs it
 produces are the user's own data, stored locally or in the user's tenant store,
 and never committed to this repository.
 
-It is not a stock picker, financial adviser, broker connector, or execution
-system.
+It is not a stock picker, financial adviser, or execution system. Optional,
+user-authorized read-only account ingestion can import a user's own history,
+balances and positions. It cannot place or cancel orders, modify an account,
+withdraw funds, or automate broker login/export. Core journal use stays offline.
 
 ## Safety Declaration
 

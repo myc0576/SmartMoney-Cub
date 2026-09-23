@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import hashlib
+import json
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
@@ -30,6 +32,7 @@ from smartmoney_cub_harness.trader.storage.base import (
     TradeRecord,
     UserRecord,
     encode_json,
+    decode_json,
     iter_statements,
     new_id,
     now_iso,
@@ -39,7 +42,9 @@ from smartmoney_cub_harness.trader.storage.base import (
     require_text,
     safety_envelope,
     schema_sql,
+    preserve_decimal_sources,
 )
+from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 DATABASE_FILENAME = "trader_store.db"
 FILE_SUFFIXES = (".db", ".sqlite", ".sqlite3")
@@ -55,15 +60,19 @@ SIDE_ALIASES = {
 }
 
 TRADE_UPSERT = (
-    "INSERT INTO trades (user_id, trade_id, account_id, symbol, name, side,"
-    " trade_date, trade_time, price, quantity, fee, thesis,"
+    "INSERT INTO trades (user_id, trade_id, account_id, symbol, name, side, position_effect, instrument_id, market, timezone, source_record_id, source_batch_id,"
+    " trade_date, trade_time, price, quantity, asset_class, currency, multiplier,"
+    " source_precision, provenance, fee, thesis,"
     " invalidation_price, regime, tags, created_at)"
-    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     " ON CONFLICT (user_id, trade_id) DO UPDATE SET"
     " account_id = excluded.account_id, symbol = excluded.symbol,"
-    " name = excluded.name, side = excluded.side,"
+    " name = excluded.name, side = excluded.side, position_effect = excluded.position_effect, instrument_id = excluded.instrument_id, market = excluded.market, timezone = excluded.timezone, source_record_id = excluded.source_record_id, source_batch_id = excluded.source_batch_id,"
     " trade_date = excluded.trade_date, trade_time = excluded.trade_time,"
     " price = excluded.price, quantity = excluded.quantity,"
+    " asset_class = excluded.asset_class, currency = excluded.currency,"
+    " multiplier = excluded.multiplier, source_precision = excluded.source_precision,"
+    " provenance = excluded.provenance,"
     " fee = excluded.fee, thesis = excluded.thesis,"
     " invalidation_price = excluded.invalidation_price,"
     " regime = excluded.regime, tags = excluded.tags"
@@ -97,10 +106,26 @@ def resolve_database_path(path: str | Path) -> Path | str:
     lives inside it; a file path or ":memory:" means the caller named the
     database itself. Two tenants therefore cannot share a file by accident,
     because the directory form always appends the same fixed filename.
+
+    A SQLAlchemy-style URL ("sqlite:///abs/path.db") is accepted and reduced to
+    its path. Without that, the string was treated as a RELATIVE DIRECTORY named
+    "sqlite:" (the colon is legal in a POSIX filename), so the caller's database
+    was created one level down inside a directory they never asked for and did not
+    notice -- a test run left a stray "sqlite:" tree in the repository root.
     """
     text = str(path)
     if text == MEMORY_PATH or text.startswith("file:"):
         return text
+    for prefix in ("sqlite:///", "sqlite://", "sqlite:"):
+        if text.startswith(prefix):
+            # Everything after the prefix is the path. An absolute POSIX path
+            # loses one slash to the URL form ("sqlite:///tmp/x.db" means
+            # "/tmp/x.db"), so exactly one leading slash is restored.
+            remainder = text[len(prefix):]
+            if prefix == "sqlite:///" and not remainder.startswith("/"):
+                remainder = "/" + remainder
+            text = remainder or text
+            break
     candidate = Path(text)
     if candidate.suffix.lower() in FILE_SUFFIXES:
         candidate.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +171,26 @@ class SQLiteTenantStore:
                 self._db.rollback()
                 raise
             self._db.commit()
+
+    def _read(self, statement: str, parameters: Any = ()) -> list[sqlite3.Row]:
+        """Run one read and return its rows, serialized against every writer.
+
+        The lock is not optional here, and the reason is a real failure rather
+        than tidiness. sqlite3's connection object refuses to be used by two
+        threads at once, and the workbench serves each request on its own thread
+        off one shared store. A read that ran while another thread was inside a
+        write raised:
+
+            InterfaceError: bad parameter or other API misuse
+
+        which the HTTP layer reports as a 500, which the interface shows as
+        "cannot reach the local service" -- an intermittent, unexplained
+        disconnection over a database that was never actually unreachable. Reads
+        hold the same lock as writes so the connection is touched by one thread
+        at a time.
+        """
+        with self._lock:
+            return self._db.execute(statement, parameters).fetchall()
 
     def close(self) -> None:
         with self._lock:
@@ -201,6 +246,25 @@ class SQLiteTenantStore:
             with self._transaction() as conn:
                 for statement in statements:
                     conn.execute(statement)
+                existing = {
+                    str(row["name"])
+                    for row in conn.execute("PRAGMA table_info(trades)").fetchall()
+                }
+                for name, definition in (
+                    ("position_effect", "TEXT NOT NULL DEFAULT 'AUTO'"),
+                    ("instrument_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("market", "TEXT NOT NULL DEFAULT ''"),
+                    ("timezone", "TEXT NOT NULL DEFAULT ''"),
+                    ("source_record_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("source_batch_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("asset_class", "TEXT NOT NULL DEFAULT 'unknown'"),
+                    ("currency", "TEXT NOT NULL DEFAULT ''"),
+                    ("multiplier", "DOUBLE PRECISION NOT NULL DEFAULT 1"),
+                    ("source_precision", "TEXT NOT NULL DEFAULT 'unknown'"),
+                    ("provenance", "TEXT NOT NULL DEFAULT '{}'"),
+                ):
+                    if name not in existing:
+                        conn.execute(f"ALTER TABLE trades ADD COLUMN {name} {definition}")
                 tables = [
                     str(row["name"])
                     for row in conn.execute(
@@ -244,9 +308,10 @@ class SQLiteTenantStore:
         return self.get_user(resolved) or {}
 
     def get_user(self, user_id: str) -> dict[str, Any] | None:
-        row = self._db.execute(
+        rows = self._read(
             "SELECT * FROM users WHERE user_id = ?", (require_text(user_id, "user_id"),)
-        ).fetchone()
+        )
+        row = rows[0] if rows else None
         if row is None:
             return None
         return UserRecord.from_row(row).to_dict()
@@ -278,13 +343,13 @@ class SQLiteTenantStore:
         # unconditional first clause, and an empty filter arrives as an empty
         # string so the same statement serves the filtered and unfiltered case.
         # Reading the source therefore always shows the user_id scope.
-        rows = self._db.execute(
+        rows = self._read(
             "SELECT * FROM trades WHERE user_id = ?"
             " AND (? = '' OR account_id = ?)"
             " AND (? = '' OR symbol = ?)"
             " AND (? = '' OR trade_date >= ?)"
             " AND (? = '' OR trade_date <= ?)"
-            " ORDER BY trade_date DESC, trade_time DESC, created_at DESC LIMIT ? OFFSET ?",
+            " ORDER BY trade_date DESC, trade_time DESC, created_at DESC, trade_id DESC LIMIT ? OFFSET ?",
             [
                 resolved,
                 account,
@@ -298,7 +363,7 @@ class SQLiteTenantStore:
                 max(1, int(limit)),
                 max(0, int(offset)),
             ],
-        ).fetchall()
+        )
         return [TradeRecord.from_row(row).to_dict() for row in rows]
 
     def insert_trades(self, user_id: str, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -313,8 +378,14 @@ class SQLiteTenantStore:
         updated: list[str] = []
         with self._transaction() as conn:
             self._require_user(conn, resolved)
-            for raw in rows:
-                record = self._normalize_trade(resolved, raw)
+            normalized = [self._normalize_trade(resolved, raw) for raw in rows]
+            occurrences: dict[str, int] = {}
+            for record in normalized:
+                if record.get("_generated_id"):
+                    base = record["trade_id"]
+                    occurrences[base] = occurrences.get(base, 0) + 1
+                    record["trade_id"] = f"{base}-o{occurrences[base]:02d}"
+            for record in normalized:
                 existing = conn.execute(
                     "SELECT trade_id FROM trades WHERE user_id = ? AND trade_id = ?",
                     (resolved, record["trade_id"]),
@@ -328,10 +399,17 @@ class SQLiteTenantStore:
                         record["symbol"],
                         record["name"],
                         record["side"],
+                        record["position_effect"],
+                        record["instrument_id"], record["market"], record["timezone"], record["source_record_id"], record["source_batch_id"],
                         record["trade_date"],
                         record["trade_time"],
                         record["price"],
                         record["quantity"],
+                        record["asset_class"],
+                        record["currency"],
+                        record["multiplier"],
+                        record["source_precision"],
+                        encode_json(record["provenance"], {}),
                         record["fee"],
                         record["thesis"],
                         record["invalidation_price"],
@@ -365,7 +443,13 @@ class SQLiteTenantStore:
         import, a broker export, and the API, and all of them have to land as
         one meaning.
         """
-        side = optional_text(raw.get("side")).upper()
+        raw_side = optional_text(raw.get("side")).upper()
+        inferred_effect = "AUTO"
+        if raw_side.endswith("_OPEN"):
+            inferred_effect, raw_side = "OPEN", raw_side[:-5]
+        elif raw_side.endswith("_CLOSE"):
+            inferred_effect, raw_side = "CLOSE", raw_side[:-6]
+        side = raw_side
         side = SIDE_ALIASES.get(side, side)
         if side not in ("BUY", "SELL"):
             raise StoreError(f"side must be BUY or SELL, got {raw.get('side')!r}")
@@ -375,20 +459,31 @@ class SQLiteTenantStore:
         quantity = raw.get("quantity")
         if quantity is None:
             quantity = raw.get("qty")
-        return {
+        explicit_id = bool(optional_text(raw.get("trade_id") or raw.get("fill_id")))
+        normalized = {
             "user_id": user_id,
-            "trade_id": optional_text(raw.get("trade_id") or raw.get("fill_id"))
-            or new_id("TRD"),
+            "trade_id": optional_text(raw.get("trade_id") or raw.get("fill_id")),
             "account_id": optional_text(raw.get("account_id")),
             "symbol": require_text(raw.get("symbol"), "symbol"),
             "name": optional_text(raw.get("name")),
             "side": side,
+            "position_effect": optional_text(raw.get("position_effect") or raw.get("offset") or inferred_effect).upper(),
+            "instrument_id": optional_text(raw.get("instrument_id") or raw.get("contract_id") or raw.get("symbol")),
+            "market": optional_text(raw.get("market") or raw.get("venue")),
+            "timezone": optional_text(raw.get("timezone") or raw.get("time_zone")),
+            "source_record_id": optional_text(raw.get("source_record_id") or raw.get("source_id")),
+            "source_batch_id": optional_text(raw.get("source_batch_id") or raw.get("batch_id")),
             "trade_date": require_text(
                 raw.get("trade_date") or raw.get("date"), "trade_date"
             ),
             "trade_time": optional_text(raw.get("trade_time") or raw.get("time")),
             "price": require_float(raw.get("price"), "price"),
             "quantity": require_float(quantity, "quantity"),
+            "asset_class": optional_text(raw.get("asset_class") or raw.get("instrument_type")) or "unknown",
+            "currency": optional_text(raw.get("currency") or raw.get("quote_currency")),
+            "multiplier": require_float(raw.get("multiplier") or 1.0, "multiplier"),
+            "source_precision": optional_text(raw.get("source_precision") or raw.get("timestamp_precision")) or "unknown",
+            "provenance": dict(raw.get("provenance") or {}),
             "fee": require_float(fee, "fee"),
             "thesis": optional_text(raw.get("thesis")),
             "invalidation_price": optional_float(
@@ -398,14 +493,23 @@ class SQLiteTenantStore:
             "tags": list(raw.get("tags") or []),
             "created_at": optional_text(raw.get("created_at")) or now_iso(),
         }
+        preserve_decimal_sources(raw, normalized)
+        if not normalized["trade_id"]:
+            identity = {key: normalized[key] for key in ("account_id", "instrument_id", "symbol", "side", "position_effect", "trade_date", "trade_time", "currency", "asset_class", "_decimal_identity")}
+            digest = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()[:20]
+            normalized["trade_id"] = f"TRD-{digest}"
+            normalized["_generated_id"] = True
+        else:
+            normalized["_generated_id"] = False
+        return normalized
 
     # ---- accounts ------------------------------------------------------
 
     def list_accounts(self, user_id: str) -> list[dict[str, Any]]:
-        rows = self._db.execute(
+        rows = self._read(
             "SELECT * FROM accounts WHERE user_id = ? ORDER BY name, account_id",
             (require_text(user_id, "user_id"),),
-        ).fetchall()
+        )
         return [AccountRecord.from_row(row).to_dict() for row in rows]
 
     def upsert_account(self, user_id: str, account: Mapping[str, Any]) -> dict[str, Any]:
@@ -430,7 +534,7 @@ class SQLiteTenantStore:
                     account_id,
                     name,
                     optional_text(account.get("broker")),
-                    optional_text(account.get("currency")) or "CNY",
+                optional_text(account.get("currency")) or "UNKNOWN",
                     require_float(account.get("initial_balance") or 0.0, "initial_balance"),
                     stamp,
                     stamp,
@@ -440,10 +544,11 @@ class SQLiteTenantStore:
         return self._get_account(resolved, account_id)
 
     def _get_account(self, user_id: str, account_id: str) -> dict[str, Any]:
-        row = self._db.execute(
+        rows = self._read(
             "SELECT * FROM accounts WHERE user_id = ? AND account_id = ?",
             (user_id, account_id),
-        ).fetchone()
+        )
+        row = rows[0] if rows else None
         if row is None:
             raise StoreError(f"unknown account: {account_id!r}")
         return AccountRecord.from_row(row).to_dict()
@@ -484,20 +589,21 @@ class SQLiteTenantStore:
         return self._get_backtest_run(resolved, run_id)
 
     def _get_backtest_run(self, user_id: str, run_id: str) -> dict[str, Any]:
-        row = self._db.execute(
+        rows = self._read(
             "SELECT * FROM backtest_runs WHERE user_id = ? AND run_id = ?",
             (user_id, run_id),
-        ).fetchone()
+        )
+        row = rows[0] if rows else None
         if row is None:
             raise StoreError(f"unknown backtest run: {run_id!r}")
         return BacktestRunRecord.from_row(row).to_dict()
 
     def list_backtest_runs(self, user_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
-        rows = self._db.execute(
+        rows = self._read(
             "SELECT * FROM backtest_runs WHERE user_id = ?"
             " ORDER BY created_at DESC, run_id DESC LIMIT ?",
             (require_text(user_id, "user_id"), max(1, int(limit))),
-        ).fetchall()
+        )
         return [BacktestRunRecord.from_row(row).to_dict() for row in rows]
 
     # ---- market bars ---------------------------------------------------
@@ -577,7 +683,7 @@ class SQLiteTenantStore:
         until = optional_text(end)
         # Same shape as list_trades: one statement whose first clause is the
         # tenant scope, with the optional range passed as empty-able parameters.
-        rows = self._db.execute(
+        rows = self._read(
             "SELECT * FROM market_bars WHERE user_id = ?"
             " AND symbol = ? AND bar_interval = ?"
             " AND (? = '' OR open_time >= ?)"
@@ -593,7 +699,7 @@ class SQLiteTenantStore:
                 until,
                 max(1, int(limit)),
             ],
-        ).fetchall()
+        )
         return [BarRecord.from_row(row).to_dict() for row in rows]
 
     # ---- audit ---------------------------------------------------------
@@ -637,12 +743,32 @@ class SQLiteTenantStore:
 
     def list_audit(self, user_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         """Return this tenant's audit trail, newest first."""
-        rows = self._db.execute(
+        rows = self._read(
             "SELECT * FROM audit_log WHERE user_id = ?"
             " ORDER BY created_at DESC, audit_id DESC LIMIT ?",
             (require_text(user_id, "user_id"), max(1, int(limit))),
-        ).fetchall()
+        )
         return [AuditRecord.from_row(row).to_dict() for row in rows]
+
+    def put_document(self, user_id: str, kind: str, document_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        resolved, doc_kind, doc_id = require_text(user_id, "user_id"), require_text(kind, "kind"), require_text(document_id, "document_id")
+        stamp = now_iso()
+        with self._transaction() as conn:
+            self._require_user(conn, resolved)
+            row = conn.execute("SELECT created_at FROM tenant_documents WHERE user_id = ? AND document_kind = ? AND document_id = ?", (resolved, doc_kind, doc_id)).fetchone()
+            created = str(row["created_at"]) if row else stamp
+            conn.execute("INSERT INTO tenant_documents (user_id, document_kind, document_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, document_kind, document_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at WHERE tenant_documents.user_id = excluded.user_id", (resolved, doc_kind, doc_id, encode_json(dict(payload), {}), created, stamp))
+        return {"user_id": resolved, "kind": doc_kind, "document_id": doc_id, "payload": dict(payload), "created_at": created, "updated_at": stamp, "safety": SAFETY_DECLARATION}
+
+    def get_document(self, user_id: str, kind: str, document_id: str) -> dict[str, Any] | None:
+        rows = self._read("SELECT * FROM tenant_documents WHERE user_id = ? AND document_kind = ? AND document_id = ?", (require_text(user_id, "user_id"), require_text(kind, "kind"), require_text(document_id, "document_id")))
+        if not rows: return None
+        row = rows[0]
+        return {"user_id": str(row["user_id"]), "kind": str(row["document_kind"]), "document_id": str(row["document_id"]), "payload": decode_json(row["payload"], {}), "created_at": str(row["created_at"]), "updated_at": str(row["updated_at"]), "safety": SAFETY_DECLARATION}
+
+    def list_documents(self, user_id: str, kind: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        rows = self._read("SELECT document_id FROM tenant_documents WHERE user_id = ? AND document_kind = ? ORDER BY updated_at DESC, document_id DESC LIMIT ?", (require_text(user_id, "user_id"), require_text(kind, "kind"), max(1, int(limit))))
+        return [self.get_document(user_id, kind, str(row["document_id"])) for row in rows]
 
     def update_trade_names(
         self, user_id: str, symbol_names: Mapping[str, str], *, force: bool = False

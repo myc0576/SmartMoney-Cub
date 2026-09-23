@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { api, readFileAsBase64, trader } from '../api';
 import type { Extraction, UploadResult } from '../types';
 import { Banner, Panel } from '../components/common';
+import { useLegacyI18n } from '../locales/legacy';
 
 // Import flow: pick a file, let the local engine read it, correct every field,
 // then commit. The raw file is stored once, keyed by hash, and never leaves
@@ -24,6 +25,7 @@ const EMPTY_ROW: DraftRow = {
 };
 
 export function ImportView({ onImported }: { onImported: () => void }) {
+  const { t } = useLegacyI18n();
   const [upload, setUpload] = useState<UploadResult | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [status, setStatus] = useState<string>('');
@@ -57,7 +59,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
       const content_base64 = await readFileAsBase64(file);
       const result = await api.upload({ file_name: file.name, media_type: file.type, content_base64 });
       applyExtraction(result);
-      setStatus('已解析 ' + result.extraction.row_count + ' 行，引擎：' + result.extraction.engine + '。请逐行确认后再提交。');
+      setStatus(t('import.parsed', { count: result.extraction.row_count, engine: result.extraction.engine }));
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : String(uploadError));
     } finally {
@@ -88,7 +90,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
           thesis: row.thesis,
         })),
       });
-      setStatus('已写入 ' + result.inserted_count + ' 行，更新 ' + result.updated_count + ' 行。');
+      setStatus(t('import.written', { inserted: result.inserted_count, updated: result.updated_count }));
       setUpload(null);
       setRows([]);
       onImported();
@@ -117,7 +119,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
           thesis: row.thesis,
         }],
       });
-      setStatus('已手工补录 1 笔。');
+      setStatus(t('import.done'));
       onImported();
       return true;
     } catch (manualError) {
@@ -130,7 +132,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
 
   return (
     <div className="grid" style={{ gap: 14 }}>
-      <Panel title="导入交割记录">
+      <Panel title={t('import.title')}>
         <div
           className={'drop' + (dragging ? ' over' : '')}
           onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -144,9 +146,9 @@ export function ImportView({ onImported }: { onImported: () => void }) {
           onClick={() => inputRef.current?.click()}
           style={{ cursor: 'pointer' }}
         >
-          {busy ? '正在本地解析…' : '把券商交割单（Excel / CSV / TXT / JSON）、PDF、成交截图拖到这里，或点击选择文件'}
+          {busy ? t('import.busy') : t('import.drop')}
           <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-            原文件只保存在本机，永不上传。识别在本机完成。
+            {t('import.localOnly')}
           </div>
           <input
             ref={inputRef}
@@ -165,7 +167,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
         {upload && upload.extraction.status === 'engine_missing' ? (
           <div style={{ marginTop: 10 }}>
             <Banner>
-              本机还没有安装本地 OCR 组件，无法识别截图或扫描 PDF。安装后即可离线识别：
+              {t('import.ocrMissing')}
               <code style={{ marginLeft: 6 }}>pip install "smartmoney-cub-harness[ocr]"</code>
             </Banner>
           </div>
@@ -174,8 +176,8 @@ export function ImportView({ onImported }: { onImported: () => void }) {
 
       {rows.length > 0 ? (
         <Panel
-          title={'校对识别结果（' + rows.length + ' 行）'}
-          actions={<button className="primary" onClick={submit} disabled={busy}>确认导入</button>}
+          title={t('import.review', { count: rows.length })}
+          actions={<button className="primary" onClick={submit} disabled={busy}>{t('import.confirm')}</button>}
         >
           <ExtractionTable rows={rows} extraction={upload?.extraction || null} onChange={setRows} />
         </Panel>
@@ -191,6 +193,7 @@ function ExtractionTable({ rows, extraction, onChange }: {
   extraction: Extraction | null;
   onChange: (rows: DraftRow[]) => void;
 }) {
+  const { t } = useLegacyI18n();
   const update = (index: number, key: keyof DraftRow, value: string) => {
     onChange(rows.map((row, position) => (position === index ? { ...row, [key]: value } : row)));
   };
@@ -200,8 +203,8 @@ function ExtractionTable({ rows, extraction, onChange }: {
       <table>
         <thead>
           <tr>
-            <th>日期</th><th>时间</th><th>代码</th><th>名称</th><th>方向</th>
-            <th>价格</th><th>数量</th><th>费用</th><th>置信度</th><th></th>
+            <th>{t('import.date')}</th><th>{t('import.time')}</th><th>{t('import.code')}</th><th>{t('playbook.name')}</th><th>{t('import.direction')}</th>
+            <th>{t('import.price')}</th><th>{t('import.quantity')}</th><th>{t('import.fee')}</th><th>{t('import.confidence')}</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -216,8 +219,8 @@ function ExtractionTable({ rows, extraction, onChange }: {
                 <td><input style={{ width: 96 }} value={row.name} onChange={(event) => update(index, 'name', event.target.value)} /></td>
                 <td>
                   <select value={row.side} onChange={(event) => update(index, 'side', event.target.value)}>
-                    <option value="BUY">买入</option>
-                    <option value="SELL">卖出</option>
+                    <option value="BUY">{t('import.buy')}</option>
+                    <option value="SELL">{t('import.sell')}</option>
                   </select>
                 </td>
                 <td><input style={{ width: 84 }} value={row.price} onChange={(event) => update(index, 'price', event.target.value)} /></td>
@@ -229,7 +232,7 @@ function ExtractionTable({ rows, extraction, onChange }: {
                       : <span className="badge error">低</span>}
                 </td>
                 <td>
-                  <button className="ghost" onClick={() => onChange(rows.filter((_, position) => position !== index))}>删除</button>
+                  <button className="ghost" onClick={() => onChange(rows.filter((_, position) => position !== index))}>{t('import.delete')}</button>
                 </td>
               </tr>
             );
@@ -241,24 +244,25 @@ function ExtractionTable({ rows, extraction, onChange }: {
 }
 
 function ManualEntry({ onSubmit, busy }: { onSubmit: (row: DraftRow) => Promise<boolean>; busy: boolean }) {
+  const { t } = useLegacyI18n();
   const [row, setRow] = useState<DraftRow>({ ...EMPTY_ROW });
   const update = (key: keyof DraftRow, value: string) => setRow((prev) => ({ ...prev, [key]: value }));
   return (
-    <Panel title="手工补录一笔">
+    <Panel title={t('import.manual')}>
       <div className="row">
-        <div className="field"><label>日期</label><input value={row.trade_date} onChange={(event) => update('trade_date', event.target.value)} placeholder="2026-09-01" /></div>
-        <div className="field"><label>时间</label><input value={row.trade_time} onChange={(event) => update('trade_time', event.target.value)} placeholder="09:35:00" /></div>
-        <div className="field"><label>代码</label><input style={{ width: 90 }} value={row.symbol} onChange={(event) => update('symbol', event.target.value)} /></div>
-        <div className="field"><label>名称</label><input value={row.name} onChange={(event) => update('name', event.target.value)} /></div>
+        <div className="field"><label>{t('import.date')}</label><input value={row.trade_date} onChange={(event) => update('trade_date', event.target.value)} placeholder="2026-09-01" /></div>
+        <div className="field"><label>{t('import.time')}</label><input value={row.trade_time} onChange={(event) => update('trade_time', event.target.value)} placeholder="09:35:00" /></div>
+        <div className="field"><label>{t('import.code')}</label><input style={{ width: 90 }} value={row.symbol} onChange={(event) => update('symbol', event.target.value)} /></div>
+        <div className="field"><label>{t('playbook.name')}</label><input value={row.name} onChange={(event) => update('name', event.target.value)} /></div>
         <div className="field">
-          <label>方向</label>
+          <label>{t('import.direction')}</label>
           <select value={row.side} onChange={(event) => update('side', event.target.value)}>
-            <option value="BUY">买入</option><option value="SELL">卖出</option>
+            <option value="BUY">{t('import.buy')}</option><option value="SELL">{t('import.sell')}</option>
           </select>
         </div>
-        <div className="field"><label>价格</label><input style={{ width: 90 }} value={row.price} onChange={(event) => update('price', event.target.value)} /></div>
-        <div className="field"><label>数量</label><input style={{ width: 100 }} value={row.quantity} onChange={(event) => update('quantity', event.target.value)} /></div>
-        <div className="field"><label>费用</label><input style={{ width: 80 }} value={row.fee} onChange={(event) => update('fee', event.target.value)} /></div>
+        <div className="field"><label>{t('import.price')}</label><input style={{ width: 90 }} value={row.price} onChange={(event) => update('price', event.target.value)} /></div>
+        <div className="field"><label>{t('import.quantity')}</label><input style={{ width: 100 }} value={row.quantity} onChange={(event) => update('quantity', event.target.value)} /></div>
+        <div className="field"><label>{t('import.fee')}</label><input style={{ width: 80 }} value={row.fee} onChange={(event) => update('fee', event.target.value)} /></div>
         <button
           className="primary"
           disabled={busy}
@@ -266,7 +270,7 @@ function ManualEntry({ onSubmit, busy }: { onSubmit: (row: DraftRow) => Promise<
             if (await onSubmit(row)) setRow({ ...EMPTY_ROW });
           }}
         >
-          补录
+          {t('import.reentry')}
         </button>
       </div>
     </Panel>

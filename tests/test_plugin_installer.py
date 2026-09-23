@@ -32,15 +32,37 @@ def test_installer_refuses_when_permissions_not_confirmed(tmp_path: Path) -> Non
     assert res["safety"] == SAFETY_DECLARATION
 
 
-def test_installer_refuses_high_execution_risk_vnpy(tmp_path: Path) -> None:
+def test_installer_refuses_removed_vnpy(tmp_path: Path) -> None:
     installer = PluginInstaller(tmp_path)
-    entry = catalog_index()["vnpy"]
+    entry = {"plugin_id": "vnpy"}
     res = installer.install(entry, permissions_confirmed=True)
     assert res["status"] == "error"
-    assert res["error"] == "execution_risk_high_refused"
+    assert res["error"] == "not_in_whitelist"
     assert res["steps"][0]["step"] == "permissions"
     assert res["steps"][0]["status"] == "refused"
-    assert "永不安装" in res["steps"][0]["detail"]
+
+
+def test_managed_credentials_required_and_external_credentials_rejected(tmp_path: Path, monkeypatch) -> None:
+    installer = PluginInstaller(tmp_path)
+    def no_download(*args, **kwargs):
+        raise AssertionError("credential validation must happen before any download")
+    monkeypatch.setattr(subprocess, "run", no_download)
+    result = installer.install(catalog_index()["fred"], permissions_confirmed=True)
+    assert result["error"] == "credentials_required"
+    result = installer.install(catalog_index()["tradingagents"], permissions_confirmed=True,
+                               credentials={"API_KEY": "toy-secret"})
+    assert result["error"] == "external_credentials_not_accepted"
+    assert not (tmp_path / "credentials.json").exists()
+
+
+def test_failed_install_does_not_persist_credentials(tmp_path: Path, monkeypatch) -> None:
+    installer = PluginInstaller(tmp_path)
+    monkeypatch.setattr(installer, "_ensure_venv", lambda: tmp_path / "python")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess([], 1, "", "toy failure"))
+    result = installer.install(catalog_index()["fred"], permissions_confirmed=True,
+                               credentials={"FRED_API_KEY": "toy-secret"})
+    assert result["status"] == "error"
+    assert not (tmp_path / "credentials.json").exists()
 
 
 def test_installer_builtin_skips_download_and_verifies_health(tmp_path: Path) -> None:
@@ -143,3 +165,30 @@ def test_installer_uninstall_cleans_resources(tmp_path: Path) -> None:
     assert res["status"] == "ok"
     assert not git_dir.exists()
 
+
+def test_source_only_companion_probe_does_not_import_external_code(tmp_path: Path, monkeypatch) -> None:
+    installer = PluginInstaller(tmp_path)
+    entry = catalog_index()["tradingagents"]
+    source = installer.sources_dir / "tradingagents"
+    (source / ".git").mkdir(parents=True)
+    def no_execution(*args, **kwargs):
+        raise AssertionError("companion source must not execute")
+    monkeypatch.setattr(subprocess, "run", no_execution)
+    result = installer.probe(entry)
+    assert result["healthy"] is True
+    assert result["runtime_integrated"] is False
+
+
+def test_existing_source_checkout_is_not_destroyed_by_reinstallation(tmp_path: Path, monkeypatch) -> None:
+    installer = PluginInstaller(tmp_path)
+    entry = catalog_index()["tradingagents"]
+    source = installer.sources_dir / "tradingagents"
+    (source / ".git").mkdir(parents=True)
+    note = source / "user-note.txt"
+    note.write_text("toy user work")
+    def no_download(*args, **kwargs):
+        raise AssertionError("existing source must not be replaced")
+    monkeypatch.setattr(subprocess, "run", no_download)
+    result = installer.install(entry, permissions_confirmed=True)
+    assert result["status"] == "ok"
+    assert note.read_text() == "toy user work"

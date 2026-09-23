@@ -38,6 +38,10 @@ case "$cmd" in
         echo "[dev-env] 运行 Playwright E2E 端到端测试..."
         npx playwright test
         ;;
+      visual)
+        echo "[dev-env] 运行 Agent 浏览器视觉 QA 自动化巡检 (agent-browser-verify)..."
+        ./scripts/visual-check.sh
+        ;;
       all)
         echo "[dev-env] 顺序执行 Doctor 审查与全量测试套件..."
         python3 -m smartmoney_cub_harness.cli doctor
@@ -45,7 +49,7 @@ case "$cmd" in
         echo "[dev-env] 全部测试执行完成！"
         ;;
       *)
-        echo "未知测试目标: $sub (支持: all | unit | doctor | gui | e2e)"
+        echo "未知测试目标: $sub (支持: all | unit | doctor | gui | e2e | visual)"
         exit 1
         ;;
     esac
@@ -177,7 +181,7 @@ case "$cmd" in
 
 命令列表:
   status               - 显示当前开发环境组件与依赖就绪状态
-  test [target]        - 确定性测试 (all | unit | doctor | gui | e2e)
+  test [target]        - 确定性测试 (all | unit | doctor | gui | e2e | visual)
   build [target]       - 确定性构建 (all | gui | package)
   verify               - 执行完整门禁 (./scripts/verify.sh)
   graph query <关键词> - 使用 AST 语义图谱检索代码符号与依赖关系

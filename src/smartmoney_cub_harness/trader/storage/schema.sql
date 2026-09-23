@@ -58,10 +58,21 @@ CREATE TABLE IF NOT EXISTS trades (
     symbol TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     side TEXT NOT NULL,
+    position_effect TEXT NOT NULL DEFAULT 'AUTO',
+    instrument_id TEXT NOT NULL DEFAULT '',
+    market TEXT NOT NULL DEFAULT '',
+    timezone TEXT NOT NULL DEFAULT '',
+    source_record_id TEXT NOT NULL DEFAULT '',
+    source_batch_id TEXT NOT NULL DEFAULT '',
     trade_date TEXT NOT NULL,
     trade_time TEXT NOT NULL DEFAULT '',
     price DOUBLE PRECISION NOT NULL,
     quantity DOUBLE PRECISION NOT NULL,
+    asset_class TEXT NOT NULL DEFAULT 'unknown',
+    currency TEXT NOT NULL DEFAULT '',
+    multiplier DOUBLE PRECISION NOT NULL DEFAULT 1,
+    source_precision TEXT NOT NULL DEFAULT 'unknown',
+    provenance TEXT NOT NULL DEFAULT '{}',
     fee DOUBLE PRECISION NOT NULL DEFAULT 0,
     thesis TEXT NOT NULL DEFAULT '',
     invalidation_price DOUBLE PRECISION,
@@ -70,6 +81,7 @@ CREATE TABLE IF NOT EXISTS trades (
     created_at TEXT NOT NULL,
     PRIMARY KEY (user_id, trade_id)
 );
+
 
 CREATE INDEX IF NOT EXISTS trades_tenant_date
     ON trades (user_id, trade_date, trade_time);
@@ -129,6 +141,22 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS audit_log_tenant_created
     ON audit_log (user_id, created_at);
+
+-- Generic tenant-owned JSON documents used by playbooks, replay sessions and
+-- backtest details. The key is scoped to a tenant so one user's document can
+-- never shadow another user's record.
+CREATE TABLE IF NOT EXISTS tenant_documents (
+    user_id TEXT NOT NULL,
+    document_kind TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, document_kind, document_id)
+);
+
+CREATE INDEX IF NOT EXISTS tenant_documents_kind_updated
+    ON tenant_documents (user_id, document_kind, updated_at);
 
 -- Cached symbol metadata: real-time name, ST flag, and data source.
 CREATE TABLE IF NOT EXISTS symbol_info (

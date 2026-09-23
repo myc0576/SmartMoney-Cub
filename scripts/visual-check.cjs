@@ -16,25 +16,37 @@ const { chromium } = require(require.resolve('playwright', {
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
 const OUT = process.argv[3] || path.join(__dirname, '..', 'artifacts', 'visual');
 
-/* Each entry: the nav label as the user sees it, and the view it opens. */
+/* Each entry names three things: what to click in the sidebar, what to click
+ * inside that page (a secondary tab, or a button that opens the view), and the
+ * file this view is photographed as.
+ *
+ * The three are separate on purpose. The sidebar text is an exact-match lookup
+ * against the navigation in gui/src/App.tsx, so putting a descriptive label like
+ * "洞察 · 重复错误" in its place makes a view silently un-clickable and the pass
+ * then records the landing page under that name. A page with inner tabs needs a
+ * row per tab, or every tab would photograph the same first tab and a broken
+ * later one would never be seen.
+ */
 const VIEWS = [
-  ['总览', 'overview'],
-  ['交易日志', 'tradelog'],
-  ['复盘日历', 'calendar'],
-  ['绩效分析', 'analytics'],
-  ['规则库', 'rules'],
-  ['数据导入', 'import'],
-  ['设置', 'settings'],
-  ['报告', 'reports'],
-  ['Playbook', 'playbooks'],
-  ['回测', 'backtest'],
-  ['K 线回放', 'replay'],
-  ['自营账户', 'propfirm'],
-  /* Labels below come from the navigation in gui/src/App.tsx; a label here that
-   * does not match that file makes the view silently un-clickable. */
-  ['成交台账', 'trades'],
-  ['Jev 引擎', 'jev'],
-  ['基准评测', 'benchmark'],
+  /* nav */            /* inner */    /* file */
+  ['总览',              null,          'overview'],
+  ['交易日志',          null,          'tradelog'],
+  ['复盘日历',          null,          'calendar'],
+  ['报告',              null,          'reports'],
+  ['洞察',              '重复错误',    'insight-mistakes'],
+  ['洞察',              'Edge 库',     'insight-edges'],
+  ['洞察',              '模式画像',    'insight-patterns'],
+  ['策略实验室',        'Playbook',    'lab-playbooks'],
+  ['策略实验室',        '规则库',      'lab-rules'],
+  ['策略实验室',        '回测',        'lab-backtest'],
+  ['演练',              null,          'drill-replay'],
+  ['连接',              null,          'connections'],
+  ['设置',              null,          'settings'],
+  ['设置',              '插件',        'settings-plugins'],
+  ['设置',              '模型',        'settings-model-directory'],
+  /* No sidebar entry: this page is opened from the trade page's action, so its
+     path is two clicks that a reader would make in the same order. */
+  ['交易日志',          '导入',        'import'],
 ];
 
 const NOISE = /favicon|net::ERR_|Failed to load resource/i;
@@ -44,7 +56,7 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-gpu'] });
   const results = [];
 
-  for (const [label, key] of VIEWS) {
+  for (const [label, subTab, key] of VIEWS) {
     const rec = { label, key, ok: false };
     let ctx = null;
     try {
@@ -66,13 +78,36 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
 
       /* Click through the real navigation rather than deep-linking, so the pass
        * exercises the same path a person does. */
-      const clicked = await page.evaluate((label) => {
+      const clickByText = (wanted) => page.evaluate((text) => {
+        /* Exact match on the label, then a contains fallback for the controls
+         * whose text carries a count beside the name -- the settings sub-tabs
+         * render "模型 1", so an exact-match lookup for "模型" missed the tab
+         * that was plainly on screen and the view was photographed as the
+         * landing page. The fallback stays last so a nav item whose name is a
+         * prefix of another still resolves to itself. */
         const items = [...document.querySelectorAll('button, a, .nav-item')];
-        const hit = items.find(el => (el.innerText || '').trim() === label);
+        const norm = (el) => (el.innerText || '').replace(/\s+/g, ' ').trim();
+        const hit = items.find(el => norm(el) === text)
+          || items.find(el => norm(el).startsWith(text + ' '))
+          || items.find(el => norm(el).includes(text));
         if (!hit) return false;
         hit.click();
         return true;
-      }, label);
+      }, wanted);
+
+      /* A page reached from another page's action has no sidebar entry to click;
+       * its click path is the label of the page that owns the action. */
+      /* Two clicks at most: the sidebar destination, then whatever the page holds
+       * -- a secondary tab, or the action that opens the view (the import page is
+       * reached from the trade page's own button). A navigation click that misses
+       * leaves clicked false and the row is reported as a failure rather than
+       * photographed under the wrong name. */
+      const nav = label;
+      let clicked = await clickByText(nav);
+      if (clicked && subTab) {
+        await page.waitForTimeout(400);
+        clicked = await clickByText(subTab);
+      }
       if (clicked) {
         /* Wait for the view to settle rather than for a fixed delay. A fixed
          * 2200ms is enough on an idle machine and not enough on a loaded one,
@@ -116,7 +151,13 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
 
       /* Horizontal overflow is the classic layout breakage on a dashboard. */
       const overflow = state.scrollW > state.clientW + 2;
-      const shot = path.join(OUT, key + '.png');
+      /* One row per tab, so the file name carries the tab as well; a bare key
+       * would let the last tab silently overwrite the earlier ones. */
+      const slug = (subTab ? key + '-' + subTab : key)
+        .replace(/[\s/\\]+/g, '-')
+        .replace(/[^\w\u4e00-\u9fa5-]/g, '')
+        .toLowerCase();
+      const shot = path.join(OUT, slug + '.png');
       await page.screenshot({ path: shot, fullPage: false });
 
       Object.assign(rec, {
@@ -171,7 +212,7 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
     ['复盘助手', 'assistant'],
     ['模型选择器', 'model-picker'],
     ['推理强度', 'effort-stage'],
-    ['设置 · 模型', 'settings-models'],
+    ['设置 · 模型目录', 'assistant-settings-models'],
   ];
   const assistantResults = [];
   let assistantCtx = null;
@@ -219,10 +260,15 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
 
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 45000 });
     /* Wait on the seat rather than a fixed sleep: the dock paints before the
-     * provider directory arrives, and naming a model is what the seat does. */
-    await page.waitForSelector('.assistant .picker-trigger', { timeout: 20000 }).catch(() => {});
+     * provider directory arrives, and naming a model is what the seat does.
+     *
+     * The seat is a one-line summary now. The panel asks what to review rather
+     * than which model to review it with, so the model, its directory, and the
+     * reasoning levels live behind that summary -- which is why the steps below
+     * open it before looking for the picker. */
+    await page.waitForSelector('.assistant .assistant-model-chip', { timeout: 20000 }).catch(() => {});
     await page.waitForFunction(
-      () => { const el = document.querySelector('.assistant .picker-label'); return Boolean(el && (el.innerText || '').trim()); },
+      () => { const el = document.querySelector('.assistant .assistant-model-chip'); return Boolean(el && (el.innerText || '').trim()); },
       { timeout: 20000 },
     ).catch(() => {});
     await page.waitForTimeout(600);
@@ -253,12 +299,11 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
        *    found would report false. */
       let mark = errs.length;
       const seat = await page.evaluate(() => {
-        const trigger = document.querySelector('.assistant .picker-trigger');
-        const label = trigger ? trigger.querySelector('.picker-label') : null;
+        const chip = document.querySelector('.assistant .assistant-model-chip');
         return {
-          seat: Boolean(trigger && label),
-          label: label ? (label.innerText || '').replace(/\s+/g, ' ').trim() : '',
-          title: trigger ? (trigger.title || '') : '',
+          seat: Boolean(chip),
+          label: chip ? (chip.innerText || '').replace(/\s+/g, ' ').trim() : '',
+          title: chip ? (chip.title || '') : '',
         };
       });
       await record('复盘助手', 'assistant',
@@ -269,19 +314,29 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
        *    way the nav pass clicks the real nav item. */
       mark = errs.length;
       const opened = await page.evaluate(() => {
+        /* The picker is inside a collapsed summary now, so opening the seat is
+         * the first half of reaching it. Both clicks are driven through the real
+         * elements, the way a reader would. */
+        const chip = document.querySelector('.assistant .assistant-model-chip');
+        if (!chip) return false;
+        chip.click();
+        return true;
+      });
+      if (opened) await page.waitForTimeout(400);
+      const pickerOpened = await page.evaluate(() => {
         const trigger = document.querySelector('.assistant .picker-trigger');
         if (!trigger) return false;
         trigger.click();
         return true;
       });
-      if (opened) await page.waitForTimeout(700);
+      if (pickerOpened) await page.waitForTimeout(700);
       const menu = await page.evaluate(() => ({
         menu: document.querySelectorAll('.picker-menu').length,
         groups: document.querySelectorAll('.picker-group').length,
         models: document.querySelectorAll('.model-row').length,
       }));
       await record('模型选择器', 'model-picker',
-        opened && menu.menu === 1 && menu.groups >= 1 && menu.models >= 1, opened,
+        opened && pickerOpened && menu.menu === 1 && menu.groups >= 1 && menu.models >= 1, opened && pickerOpened,
         { menu: menu.menu, provider_groups: menu.groups, model_rows: menu.models }, mark);
 
       /* 3. The model's own effort stage. The 可调强度 tag is the row's promise
@@ -338,18 +393,28 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
         if (opened2) await page.waitForTimeout(700);
         return opened2;
       };
-      const readSettings = () => page.evaluate(() => ({
-        rows: document.querySelectorAll('.provider-row').length,
-        verify: [...document.querySelectorAll('button')].some(el => (el.innerText || '').trim() === '校验模型目录'),
-      }));
+      const readSettings = () => page.evaluate(() => {
+        /* A collapsed provider is a .provider-row; the open editor replaces it
+         * with a card, so the row count drops to zero once the card is open.
+         * Counting rows alone therefore read "no providers configured" on a page
+         * that had just opened one, and the step failed on a page that was
+         * working. The check is "a provider is on screen in either shape". */
+        const rows = document.querySelectorAll('.provider-row').length;
+        const cards = document.querySelectorAll('.provider-card, .provider-form').length;
+        return {
+          rows: rows + cards,
+          cards,
+          verify: [...document.querySelectorAll('button')].some(el => (el.innerText || '').trim() === '校验模型目录'),
+        };
+      });
       let settings = await readSettings();
       if (settings.rows > 0 && !settings.verify) {
         await expand();
         settings = await readSettings();
       }
-      await record('设置 · 模型', 'settings-models',
+      await record('设置 · 模型目录', 'assistant-settings-models',
         navClicked && settings.rows >= 1 && settings.verify, navClicked,
-        { provider_rows: settings.rows, verify_button: settings.verify }, mark);
+        { provider_rows: settings.rows, provider_cards: settings.cards, verify_button: settings.verify }, mark);
 
       /* 5. The plugin marketplace with the assistant still docked.
        *
@@ -598,7 +663,10 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
     });
     if (settingsForBoundary) await page.waitForTimeout(1500);
     const pluginsClicked = await page.evaluate(() => {
-      const items = [...document.querySelectorAll('.dsh-nav-tab, button')];
+      // Scope to the settings sub-navigation rather than every button on the
+      // page: the plugin list carries its own 插件-labelled controls, and a
+      // document-wide search can click one of those instead of the tab.
+      const items = [...document.querySelectorAll('.dsh-nav-tab')];
       const hit = items.find(el => (el.innerText || '').trim() === '插件');
       if (!hit) return false;
       hit.click();
@@ -611,12 +679,23 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
       { read_failed: plugins.failed, empty_claim: /还没有发现插件/.test(plugins.text), page_text: plugins.text.slice(0, 120) }, mark);
 
     /* 4. Same rule for the rule registry: 'no rules exist' is a different claim
-     *    from 'this host does not publish the registry'. */
+     *    from 'this host does not publish the registry'.
+     *
+     *    The registry is a sub-tab of 策略实验室 now, not a sidebar destination,
+     *    so it is reached by two clicks the way a reader would make them. */
     mark = errs.length;
-    const rulesClicked = await clickNav('规则库');
+    const labClicked = await clickNav('策略实验室');
+    const rulesClicked = await page.evaluate(() => {
+      const tab = [...document.querySelectorAll('[role="tab"], .subnav-item')]
+        .find(el => (el.innerText || '').trim() === '规则库');
+      if (!tab) return false;
+      tab.click();
+      return true;
+    });
+    if (rulesClicked) await page.waitForTimeout(1600);
     const rules = await readPage();
     await record('规则库 · 边界关闭', 'boundary-rules',
-      rulesClicked && rules.failed && !/还没有已晋级的规则/.test(rules.text), rulesClicked,
+      labClicked && rulesClicked && rules.failed && !/还没有已晋级的规则/.test(rules.text), rulesClicked,
       { read_failed: rules.failed, empty_claim: /还没有已晋级的规则/.test(rules.text), page_text: rules.text.slice(0, 120) }, mark);
   } catch (e) {
     /* The boundary is a simulated state, so a failure to install it must not

@@ -294,7 +294,12 @@ def test_every_provider_normalizes_to_the_same_bar_shape(
         "fetched_at",
         "source_quality",
         "warnings",
+        "available_at",
+        "decision_time",
+        "historical_evidence",
     }
+    assert result.available_at is None
+    assert result.historical_evidence == "unverified"
 
 
 @pytest.mark.parametrize(
@@ -339,10 +344,28 @@ def test_the_catalog_describes_four_keyless_sources_with_the_frozen_keys() -> No
             "requires_key",
             "source_quality",
             "description",
+            # The two keys that were added when a verified failure needed to be
+            # stated rather than hidden: a source that cannot answer says so.
+            "availability",
+            "availability_reason",
         }
         assert entry["requires_key"] is False
         assert entry["label"] and entry["description"]
         assert entry["markets"]
+        # Every source declares an availability, and the ones that are not
+        # available carry a reason. A source marked unavailable without a reason
+        # would be a dead option the reader cannot act on.
+        assert entry["availability"] in {"available", "unavailable", "restricted"}
+        if entry["availability"] != "available":
+            assert entry["availability_reason"]
+    # The two sources verified unreachable from this network keep their place in
+    # the catalogue: the failure may be network-specific, and a silently missing
+    # option is worse than one that explains itself.
+    marked = {entry["provider_id"]: entry["availability"] for entry in catalog}
+    assert marked["stooq"] == "unavailable"
+    assert marked["binance"] == "restricted"
+    assert marked["eastmoney"] == "available"
+    assert marked["tencent"] == "available"
     quality = {entry["provider_id"]: entry["source_quality"] for entry in catalog}
     assert quality == {
         "binance": "exchange",

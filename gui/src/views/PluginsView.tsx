@@ -217,7 +217,17 @@ export function PluginsView() {
       </div>
 
       {notice ? <div className="notice" role="status" style={{ borderLeftColor: 'var(--color-accent)' }}>{notice}</div> : null}
-      {error ? <div className="notice" role="alert" style={{ borderLeftColor: 'var(--neg)' }}>{error}</div> : null}
+      {/* The message names the read, not just the reason. Every other view says
+          "读取失败"; this one printed the raw message, so a closed trust boundary
+          rendered as a bare sentence a reader could mistake for a status. */}
+      {error ? (
+        <div className="notice" role="alert" style={{ borderLeftColor: 'var(--neg)' }}>
+          插件列表读取失败：{error}
+          <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+            这不表示没有安装插件，只表示这一次读取没有成功。
+          </div>
+        </div>
+      ) : null}
 
       <div className="dsh-subtabs">
         <button

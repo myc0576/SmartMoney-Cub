@@ -189,6 +189,48 @@ def test_trades_round_trip_with_json_columns(store) -> None:
     assert rows[1]["tags"] == ["toy"]
 
 
+def test_trade_import_preserves_global_metadata_and_position_effect(store) -> None:
+    store.insert_trades("tenant-a", [_buy("F-1", symbol="FUT-X", quantity=0.25,
+        side="SELL", account_id="ACC-F", currency="USD", asset_class="future",
+        multiplier=10, source_precision="millisecond", provenance={"source": "toy"},
+        position_effect="OPEN")])
+    row = store.list_trades("tenant-a")[0]
+    assert row["quantity"] == 0.25
+    assert row["currency"] == "USD"
+    assert row["multiplier"] == 10.0
+    assert row["position_effect"] == "OPEN"
+    assert row["provenance"]["source"] == "toy"
+
+
+def test_trade_without_external_id_gets_stable_economic_identity(store) -> None:
+    row = _buy("", trade_time="09:40:00", price=10.0, quantity=0.25)
+    first = store.insert_trades("tenant-a", [row])
+    second = store.insert_trades("tenant-a", [dict(row)])
+    assert first["inserted_count"] == 1
+    assert second["updated_count"] == 1
+    assert first["inserted"][0] == second["updated"][0]
+
+
+def test_same_second_different_economic_fills_get_distinct_ids(store) -> None:
+    rows = [
+        _buy("", price=10.0, quantity=0.25),
+        _buy("", price=10.1, quantity=0.25),
+    ]
+    result = store.insert_trades("tenant-a", rows)
+    assert result["inserted_count"] == 2
+    assert len(set(result["inserted"])) == 2
+
+
+def test_identical_no_id_rows_use_stable_occurrence_ids(store) -> None:
+    row = _buy("", price=10.0, quantity=0.25)
+    first = store.insert_trades("tenant-a", [row, dict(row)])
+    second = store.insert_trades("tenant-a", [row, dict(row)])
+    assert first["inserted_count"] == 2
+    assert len(set(first["inserted"])) == 2
+    assert second["updated"] == first["inserted"]
+    assert len(store.list_trades("tenant-a")) == 2
+
+
 def test_insert_trades_corrects_a_repeated_trade_id(store) -> None:
     """A re-import updates in place instead of doubling the position."""
     first = store.insert_trades("tenant-a", [_buy("TRD-1")])
@@ -238,7 +280,7 @@ def test_accounts_round_trip(store) -> None:
         },
     )
     assert created["account_id"] == "ACC-Toy"
-    assert created["currency"] == "CNY"
+    assert created["currency"] == "UNKNOWN"
     updated = store.upsert_account("tenant-a", {"account_id": "ACC-Toy", "name": "Renamed"})
     assert updated["name"] == "Renamed"
     assert updated["broker"] == ""
@@ -281,7 +323,78 @@ def test_save_backtest_run_is_an_upsert(store) -> None:
     assert runs[0]["metrics"]["total_net_pnl"] == 2.0
 
 
-def test_save_bars_is_idempotent_and_load_bars_returns_them_in_order(store) -> None:
+def test_a_sqlite_url_resolves_to_its_path_rather_than_a_directory_named_sqlite(tmp_path) -> None:
+    """A URL form must not become a relative directory called "sqlite:".
+
+    "sqlite:///tmp/x.db" used to fall through to the directory branch, and a
+    colon is a legal filename character, so the store created a directory named
+    "sqlite:" beside the caller and put the database inside it. A test run then
+    left that tree in the repository root. The URL form is resolved here instead,
+    and the assertion is on the resolved path rather than on a file existing,
+    because the bug was in the resolution.
+    """
+    # Imported here so the module import list stays the public storage surface.
+    from smartmoney_cub_harness.trader.storage.sqlite_store import (  # noqa: PLC0415
+        resolve_database_path,
+    )
+
+    resolved = resolve_database_path("sqlite:////tmp/example.db")
+    assert str(resolved) == "/tmp/example.db"
+
+    # A relative path keeps its relative shape and gains the tenant filename,
+    # which is the documented directory form.
+    relative = resolve_database_path(str(tmp_path / "journal"))
+    assert Path(relative).name == "trader_store.db"
+    assert Path(relative).parent == tmp_path / "journal"
+
+
+def test_concurrent_reads_and_writes_do_not_break_the_connection(store) -> None:
+    """A read racing a write must not raise InterfaceError.
+
+    sqlite3 refuses to use one connection from two threads at once. The workbench
+    serves every request on its own thread off one shared store, so a read that
+    ran while a writer held the connection raised "InterfaceError: bad parameter
+    or other API misuse" -- which the HTTP layer turned into a 500 and the
+    interface showed as "cannot reach the local service" over a database that was
+    never unreachable. This pins the serialization: reads and writes now take the
+    same lock.
+    """
+    import threading
+
+    errors: list[str] = []
+    stop = threading.Event()
+
+    def writer() -> None:
+        index = 0
+        while not stop.is_set() and index < 60:
+            try:
+                store.insert_trades("tenant-a", [_buy(f"TRD-C{index}")])
+                store.upsert_account("tenant-a", {"account_id": "ACC-C", "name": "C"})
+            except Exception as error:  # noqa: BLE001 - the failure is the assertion
+                errors.append("writer: " + type(error).__name__ + ": " + error)
+            index += 1
+
+    def reader() -> None:
+        while not stop.is_set():
+            try:
+                store.list_trades("tenant-a")
+                store.list_accounts("tenant-a")
+                store.list_audit("tenant-a")
+                store.get_user("tenant-a")
+            except Exception as error:  # noqa: BLE001 - the failure is the assertion
+                errors.append("reader: " + type(error).__name__ + ": " + error)
+
+    store.create_user("tenant-a", tenant_id="tenant-a")
+    threads = [threading.Thread(target=writer), threading.Thread(target=reader), threading.Thread(target=reader)]
+    for thread in threads:
+        thread.start()
+    threads[0].join(timeout=30)
+    stop.set()
+    for thread in threads[1:]:
+        thread.join(timeout=30)
+
+    assert errors == []
+
     store.save_bars("tenant-a", [_bar(10.5), _bar(11.5, open_time="2026-09-02T00:00:00Z")])
     # Re-fetching the first bar corrects it rather than duplicating the row.
     store.save_bars("tenant-a", [_bar(10.9, volume=2000.0)])
