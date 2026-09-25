@@ -2,7 +2,7 @@
 
 `smartmoney-cub-harness` uses Semantic Versioning for its CLI, Python package, and portable artifact contracts.
 
-Current release channel: GitHub Releases. Each release provides a Git tag, wheel, and source distribution. PyPI publication is optional and deferred until a project owner configures Trusted Publishing.
+Current release channel: GitHub Releases. Each release provides a Git tag, wheel, source distribution, and npm launcher archive. The latest published release is `v1.1.0`. PyPI publication is optional and deferred until a project owner configures Trusted Publishing.
 
 ## Version meanings
 
@@ -10,7 +10,7 @@ Current release channel: GitHub Releases. Each release provides a Git tag, wheel
 - Minor (`0.1.x` -> `0.2.0`): backward-compatible CLI commands, schemas, or review capabilities.
 - Major (`0.x` -> `1.0.0`, then `1.x` -> `2.0.0`): incompatible CLI, artifact, schema, or safety-contract changes.
 
-Release `1.0.0` is the current release. It converges the review workbench into a
+Release `1.1.0` is the latest published release. It updates the public quickstart and distribution metadata while preserving the read-only safety contract. Release `1.0.0` converged the review workbench into a
 local-first product: a three-region interface with an import pipeline that parses
 broker files on the machine, a review assistant whose outbound payload is redacted
 before it leaves, and the hosted trader journal served from the same process. It
@@ -29,7 +29,7 @@ python -m pip install -e ".[dev]"
 smcub --version
 ```
 
-An editable installation normally sees source changes immediately after `git pull`. Reinstall after packaging metadata, entry points, package data, or dependencies change. Release `0.2.0` adds plugin entry points and packaged example data, so reinstall it once.
+An editable installation normally sees source changes immediately after `git pull`. Reinstall after packaging metadata, entry points, package data, or dependencies change.
 
 ### pip installation
 
@@ -42,15 +42,23 @@ smcub --version
 
 ### pipx installation
 
-pipx is the preferred end-user CLI installation because it isolates the command from unrelated Python environments. Install the current GitHub tag directly:
+pipx is the preferred end-user CLI installation because it isolates the command from unrelated Python environments. Install the latest published GitHub tag directly:
 
 ```bash
-pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0"
+pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.1.0"
 smcub --version
 smcub doctor
 ```
 
-To move an existing pipx installation to a future GitHub tag, install that tag with `--force`. After a future PyPI publication, the shorter commands become available:
+To upgrade an existing pipx installation to a published GitHub tag, install that tag with `--force`:
+
+```bash
+pipx install --force "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.1.0"
+smcub --version
+smcub doctor
+```
+
+After a future PyPI publication, the shorter commands become available:
 
 ```bash
 pipx install smartmoney-cub-harness

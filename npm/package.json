@@ -1,6 +1,6 @@
 {
   "name": "smartmoney-cub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Local-first trading journal and review workbench: import your own fills, review performance, backtest a JSON strategy, and keep the review assistant. Read-only with respect to markets and execution.",
   "license": "MIT",
   "bin": {

@@ -11,6 +11,8 @@ That command creates a private Python environment under ~/.smartmoney-cub, insta
 the harness if it is not there yet, and opens the local web interface on
 http://127.0.0.1:8787.
 
+The latest launcher release is 1.1.0. Its GitHub Release contains the matching Python wheel, source archive, and npm package. The Python package is not published to PyPI.
+
 ## What it does not do
 
 It does not place, modify, or cancel orders. It does not connect to a broker. It

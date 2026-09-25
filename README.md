@@ -31,6 +31,8 @@ The repository ships `finance-jev-v1`, a frozen offline evaluation suite contain
 
 ### 30-Second Quickstart
 
+The latest release is `v1.1.0`. GitHub Releases provides the matching wheel, source archive, and npm launcher package. The Python package is not on PyPI.
+
 ```bash
 # 1. Install harness and dev dependencies
 pip install -e ".[dev]"
@@ -38,9 +40,11 @@ pip install -e ".[dev]"
 # 2. Verify environment and strict read-only safety boundary
 smcub doctor
 
-# 3. Shortest review loop (capture offline toy run & replay)
+# 3. Deterministic review loop (capture, evaluate, package, replay)
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
-smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
+smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
+smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 
@@ -277,11 +281,12 @@ The human remains responsible for final judgment.
 ```bash
 git clone https://github.com/myc0576/SmartMoney-Cub.git
 cd SmartMoney-Cub
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 smcub doctor
-smcub capture-run --mode after-close --sandbox --decision-time "2026-06-01T15:30:00+08:00" --command "python examples/toy_strategy/leader_pullback_demo.py"
-smcub build-outcome tmp/sandbox/20260601/20260601_153000-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
-smcub evaluate-run tmp/sandbox/20260601/20260601_153000-after-close --horizon d1
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
+smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
+smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 The fixed decision time above creates the shown sandbox path in a clean checkout. Local absolute paths are redacted from CLI JSON output, so choose another decision time before repeating the exact sequence.

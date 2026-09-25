@@ -38,6 +38,8 @@ SmartMoney-Cub 原生支持 Jev（[TypeSafe 官方主页](https://typesafe.ai/) 
 
 ### 30 秒极速上手
 
+当前最新版本为 `v1.1.0`。可从 GitHub Releases 下载匹配的 wheel、源码包和 npm 启动器；Python 包尚未发布到 PyPI。
+
 ```bash
 # 1. 安装核心库与开发依赖
 pip install -e ".[dev]"
@@ -45,9 +47,11 @@ pip install -e ".[dev]"
 # 2. 环境健康检查与确定性安全声明验证
 smcub doctor
 
-# 3. 最短离线复盘体验闭环 (捕获决策并执行回放)
+# 3. 确定性离线复盘闭环（捕获、评估、打包、回放）
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
-smcub replay-evidence-pack tmp/sandbox/20260601/*-after-close
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
+smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
+smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
 
@@ -298,10 +302,10 @@ python -m venv .venv
 
 如果电脑里安装过多个 Python，直接输入 `smcub` 可能命中另一个环境中的旧版本。安装后请运行 `smcub --version` 和 `smcub doctor`；`doctor` 会以不暴露本地路径的方式提示启动器冲突。
 
-当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新修复 tag 安装，让命令拥有独立环境：
+当前发行渠道是 GitHub Releases。普通 CLI 用户可用 pipx 从最新已发布 tag 安装，让命令拥有独立环境：
 
 ```bash
-pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.0.0"
+pipx install "git+https://github.com/myc0576/SmartMoney-Cub.git@v1.1.0"
 ```
 
 未来正式发布到 PyPI 后，可改用更短的安装和升级命令：
