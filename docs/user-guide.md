@@ -2,14 +2,18 @@
 
 This harness helps a subjective trader review decisions after evidence arrives. It does not tell you what to trade and does not touch execution.
 
-## 5-Second Start
+## 30-Second Quickstart
 
 ```bash
 pip install -e ".[dev]"
-smcub loop --preset toy --agent-trigger "自进化"
+smcub doctor
+smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
+smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
+smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
+smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
-Open the generated `loop_report.md` first, then inspect `trace.jsonl` when you want a step-by-step audit trail.
+This runs a deterministic offline toy capture, builds the D1 outcome and evidence pack, and verifies the replay result. For the full Agent Loop, run `smcub loop --preset toy --agent-trigger "自进化"`, then inspect `loop_report.md` and `trace.jsonl`.
 
 ## Normal Inputs
 
