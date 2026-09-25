@@ -255,10 +255,36 @@ export interface SessionSummary {
   provider_id: string;
   model: string;
   reasoning: string;
+  agent_id?: string | null;
+  agent_preset_id?: string | null;
+  agent_adapter?: string | null;
+  agent_mode?: string | null;
+  agent_version?: string | null;
   status: string;
   forked_from: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ReviewFromTradeResponse {
+  status: string;
+  session: SessionSummary;
+  round_trip_id: string;
+  prompt: string;
+  safety: string;
+}
+
+export interface ReviewAgent {
+  agent_id: string;
+  display_name: string;
+  kind: string;
+  detected: boolean;
+  enabled: boolean;
+  status: string;
+  version?: string | null;
+  detail?: string;
+  capabilities?: Record<string, boolean>;
+  protocol?: { name?: string; version?: number; compatible?: boolean };
 }
 
 export interface SessionEvent {

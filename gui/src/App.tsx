@@ -16,7 +16,7 @@ const InsightView = lazy(() => import('./views/InsightView').then(module => ({ d
 const ConnectionsView = lazy(() => import('./views/ConnectionsView').then(module => ({ default: module.ConnectionsView })));
 import { PreferencesView } from './views/PreferencesView';
 import { setTraderAccountScope } from './api';
-import { useI18n } from './i18n';
+import { LOCALE_LABELS, LOCALES, useI18n } from './i18n';
 import type { MessageKey } from './i18n';
 
 // A-plan layout: navigation and portfolio switch on the left, the working page
@@ -84,7 +84,7 @@ const RECENT_FETCH = 24;
 
 export function App() {
   const [tab, setTab] = useState<TabKey>('overview');
-  const { locale, t } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   // The workbench meta still feeds the review assistant and the settings page,
   // which are workbench features. It no longer feeds the shell.
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -102,6 +102,7 @@ export function App() {
   const [error, setError] = useState('');
   const [assistantOpen, setAssistantOpen] = useState(true);
   const [openTradeId, setOpenTradeId] = useState<string | null>(null);
+  const [reviewTradeId, setReviewTradeId] = useState<string | null>(null);
   const [accountScope, setAccountScope] = useState('');
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [accounts, setAccounts] = useState<{ account_id: string; name: string; currency: string }[]>([]);
@@ -247,6 +248,14 @@ export function App() {
             ))}
           </div>
         ))}
+        <div className="sidebar-locale">
+          <label htmlFor="sidebar-locale-select">{t('prefs.locale')}</label>
+          <select id="sidebar-locale-select" value={locale} onChange={(event) => setLocale(event.target.value as typeof locale)}>
+            {LOCALES.map((item) => (
+              <option key={item} value={item}>{LOCALE_LABELS[item]}</option>
+            ))}
+          </select>
+        </div>
         {/* Settings is plumbing rather than a working area, so it renders at the
             foot of the sidebar instead of inside a working group. */}
         <div className="nav-group nav-group-foot">
@@ -257,10 +266,6 @@ export function App() {
           >
               <span>{t('nav.settings')}</span>
           </button>
-        </div>
-        <div className="sidebar-footer">
-          {traderMeta?.safety || summary?.safety || 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE'}
-          <div style={{ marginTop: 6 }}>本机 {summary?.counts?.fills ?? recent.length} 笔成交 · 全部数据离线保存</div>
         </div>
       </nav>
 
@@ -333,6 +338,8 @@ export function App() {
               meta={meta}
               context={assistantContext}
               onMetaReload={() => void loadMeta()}
+              reviewTradeId={reviewTradeId}
+              onReviewTradeHandled={() => setReviewTradeId(null)}
             />
           ) : null}
         </div>
@@ -343,7 +350,7 @@ export function App() {
           tradeId={openTradeId}
           scheme={scheme}
           onClose={() => setOpenTradeId(null)}
-          onOpenAssistant={(id) => { setOpenTradeId(id); setAssistantOpen(true); }}
+          onOpenAssistant={(id) => { setOpenTradeId(id); setReviewTradeId(id); setAssistantOpen(true); }}
         />
       ) : null}
       {preferencesOpen ? <PreferencesView scheme={scheme} theme={theme} onToggleScheme={toggleScheme} onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))} onClose={() => setPreferencesOpen(false)} /> : null}

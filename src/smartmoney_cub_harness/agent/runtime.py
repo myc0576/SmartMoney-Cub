@@ -255,6 +255,13 @@ class ReviewAgentRuntime:
             }
             return
 
+        local_agent_id = str(session.get("agent_id") or "").strip()
+        if local_agent_id:
+            yield from self._local_agent_turn(
+                session_id, session, user_text, local_agent_id, cancel_event
+            )
+            return
+
         resolved = self.resolve_session_provider(session)
         if resolved["provider_id"] == OFFLINE_PROVIDER_ID:
             if resolved.get("fallback_from"):
@@ -299,6 +306,88 @@ class ReviewAgentRuntime:
                 yield {"kind": "error", "error": str(error), "safety": SAFETY_DECLARATION}
             self.store.append_event(session_id, kind="error", payload=payload)
             self.store.update_session(session_id, status="error")
+
+    def _local_agent_turn(
+        self,
+        session_id: str,
+        session: dict[str, Any],
+        user_text: str,
+        agent_id: str,
+        cancel_event: threading.Event,
+    ) -> Iterator[dict[str, Any]]:
+        """Route an explicitly selected, enabled local CLI through the host adapter."""
+        from smartmoney_cub_harness.agent.review_agents import (
+            LocalAgentError,
+            probe_agent,
+            run_local_review,
+        )
+
+        enabled = self.store.get_setting("review_agent_enabled", {})
+        enabled = enabled if isinstance(enabled, dict) else {}
+        capability = probe_agent(agent_id)
+        if not enabled.get(agent_id, False) or capability.get("status") != "runnable":
+            message = "所选本地 Agent 尚未启用，或暂不兼容 SmartMoney 复盘协议。"
+            payload = {"text": message, "code": "agent_unavailable", "agent_id": agent_id}
+            self.store.append_event(session_id, kind="error", payload=payload)
+            self.store.update_session(session_id, status="error")
+            yield {"kind": "error", "error": message, **payload, "safety": SAFETY_DECLARATION}
+            return
+        try:
+            envelope = self.build_review_envelope(session_id).to_dict()
+            envelope["user_text"] = user_text
+            envelope["protocol"] = {"name": "smartmoney_review", "version": 1}
+            result = run_local_review(
+                agent_id,
+                envelope,
+                prompt=user_text,
+                enabled=True,
+                timeout_seconds=self._local_agent_timeout(session),
+            )
+            text = str(result["text"])
+        except LocalAgentError as error:
+            message = "本地 Agent 复盘失败，请检查该 Agent 的协议兼容性和本地安装。"
+            self.store.append_event(
+                session_id,
+                kind="error",
+                payload={"text": message, "code": error.code, "agent_id": agent_id},
+            )
+            self.store.update_session(session_id, status="error")
+            yield {
+                "kind": "error", "error": message, "code": error.code,
+                "agent_id": agent_id, "safety": SAFETY_DECLARATION,
+            }
+            return
+        except Exception:
+            message = "本地 Agent 复盘失败，请检查该 Agent 的协议兼容性和本地安装。"
+            self.store.append_event(
+                session_id,
+                kind="error",
+                payload={"text": message, "code": "local_agent_failed", "agent_id": agent_id},
+            )
+            self.store.update_session(session_id, status="error")
+            yield {"kind": "error", "error": message, "code": "local_agent_failed", "agent_id": agent_id, "safety": SAFETY_DECLARATION}
+            return
+        for chunk in _chunks(text, 160):
+            if cancel_event.is_set():
+                yield from self._cancelled_events(session_id)
+                return
+            yield {"kind": "delta", "text": chunk, "agent_id": agent_id, "safety": SAFETY_DECLARATION}
+        self.store.append_event(session_id, kind="assistant_message", role="assistant", payload={"text": text, "agent_id": agent_id})
+        self.store.append_event(session_id, kind="turn_completed", role="system", payload={"phase": "synthesis", "agent_id": agent_id, "safety": SAFETY_DECLARATION})
+        self.store.update_session(session_id, status="idle")
+        self.store.append_event(session_id, kind="terminal", role="system", payload={"status": "idle", "agent_id": agent_id, "safety": SAFETY_DECLARATION})
+        yield {"kind": "done", "agent_id": agent_id, "safety": SAFETY_DECLARATION}
+
+    def _local_agent_timeout(self, session: dict[str, Any]) -> int:
+        preset_id = session.get("agent_preset_id")
+        presets = self.store.get_setting("review_agent_presets", [])
+        for preset in presets if isinstance(presets, list) else []:
+            if preset.get("preset_id") == preset_id:
+                try:
+                    return max(1, min(int(preset.get("timeout_seconds", 300)), 900))
+                except (TypeError, ValueError):
+                    break
+        return 300
 
     def cancel_turn(self, session_id: str) -> dict[str, Any]:
         """Request cancellation of a running model turn without touching markets."""

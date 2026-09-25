@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LOCALE_LABELS, LOCALES, type Locale, useI18n } from '../i18n';
+import { LOCALES, useI18n } from '../i18n';
 
 interface PreferencesViewProps {
   scheme: 'cn' | 'intl';
@@ -24,7 +24,7 @@ const ORIGINAL_CURRENCY = [
 const DEVICE_TIME = ['设备时区', 'Device time zone', '裝置時區', '端末のタイムゾーン', '기기 시간대', 'Zona horaria del dispositivo', 'Fuso horário do dispositivo', 'Gerätezeitzone', 'Fuseau horaire de l’appareil'];
 
 export function PreferencesView({ scheme, theme, onToggleScheme, onToggleTheme, onClose }: PreferencesViewProps) {
-  const { locale, setLocale, t } = useI18n();
+  const { locale, t } = useI18n();
   const [timezone, setTimezone] = useState(() => readStored('smcub.timezone', 'local'));
   const dialog = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
@@ -64,7 +64,6 @@ export function PreferencesView({ scheme, theme, onToggleScheme, onToggleTheme, 
           <button className="ghost" onClick={onClose} aria-label={t('action.close')}>×</button>
         </div>
         <div className="preferences-body">
-          <div className="field"><label htmlFor="preference-locale">{t('prefs.locale')}</label><select id="preference-locale" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>{LOCALES.map((item) => <option key={item} value={item}>{LOCALE_LABELS[item]}</option>)}</select></div>
           <div className="field"><label htmlFor="preference-timezone">{t('prefs.timezone')}</label><select id="preference-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)}>{TIMEZONES.map((item) => <option key={item} value={item}>{item === 'local' ? DEVICE_TIME[localeIndex] : item}</option>)}</select></div>
           <p className="notice">{ORIGINAL_CURRENCY[localeIndex]}</p>
           <div className="field"><label>{t('prefs.theme')}</label><div className="row"><button className={theme === 'dark' ? 'primary' : 'ghost'} onClick={() => theme !== 'dark' && onToggleTheme()}>{t('prefs.theme.dark')}</button><button className={theme === 'light' ? 'primary' : 'ghost'} onClick={() => theme !== 'light' && onToggleTheme()}>{t('prefs.theme.light')}</button></div></div>

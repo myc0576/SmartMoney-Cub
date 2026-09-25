@@ -34,7 +34,7 @@ const VIEWS = [
   ['复盘日历',          null,          'calendar'],
   ['报告',              null,          'reports'],
   ['洞察',              '重复错误',    'insight-mistakes'],
-  ['洞察',              'Edge 库',     'insight-edges'],
+  ['洞察',              'edges',       'insight-edges'],
   ['洞察',              '模式画像',    'insight-patterns'],
   ['策略实验室',        'Playbook',    'lab-playbooks'],
   ['策略实验室',        '规则库',      'lab-rules'],
@@ -106,7 +106,14 @@ const NOISE = /favicon|net::ERR_|Failed to load resource/i;
       let clicked = await clickByText(nav);
       if (clicked && subTab) {
         await page.waitForTimeout(400);
-        clicked = await clickByText(subTab);
+        clicked = subTab === 'edges'
+          ? await page.evaluate(() => {
+              const hit = document.querySelector('[data-insight-tab="edges"]');
+              if (!hit) return false;
+              hit.click();
+              return true;
+            })
+          : await clickByText(subTab);
       }
       if (clicked) {
         /* Wait for the view to settle rather than for a fixed delay. A fixed

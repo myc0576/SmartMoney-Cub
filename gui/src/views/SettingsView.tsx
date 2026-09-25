@@ -1,12 +1,42 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type {
-  AuditRecord, CatalogEntry, KeyStatus, Meta, ModelEntry, ProviderView, ProtocolOption, ReasoningEffort,
+  AuditRecord, CatalogEntry, KeyStatus, Meta, ModelEntry, ProviderView, ProtocolOption, ReasoningEffort, ReviewAgent,
 } from '../types';
 import { Badge, Panel } from '../components/common';
 import { effortLabel } from '../components/ModelPicker';
 import { PluginsView } from './PluginsView';
 import { useLegacyI18n } from '../locales/legacy';
+import { useLocale, type Locale } from '../i18n';
+
+const REVIEW_AGENT_COPY: Record<Locale, Record<string, string>> = {
+  'zh-CN': {
+    detected: '已检测到，但暂不能用于复盘', runnable: '可用于复盘', protocol_incompatible: '已检测到，但不兼容复盘协议', disabled: '已停用', unavailable: '未检测到', needs_configuration: '需要配置', unknown: '状态未知',
+    builtIn: '使用内置模型复盘', detectedHint: '已检测到本机程序，但尚未确认它能接收 SmartMoney-Cub 的复盘请求。', runnableHint: '可以接管复盘助手；只接收脱敏后的复盘上下文。', protocolHint: '程序已安装，但当前版本不能接收复盘助手要求的固定协议。', disabledHint: '程序已检测到，但你已将它停用。', unavailableHint: '本机没有检测到这个程序。', needsHint: '程序已检测到，但还缺少运行复盘所需的配置。', unknownHint: '服务端没有返回足够的状态信息，暂不提供选择。',
+    chooseHint: '只显示状态明确为“可用于复盘”的 Agent。检测到或启用本身不代表可以运行复盘。', listTitle: '本机复盘 Agent', enable: '启用', disable: '停用', switched: '默认复盘 Agent 已切换', restored: '已恢复使用内置模型复盘', enabled: '已启用', disabledAction: '已停用',
+  },
+  'en-US': { detected: 'Detected, not ready for review', runnable: 'Available for review', protocol_incompatible: 'Detected, review protocol incompatible', disabled: 'Disabled', unavailable: 'Not detected', needs_configuration: 'Needs setup', unknown: 'Status unknown', builtIn: 'Use built-in model', detectedHint: 'The program was found, but it is not confirmed to accept SmartMoney-Cub review requests.', runnableHint: 'It can run the review assistant and receives redacted review context only.', protocolHint: 'The program is installed, but this version does not support the required review protocol.', disabledHint: 'The program was detected, but you disabled it.', unavailableHint: 'This program was not found on this device.', needsHint: 'The program was detected, but review configuration is incomplete.', unknownHint: 'The server did not provide enough status information, so it is not selectable.', chooseHint: 'Only Agents explicitly marked available for review are listed. Detection or enabling alone does not mean review can run.', listTitle: 'Local review Agents', enable: 'Enable', disable: 'Disable', switched: 'Default review Agent changed', restored: 'Using the built-in model for reviews again', enabled: 'enabled', disabledAction: 'disabled' },
+  'zh-TW': { detected: '已偵測到，但暫不能用於複盤', runnable: '可用於複盤', protocol_incompatible: '已偵測到，但不相容複盤協定', disabled: '已停用', unavailable: '未偵測到', needs_configuration: '需要設定', unknown: '狀態未知', builtIn: '使用內建模型複盤', detectedHint: '已找到本機程式，但尚未確認它能接收 SmartMoney-Cub 的複盤請求。', runnableHint: '可以接管複盤助手；只接收已去識別化的複盤內容。', protocolHint: '程式已安裝，但目前版本不支援複盤助手所需的固定協定。', disabledHint: '程式已偵測到，但你已將它停用。', unavailableHint: '本機沒有偵測到這個程式。', needsHint: '程式已偵測到，但複盤設定尚未完成。', unknownHint: '服務端沒有回傳足夠的狀態資訊，暫不提供選擇。', chooseHint: '只顯示明確標示為可用於複盤的 Agent。偵測到或啟用本身不代表可以執行複盤。', listTitle: '本機複盤 Agent', enable: '啟用', disable: '停用', switched: '預設複盤 Agent 已切換', restored: '已恢復使用內建模型複盤', enabled: '已啟用', disabledAction: '已停用' },
+  'ja-JP': { detected: '検出済み・レビューには未対応', runnable: 'レビューに使用可能', protocol_incompatible: '検出済み・レビュー方式に非対応', disabled: '無効', unavailable: '未検出', needs_configuration: '設定が必要', unknown: '状態不明', builtIn: '内蔵モデルを使用', detectedHint: 'プログラムは見つかりましたが、SmartMoney-Cub のレビュー要求を受け付けることが確認されていません。', runnableHint: 'レビューアシスタントで使用できます。渡すのはマスキング済みの内容だけです。', protocolHint: 'インストール済みですが、現在のバージョンは必要なレビュー方式に対応していません。', disabledHint: '検出済みですが、無効にしています。', unavailableHint: 'このプログラムは端末に見つかりません。', needsHint: '検出済みですが、レビューに必要な設定が不足しています。', unknownHint: '状態を確認できないため、選択できません。', chooseHint: 'レビューに使用可能と明示された Agent だけを表示します。検出や有効化だけではレビューを実行できません。', listTitle: 'ローカルレビュー Agent', enable: '有効化', disable: '無効化', switched: '既定のレビュー Agent を切り替えました', restored: '内蔵モデルでレビューします', enabled: '有効化しました', disabledAction: '無効化しました' },
+  'ko-KR': { detected: '감지됨, 복기에 사용할 수 없음', runnable: '복기에 사용 가능', protocol_incompatible: '감지됨, 복기 프로토콜 호환 안 됨', disabled: '비활성화됨', unavailable: '감지되지 않음', needs_configuration: '설정 필요', unknown: '상태 알 수 없음', builtIn: '내장 모델 사용', detectedHint: '프로그램은 찾았지만 SmartMoney-Cub 복기 요청을 받을 수 있는지 확인되지 않았습니다.', runnableHint: '복기 도우미에서 사용할 수 있으며 비식별화된 복기 내용만 전달합니다.', protocolHint: '설치되어 있지만 현재 버전은 필요한 복기 프로토콜을 지원하지 않습니다.', disabledHint: '감지되었지만 비활성화했습니다.', unavailableHint: '이 기기에서 프로그램을 찾지 못했습니다.', needsHint: '감지되었지만 복기에 필요한 설정이 부족합니다.', unknownHint: '상태 정보가 부족하여 선택할 수 없습니다.', chooseHint: '복기 사용 가능으로 명확히 표시된 Agent만 보여줍니다. 감지 또는 활성화만으로 복기를 실행할 수 없습니다.', listTitle: '로컬 복기 Agent', enable: '활성화', disable: '비활성화', switched: '기본 복기 Agent가 변경되었습니다', restored: '내장 모델로 복기를 진행합니다', enabled: '활성화됨', disabledAction: '비활성화됨' },
+  'es-ES': { detected: 'Detectado, no listo para revisión', runnable: 'Disponible para revisión', protocol_incompatible: 'Detectado, protocolo incompatible', disabled: 'Desactivado', unavailable: 'No detectado', needs_configuration: 'Requiere configuración', unknown: 'Estado desconocido', builtIn: 'Usar modelo integrado', detectedHint: 'Se encontró el programa, pero no está confirmado que acepte solicitudes de revisión de SmartMoney-Cub.', runnableHint: 'Puede ejecutar el asistente y solo recibe contexto de revisión anonimizado.', protocolHint: 'Está instalado, pero esta versión no admite el protocolo de revisión requerido.', disabledHint: 'Se detectó el programa, pero está desactivado.', unavailableHint: 'No se encontró este programa en el dispositivo.', needsHint: 'Se detectó el programa, pero falta configuración para revisar.', unknownHint: 'No hay información suficiente, por lo que no se puede seleccionar.', chooseHint: 'Solo se muestran Agents marcados explícitamente como disponibles. Detectarlo o activarlo no garantiza que pueda revisar.', listTitle: 'Agents locales de revisión', enable: 'Activar', disable: 'Desactivar', switched: 'Agente de revisión predeterminado cambiado', restored: 'Se usará de nuevo el modelo integrado', enabled: 'activado', disabledAction: 'desactivado' },
+  'pt-BR': { detected: 'Detectado, não pronto para revisão', runnable: 'Disponível para revisão', protocol_incompatible: 'Detectado, protocolo incompatível', disabled: 'Desativado', unavailable: 'Não detectado', needs_configuration: 'Precisa de configuração', unknown: 'Status desconhecido', builtIn: 'Usar modelo integrado', detectedHint: 'O programa foi encontrado, mas não há confirmação de que aceite solicitações de revisão do SmartMoney-Cub.', runnableHint: 'Pode executar o assistente e recebe apenas contexto de revisão anonimizado.', protocolHint: 'Está instalado, mas esta versão não oferece suporte ao protocolo de revisão necessário.', disabledHint: 'O programa foi detectado, mas está desativado.', unavailableHint: 'O programa não foi encontrado neste dispositivo.', needsHint: 'O programa foi detectado, mas falta configuração para revisão.', unknownHint: 'Não há informações suficientes, então ele não pode ser selecionado.', chooseHint: 'A lista mostra apenas Agents explicitamente disponíveis para revisão. Detectar ou ativar não garante que a revisão funcione.', listTitle: 'Agents locais de revisão', enable: 'Ativar', disable: 'Desativar', switched: 'Agente de revisão padrão alterado', restored: 'O modelo integrado será usado novamente', enabled: 'ativado', disabledAction: 'desativado' },
+  'de-DE': { detected: 'Erkannt, nicht für Reviews bereit', runnable: 'Für Reviews verfügbar', protocol_incompatible: 'Erkannt, Review-Protokoll inkompatibel', disabled: 'Deaktiviert', unavailable: 'Nicht erkannt', needs_configuration: 'Einrichtung erforderlich', unknown: 'Status unbekannt', builtIn: 'Integriertes Modell verwenden', detectedHint: 'Das Programm wurde gefunden, akzeptiert aber nach aktuellem Stand keine bestätigten SmartMoney-Cub-Review-Anfragen.', runnableHint: 'Kann den Review-Assistenten ausführen und erhält nur maskierten Review-Kontext.', protocolHint: 'Installiert, aber diese Version unterstützt das erforderliche Review-Protokoll nicht.', disabledHint: 'Das Programm wurde erkannt, ist aber deaktiviert.', unavailableHint: 'Das Programm wurde auf diesem Gerät nicht gefunden.', needsHint: 'Erkannt, aber die für Reviews nötige Einrichtung fehlt.', unknownHint: 'Es fehlen Statusinformationen; daher nicht auswählbar.', chooseHint: 'Nur ausdrücklich für Reviews verfügbare Agents werden angeboten. Erkennung oder Aktivierung allein reicht nicht.', listTitle: 'Lokale Review-Agents', enable: 'Aktivieren', disable: 'Deaktivieren', switched: 'Standard-Review-Agent geändert', restored: 'Wieder das integrierte Modell verwenden', enabled: 'aktiviert', disabledAction: 'deaktiviert' },
+  'fr-FR': { detected: 'Détecté, pas prêt pour les revues', runnable: 'Disponible pour les revues', protocol_incompatible: 'Détecté, protocole incompatible', disabled: 'Désactivé', unavailable: 'Non détecté', needs_configuration: 'Configuration requise', unknown: 'État inconnu', builtIn: 'Utiliser le modèle intégré', detectedHint: 'Le programme est présent, mais son acceptation des demandes de revue SmartMoney-Cub n’est pas confirmée.', runnableHint: 'Peut exécuter l’assistant et reçoit uniquement un contexte de revue masqué.', protocolHint: 'Installé, mais cette version ne prend pas en charge le protocole de revue requis.', disabledHint: 'Le programme a été détecté, mais il est désactivé.', unavailableHint: 'Ce programme est introuvable sur cet appareil.', needsHint: 'Détecté, mais la configuration nécessaire aux revues est incomplète.', unknownHint: 'Les informations d’état sont insuffisantes ; il ne peut pas être sélectionné.', chooseHint: 'Seuls les Agents explicitement disponibles pour les revues sont proposés. Être détecté ou activé ne suffit pas.', listTitle: 'Agents locaux de revue', enable: 'Activer', disable: 'Désactiver', switched: 'Agent de revue par défaut changé', restored: 'Le modèle intégré sera utilisé à nouveau', enabled: 'activé', disabledAction: 'désactivé' },
+};
+
+function reviewAgentRunnable(agent: ReviewAgent): boolean {
+  return agent.status === 'runnable' && agent.detected && agent.enabled && agent.protocol?.compatible !== false;
+}
+
+function reviewAgentStatus(agent: ReviewAgent, copy: Record<string, string>): { label: string; detail: string } {
+  if (agent.status === 'runnable' && reviewAgentRunnable(agent)) return { label: copy.runnable, detail: copy.runnableHint };
+  const key = agent.status === 'runnable'
+    ? (agent.detected ? (agent.enabled ? 'detected' : 'disabled') : 'unavailable')
+    : agent.status in copy ? agent.status : agent.detected ? 'detected' : 'unavailable';
+  const detailKey = key === 'protocol_incompatible' ? 'protocolHint' : key === 'disabled' ? 'disabledHint' : key === 'needs_configuration' ? 'needsHint' : key === 'unknown' ? 'unknownHint' : key === 'detected' ? 'detectedHint' : 'unavailableHint';
+  return { label: copy[key], detail: copy[detailKey] };
+}
 
 // Settings -> 模型 Providers, rebuilt against DSH's Settings -> Models page.
 //
@@ -278,6 +308,8 @@ export function SettingsView({
   onToggleTheme?: () => void;
 }) {
   const { t } = useLegacyI18n();
+  const [locale] = useLocale();
+  const agentCopy = REVIEW_AGENT_COPY[locale];
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [protocols, setProtocols] = useState<ProtocolOption[]>([]);
@@ -301,6 +333,8 @@ export function SettingsView({
     context_strategy: 'summary_compact',
   });
   const [openingFile, setOpeningFile] = useState(false);
+  const [reviewAgents, setReviewAgents] = useState<ReviewAgent[]>([]);
+  const [defaultReviewAgent, setDefaultReviewAgent] = useState<string | null>(null);
 
   const load = async (): Promise<ProviderView[]> => {
     const settings = await api.settings();
@@ -323,6 +357,9 @@ export function SettingsView({
     }
     setAudits((await api.audit()).audits);
     setDoctor(await api.doctor());
+    const [agentResult, defaultResult] = await Promise.all([api.reviewAgents(), api.reviewAgentDefault()]);
+    setReviewAgents(agentResult.agents || []);
+    setDefaultReviewAgent(defaultResult.default?.agent_id || null);
     return next;
   };
 
@@ -453,6 +490,29 @@ export function SettingsView({
     } catch (caught) {
       fail(caught);
     }
+  };
+
+  const toggleReviewAgent = async (agent: ReviewAgent) => {
+    try {
+      const result = await api.setReviewAgent(agent.agent_id, !agent.enabled);
+      setReviewAgents((prev) => prev.map((item) => item.agent_id === agent.agent_id ? result.agent : item));
+      notice(agent.display_name + ' ' + (result.agent.enabled ? agentCopy.enabled : agentCopy.disabledAction));
+    } catch (caught) { fail(caught); }
+  };
+
+  const chooseReviewAgent = async (agentId: string | null) => {
+    if (agentId) {
+      const selected = reviewAgents.find((agent) => agent.agent_id === agentId);
+      if (!selected || !reviewAgentRunnable(selected)) {
+        notice(agentCopy.chooseHint);
+        return;
+      }
+    }
+    try {
+      await api.setReviewAgentDefault({ agent_id: agentId });
+      setDefaultReviewAgent(agentId);
+      notice(agentId ? agentCopy.switched : agentCopy.restored);
+    } catch (caught) { fail(caught); }
   };
 
   return (
@@ -667,6 +727,38 @@ export function SettingsView({
               <div className="grid" style={{ gap: 16 }}>
                 <div className="muted" style={{ fontSize: 12 }}>
                   {t('settings.agentHint')}
+                </div>
+
+                <div className="field">
+                  <label>{agentCopy.listTitle}</label>
+                  <select value={defaultReviewAgent || ''} onChange={(event) => void chooseReviewAgent(event.target.value || null)}>
+                    <option value="">{agentCopy.builtIn}</option>
+                    {reviewAgents.filter(reviewAgentRunnable).map((agent) => (
+                      <option key={agent.agent_id} value={agent.agent_id}>{agent.display_name}{agent.version ? ' · ' + agent.version : ''}</option>
+                    ))}
+                  </select>
+                  <span className="muted" style={{ fontSize: 11 }}>{agentCopy.chooseHint}</span>
+                </div>
+                <div className="grid" style={{ gap: 8 }}>
+                  <strong style={{ fontSize: 13 }}>{agentCopy.listTitle}</strong>
+                  {reviewAgents.map((agent) => (
+                    (() => {
+                      const state = reviewAgentStatus(agent, agentCopy);
+                      const runnable = reviewAgentRunnable(agent);
+                      return (
+                    <div className="row" key={agent.agent_id} style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--border)', padding: '8px 0' }}>
+                      <span style={{ minWidth: 0 }}>
+                        <strong>{agent.display_name}</strong>{agent.version ? <span className="muted"> · {agent.version}</span> : null}
+                        <span className="muted" style={{ display: 'block', fontSize: 11 }}>{state.detail}</span>
+                      </span>
+                      <span className="row" style={{ gap: 8 }}>
+                        <span className={'tag ' + (runnable ? 'ok' : '')}>{state.label}</span>
+                        {agent.detected && agent.status !== 'protocol_incompatible' && agent.status !== 'needs_configuration' ? <button className="ghost" onClick={() => void toggleReviewAgent(agent)}>{agent.enabled ? agentCopy.disable : agentCopy.enable}</button> : null}
+                      </span>
+                    </div>
+                      );
+                    })()
+                  ))}
                 </div>
 
                 <div className="provider-form">

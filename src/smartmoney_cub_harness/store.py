@@ -197,6 +197,17 @@ class Store:
             self._db.execute("ALTER TABLE candidate_fill ADD COLUMN fee REAL")
         except sqlite3.OperationalError:
             pass
+        for column in (
+            "agent_id TEXT",
+            "agent_preset_id TEXT",
+            "agent_adapter TEXT",
+            "agent_mode TEXT",
+            "agent_version TEXT",
+        ):
+            try:
+                self._db.execute(f"ALTER TABLE agent_session ADD COLUMN {column}")
+            except sqlite3.OperationalError:
+                pass
         self._db.commit()
         self._ensure_default_portfolio()
 
@@ -594,13 +605,19 @@ class Store:
         model: str = "",
         reasoning: str = "medium",
         forked_from: str | None = None,
+        agent_id: str | None = None,
+        agent_preset_id: str | None = None,
+        agent_adapter: str | None = None,
+        agent_mode: str | None = None,
+        agent_version: str | None = None,
     ) -> dict[str, Any]:
         session_id = f"SES-{_uuid()}"
         now = _now_iso()
         self._db.execute(
             "INSERT INTO agent_session (session_id, title, context, provider_id, model,"
-            " reasoning, status, forked_from, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?)",
+            " reasoning, status, forked_from, created_at, updated_at, agent_id,"
+            " agent_preset_id, agent_adapter, agent_mode, agent_version)"
+            " VALUES (?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 title or "新会话",
@@ -611,6 +628,11 @@ class Store:
                 forked_from,
                 now,
                 now,
+                agent_id,
+                agent_preset_id,
+                agent_adapter,
+                agent_mode,
+                agent_version,
             ),
         )
         self._db.commit()
@@ -633,7 +655,8 @@ class Store:
 
     @_synchronized
     def update_session(self, session_id: str, **fields: Any) -> dict[str, Any]:
-        allowed = {"title", "provider_id", "model", "reasoning", "status", "archived", "context"}
+        allowed = {"title", "provider_id", "model", "reasoning", "status", "archived", "context",
+                   "agent_id", "agent_preset_id", "agent_adapter", "agent_mode", "agent_version"}
         updates = {key: value for key, value in fields.items() if key in allowed and value is not None}
         if "context" in updates:
             updates["context"] = json.dumps(updates["context"], ensure_ascii=False)
@@ -691,6 +714,11 @@ class Store:
             model=source["model"],
             reasoning=source["reasoning"],
             forked_from=session_id,
+            agent_id=source.get("agent_id"),
+            agent_preset_id=source.get("agent_preset_id"),
+            agent_adapter=source.get("agent_adapter"),
+            agent_mode=source.get("agent_mode"),
+            agent_version=source.get("agent_version"),
         )
         for event in events:
             self.append_event(

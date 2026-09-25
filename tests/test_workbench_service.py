@@ -241,6 +241,32 @@ def test_a_turn_is_persisted_so_a_reload_resumes_it(tmp_path) -> None:
         service.close()
 
 
+def test_selected_local_agent_streams_validated_review_without_provider_fallback(tmp_path, monkeypatch) -> None:
+    service = _service(tmp_path)
+    try:
+        session_id = service.create_session({"title": "本地复盘", "agent_id": "codex"})["session"]["session_id"]
+        service.store.set_setting("review_agent_enabled", {"codex": True})
+        monkeypatch.setattr(
+            "smartmoney_cub_harness.agent.review_agents.probe_agent",
+            lambda _agent_id: {"status": "runnable"},
+        )
+        captured: dict[str, object] = {}
+
+        def fake_review(agent_id, envelope, prompt="", **kwargs):
+            captured.update({"agent_id": agent_id, "envelope": envelope, "prompt": prompt})
+            return {"status": "ok", "text": "本地复盘完成", "parts": [], "safety": SAFETY_DECLARATION}
+
+        monkeypatch.setattr("smartmoney_cub_harness.agent.review_agents.run_local_review", fake_review)
+        events = list(service.stream_turn(session_id, {"text": "检查这笔交易"}))
+        assert captured["agent_id"] == "codex"
+        assert captured["prompt"] == "检查这笔交易"
+        assert captured["envelope"]["safety"] == SAFETY_DECLARATION
+        assert [event["kind"] for event in events if event["kind"] in {"delta", "done"}] == ["delta", "done"]
+        assert "provider_id" not in captured
+    finally:
+        service.close()
+
+
 def test_upload_stores_the_file_locally_and_does_not_commit(tmp_path) -> None:
     service = _service(tmp_path)
     try:
