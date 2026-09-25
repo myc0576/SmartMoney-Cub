@@ -2,335 +2,51 @@ import { useCallback, useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { BacktestRunDetail, BacktestRunSummary, MarketProvider } from '../types';
 import { CandleChart } from '../components/CandleChart';
-import { Banner, Empty, Panel, formatMoney, formatPct, toneOf } from '../components/common';
+import { Banner, Badge, Empty, Panel, formatMoney, formatPct, toneOf } from '../components/common';
 
-/**
- * Backtesting: a JSON strategy in, a deterministic run out.
- *
- * The strategy is edited as raw JSON rather than through a form. That is
- * deliberate: the DSL is a frozen vocabulary that rejects unknown keys, and a
- * form would either silently drop a key the trader typed or invent a shape the
- * validator does not accept. Raw JSON keeps the editor and the validator honest
- * — what you see is exactly what will be validated.
- *
- * The default strategy is a minimal valid payload, so the view runs something
- * on first open instead of showing an empty editor and an error.
- */
+type Mode = 'guided' | 'json';
+type Indicator = { id: string; kind: string; source: string; period: number };
+type Condition = { operator: string; left: string; right: string };
+type Form = { version: 1; name: string; symbol: string; interval: string; indicators: Indicator[]; entry: Condition[]; exit: Condition[]; stopKind: string; stopValue: number; targetKind: string; targetValue: number; sizingKind: string; sizingValue: number; session: string; minBars: number; fill: string };
 
-const EXAMPLE_STRATEGY = {
-  version: 1,
-  name: '均线交叉示例',
-  universe: { symbol: '600519', interval: '1d' },
-  indicators: [
-    { id: 'fast', kind: 'sma', source: 'close', period: 10 },
-    { id: 'slow', kind: 'sma', source: 'close', period: 30 },
-  ],
-  entry: { all: [{ crosses_above: ['fast', 'slow'] }] },
-  exit: { all: [{ crosses_below: ['fast', 'slow'] }] },
-  stop: { kind: 'percent', value: 5 },
-  target: { kind: 'r_multiple', value: 2 },
-  sizing: { kind: 'fixed_fraction', value: 0.25 },
-  filters: { session: null, min_bars: 30 },
-  fill: 'next_open',
-};
+const EXAMPLE = { version: 1, name: '均线交叉示例', universe: { symbol: '600519', interval: '1d' }, indicators: [{ id: 'fast', kind: 'sma', source: 'close', period: 10 }, { id: 'slow', kind: 'sma', source: 'close', period: 30 }], entry: { all: [{ crosses_above: ['fast', 'slow'] }] }, exit: { all: [{ crosses_below: ['fast', 'slow'] }] }, stop: { kind: 'percent', value: 5 }, target: { kind: 'r_multiple', value: 2 }, sizing: { kind: 'fixed_fraction', value: 0.25 }, filters: { session: null, min_bars: 30 }, fill: 'next_open' };
+const INDICATORS: Record<string, string> = { sma: '简单移动平均线', ema: '指数移动平均线', rsi: 'RSI 相对强弱指标', atr: 'ATR 波动幅度', highest: '区间最高价', lowest: '区间最低价', volume_sma: '成交量均线' };
+const OPERATORS: Record<string, string> = { gt: '大于', lt: '小于', gte: '大于等于', lte: '小于等于', crosses_above: '向上穿越', crosses_below: '向下穿越', is_true: '成立' };
+const SOURCES = ['close', 'open', 'high', 'low', 'volume'];
+
+function readForm(value: Record<string, unknown>): Form {
+  const universe = (value.universe || {}) as Record<string, unknown>;
+  const stop = (value.stop || {}) as Record<string, unknown>;
+  const target = (value.target || {}) as Record<string, unknown>;
+  const sizing = (value.sizing || {}) as Record<string, unknown>;
+  const filters = (value.filters || {}) as Record<string, unknown>;
+  const conditions = (group: unknown): Condition[] => { const all = group && typeof group === 'object' ? (group as { all?: unknown[] }).all : []; return (Array.isArray(all) ? all : []).map((item) => { const record = item as Record<string, unknown>; const operator = Object.keys(record)[0] || 'crosses_above'; const values = Array.isArray(record[operator]) ? record[operator] as unknown[] : []; return { operator, left: String(values[0] || ''), right: String(values[1] || '') }; }); };
+  return { version: 1, name: String(value.name || '我的回测策略'), symbol: String(universe.symbol || '600519'), interval: String(universe.interval || '1d'), indicators: (Array.isArray(value.indicators) ? value.indicators : []).map((item) => { const i = item as Record<string, unknown>; return { id: String(i.id || 'indicator'), kind: String(i.kind || 'sma'), source: String(i.source || 'close'), period: Number(i.period || 20) }; }), entry: conditions(value.entry), exit: conditions(value.exit), stopKind: String(stop.kind || 'none'), stopValue: Number(stop.value || 5), targetKind: String(target.kind || 'none'), targetValue: Number(target.value || 2), sizingKind: String(sizing.kind || 'fixed_fraction'), sizingValue: Number(sizing.value || 0.25), session: String(filters.session || ''), minBars: Number(filters.min_bars || 30), fill: String(value.fill || 'next_open') };
+}
+
+function writeStrategy(form: Form): Record<string, unknown> {
+  const group = (items: Condition[]) => ({ all: items.filter((item) => item.left).map((item) => ({ [item.operator]: item.operator === 'is_true' ? [item.left] : [item.left, item.right] })) });
+  return { version: 1, name: form.name || '我的回测策略', universe: { symbol: form.symbol || '600519', interval: form.interval || '1d' }, indicators: form.indicators, entry: group(form.entry), exit: group(form.exit), stop: { kind: form.stopKind, value: form.stopKind === 'none' ? null : form.stopValue }, target: { kind: form.targetKind, value: form.targetKind === 'none' ? null : form.targetValue }, sizing: { kind: form.sizingKind, value: form.sizingValue }, filters: { session: form.session || null, min_bars: form.minBars }, fill: form.fill };
+}
 
 export function BacktestView({ scheme }: { scheme: 'cn' | 'intl' }) {
-  const [providers, setProviders] = useState<MarketProvider[]>([]);
-  const [provider, setProvider] = useState('');
-  const [symbol, setSymbol] = useState('600519');
-  const [interval, setInterval] = useState('1d');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
-  const [strategy, setStrategy] = useState(() => JSON.stringify(EXAMPLE_STRATEGY, null, 2));
-  const [runs, setRuns] = useState<BacktestRunSummary[]>([]);
-  const [result, setResult] = useState<BacktestRunDetail | null>(null);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState('');
-
-  const loadRuns = useCallback(async () => {
-    try {
-      const listed = await trader.backtestRuns();
-      setRuns(Array.isArray(listed.runs) ? listed.runs : []);
-    } catch {
-      // A failed history read should not block running a new backtest.
-      setRuns([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadRuns();
-    void trader.marketProviders()
-      .then((catalog) => {
-        const list = Array.isArray(catalog.providers) ? catalog.providers : [];
-        setProviders(list);
-        setProvider((current) => current || list[0]?.provider_id || '');
-      })
-      .catch(() => setProviders([]));
-  }, [loadRuns]);
-
-  const run = async () => {
-    setError('');
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(strategy) as Record<string, unknown>;
-    } catch (parseFailure) {
-      setError('策略 JSON 无法解析：' + (parseFailure instanceof Error ? parseFailure.message : String(parseFailure)));
-      return;
-    }
-    setRunning(true);
-    try {
-      const detail = await trader.runBacktest({
-        strategy: parsed,
-        provider: provider || undefined,
-        symbol: symbol.trim() || undefined,
-        interval: interval || undefined,
-        start: start || undefined,
-        end: end || undefined,
-      });
-      setResult(detail);
-      await loadRuns();
-    } catch (failure) {
-      setResult(null);
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const openRun = async (runId: string) => {
-    setError('');
-    try {
-      setResult(await trader.backtestRun(runId));
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    }
-  };
-
-  // An equity curve has one value per point. It is drawn in line mode rather
-  // than as candles: an open/high/low copied from the same number would draw a
-  // body with no range, which looks like data and is not.
-  const equity = (result?.equity_curve || []).map((point) => ({
-    open_time: String(point.open_time || ''),
-    close: number(point.equity),
-  }));
-
-  return (
-    <div className="grid" style={{ gap: 14 }}>
-      <div className="notice">
-        回测只读取历史行情，不接触任何交易通道。相同输入会产生完全相同的输出，
-        指标口径与交易日志共用同一套实现，因此回测和复盘不会对同一指标给出两个答案。
-      </div>
-
-      {error ? <Banner>{error}</Banner> : null}
-
-      <div className="grid split">
-        <Panel
-          title="策略（JSON）"
-          actions={
-            <div className="row">
-              <button className="ghost" onClick={() => setStrategy(JSON.stringify(EXAMPLE_STRATEGY, null, 2))}>恢复示例</button>
-              <button className="primary" onClick={() => void run()} disabled={running}>{running ? '运行中…' : '运行回测'}</button>
-            </div>
-          }
-        >
-          <textarea
-            value={strategy}
-            onChange={(event) => setStrategy(event.target.value)}
-            spellCheck={false}
-            style={{ width: '100%', minHeight: 320, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, lineHeight: 1.6 }}
-            aria-label="策略 JSON"
-          />
-          <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-            DSL 只接受白名单里的键：未知字段会被拒绝，而不是被忽略。
-          </div>
-        </Panel>
-
-        <Panel title="数据来源">
-          <div className="grid" style={{ gap: 10 }}>
-            <div className="field">
-              <label>行情来源</label>
-              <select value={provider} onChange={(event) => setProvider(event.target.value)}>
-                {providers.length === 0 ? <option value="">没有可用来源</option> : null}
-                {providers.map((item) => (
-                  /* A source that cannot answer keeps its place and says why.
-                     Dropping it would leave a reader wondering whether the app
-                     ever had it; offering it unmarked would promise a fetch that
-                     cannot succeed. */
-                  <option
-                    key={item.provider_id}
-                    value={item.provider_id}
-                    disabled={Boolean(item.availability) && item.availability !== 'available'}
-                  >
-                    {item.label}（{item.source_quality}）
-                    {item.availability && item.availability !== 'available'
-                      ? ' · 不可用：' + (item.availability_reason || item.availability)
-                      : ''}
-                  </option>
-                ))}
-              </select>
-              {unavailableNotice(providers, provider) ? (
-                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                  {unavailableNotice(providers, provider)}
-                </div>
-              ) : null}
-            </div>
-            <div className="grid split" style={{ gap: 10 }}>
-              <div className="field">
-                <label>标的</label>
-                <input value={symbol} onChange={(event) => setSymbol(event.target.value)} />
-              </div>
-              <div className="field">
-                <label>周期</label>
-                <select value={interval} onChange={(event) => setInterval(event.target.value)}>
-                  {['1m', '5m', '15m', '30m', '60m', '1d', '1w', '1M'].map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="grid split" style={{ gap: 10 }}>
-              <div className="field">
-                <label>开始日期</label>
-                <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
-              </div>
-              <div className="field">
-                <label>结束日期</label>
-                <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
-              </div>
-            </div>
-            <div className="muted" style={{ fontSize: 11, lineHeight: 1.7 }}>
-              行情只在点击运行时按需拉取。抓取会记录来源、抓取时间和质量标记；
-              任何 <code>available_at</code> 晚于决策时间的序列都会被拒绝。
-            </div>
-          </div>
-        </Panel>
-      </div>
-
-      {result ? (
-        <div className="grid" style={{ gap: 14 }}>
-          <div className="grid kpi">
-            <Metric label="期末权益" value={formatMoney(number(result.final_equity))} tone={toneOf(number(result.final_equity) - number(result.initial_cash), scheme)} />
-            <Metric label="初始资金" value={formatMoney(number(result.initial_cash))} />
-            <Metric label="成交笔数" value={String(metricValue(result.metrics, 'trade_count') ?? result.trades.length)} />
-            <Metric label="胜率" value={pctMetric(result.metrics, 'win_rate')} />
-            <Metric label="盈亏比" value={metricText(result.metrics, 'profit_factor')} />
-            <Metric label="最大回撤" value={metricText(result.metrics, 'max_drawdown')} />
-          </div>
-
-          <Panel title={'权益曲线 · ' + (result.strategy_name || result.run_id)}>
-            {equity.length < 2 ? <Empty text="这次运行没有产生可绘制的权益点" /> : (
-              <CandleChart bars={equity} variant="line" height={220} emptyText="这次运行没有产生可绘制的权益点" />
-            )}
-          </Panel>
-
-          <Panel title={'成交明细（' + (result.trades || []).length + '）'}>
-            {(result.trades || []).length === 0 ? <Empty text="这次运行没有触发任何成交" /> : (
-              <div className="scroll-x">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>标的</th><th>方向</th><th>进场</th><th>离场</th>
-                      <th className="num">数量</th><th className="num">盈亏</th><th>离场原因</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.trades.map((trade, index) => (
-                      <tr key={(trade.entry_time || '') + '-' + index}>
-                        <td>{trade.symbol}</td>
-                        <td className="muted">{trade.side}</td>
-                        <td className="muted">{trade.entry_time}</td>
-                        <td className="muted">{trade.exit_time}</td>
-                        <td className="num">{number(trade.quantity).toLocaleString('zh-CN')}</td>
-                        <td className={'num ' + toneOf(number(trade.pnl), scheme)}>{formatMoney(number(trade.pnl))}</td>
-                        <td className="muted">{trade.exit_reason || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Panel>
-        </div>
-      ) : (
-        <Panel title="结果">
-          <Empty text="还没有运行结果。设置好策略和数据来源后点「运行回测」。" />
-        </Panel>
-      )}
-
-      <Panel title={'历史运行（' + runs.length + '）'}>
-        {runs.length === 0 ? <Empty text="还没有保存过的回测运行" /> : (
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th>策略</th><th>标的</th><th>周期</th><th className="num">交易数</th>
-                  <th className="num">净盈亏</th><th>运行时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((runSummary) => (
-                  <tr key={runSummary.run_id} onClick={() => void openRun(runSummary.run_id)}>
-                    <td>{runSummary.strategy_name || runSummary.run_id}</td>
-                    <td className="muted">{runSummary.symbol || '—'}</td>
-                    <td className="muted">{runSummary.interval || '—'}</td>
-                    <td className="num">{metricValue(runSummary.metrics, 'trade_count') ?? '—'}</td>
-                    <td className="num">{metricText(runSummary.metrics, 'total_net_pnl')}</td>
-                    <td className="muted">{runSummary.started_at || runSummary.created_at}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
-    </div>
-  );
+  const [providers, setProviders] = useState<MarketProvider[]>([]); const [provider, setProvider] = useState(''); const [form, setForm] = useState<Form>(() => readForm(EXAMPLE)); const [json, setJson] = useState(() => JSON.stringify(EXAMPLE, null, 2)); const [mode, setMode] = useState<Mode>('guided'); const [runs, setRuns] = useState<BacktestRunSummary[]>([]); const [result, setResult] = useState<BacktestRunDetail | null>(null); const [start, setStart] = useState(''); const [end, setEnd] = useState(''); const [loading, setLoading] = useState(true); const [running, setRunning] = useState(false); const [error, setError] = useState('');
+  const loadRuns = useCallback(async () => { try { const response = await trader.backtestRuns(); setRuns(Array.isArray(response.runs) ? response.runs : []); } catch { setRuns([]); } }, []);
+  useEffect(() => { void loadRuns(); void trader.marketProviders().then((catalog) => { const list = Array.isArray(catalog.providers) ? catalog.providers : []; setProviders(list); setProvider((current) => current || list[0]?.provider_id || ''); }).catch(() => setProviders([])).finally(() => setLoading(false)); }, [loadRuns]);
+  const update = (change: Partial<Form>) => { const next = { ...form, ...change }; setForm(next); setJson(JSON.stringify(writeStrategy(next), null, 2)); };
+  const reset = () => { setForm(readForm(EXAMPLE)); setJson(JSON.stringify(EXAMPLE, null, 2)); setError(''); };
+  const changeMode = (next: Mode) => { if (next === 'guided') { try { setForm(readForm(JSON.parse(json) as Record<string, unknown>)); } catch { setError('高级 JSON 无法解析，修正后才能切回可视化规则。'); return; } } else setJson(JSON.stringify(writeStrategy(form), null, 2)); setMode(next); };
+  const run = async () => { setError(''); let parsed: Record<string, unknown>; try { parsed = mode === 'json' ? JSON.parse(json) as Record<string, unknown> : writeStrategy(form); } catch (failure) { setError('策略 JSON 无法解析：' + (failure instanceof Error ? failure.message : String(failure))); return; } setRunning(true); try { setResult(await trader.runBacktest({ strategy: parsed, provider: provider || undefined, symbol: form.symbol || undefined, interval: form.interval || undefined, start: start || undefined, end: end || undefined })); await loadRuns(); } catch (failure) { setResult(null); setError(failure instanceof Error ? failure.message : String(failure)); } finally { setRunning(false); } };
+  const openRun = async (runId: string) => { try { setResult(await trader.backtestRun(runId)); } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); } };
+  const equity = (result?.equity_curve || []).map((point) => ({ open_time: String(point.open_time || ''), close: number(point.equity) }));
+  return <div className="grid backtest-page" style={{ gap: 14 }}><div className="notice"><strong>回测是历史验证工具</strong><br />只读取历史行情，不接触交易通道。策略输入会经过严格白名单校验，不执行任何用户代码。</div>{error ? <Banner>{error}<button className="ghost" style={{ marginLeft: 10 }} onClick={() => setError('')}>知道了</button></Banner> : null}<div className="grid split backtest-workspace"><Panel title="策略编辑器" actions={<div className="row"><button className="ghost" onClick={reset}>恢复示例</button><button className="primary" onClick={() => void run()} disabled={running || loading}>{running ? '运行中…' : '运行回测'}</button></div>}><div className="subnav" role="tablist" aria-label="策略编辑模式"><button className={'subnav-item' + (mode === 'guided' ? ' active' : '')} onClick={() => changeMode('guided')}>可视化规则</button><button className={'subnav-item' + (mode === 'json' ? ' active' : '')} onClick={() => changeMode('json')}>高级 JSON</button></div>{mode === 'guided' ? <Guided form={form} update={update} /> : <><textarea className="strategy-json" value={json} onChange={(event) => setJson(event.target.value)} spellCheck={false} aria-label="策略 JSON" /><div className="muted editor-help">高级模式直接编辑严格 DSL v1。未知字段会被拒绝，不会被静默忽略。</div></>}</Panel><Panel title="行情与范围"><div className="grid" style={{ gap: 10 }}><Field label="行情来源"><select value={provider} onChange={(event) => setProvider(event.target.value)}>{providers.length === 0 ? <option value="">正在读取行情来源…</option> : null}{providers.map((item) => <option key={item.provider_id} value={item.provider_id} disabled={Boolean(item.availability) && item.availability !== 'available'}>{item.label}（{item.source_quality}）{item.availability && item.availability !== 'available' ? ' · 不可用' : ''}</option>)}</select></Field><div className="grid split"><Field label="标的"><input value={form.symbol} onChange={(event) => update({ symbol: event.target.value })} /></Field><Field label="周期"><select value={form.interval} onChange={(event) => update({ interval: event.target.value })}>{['1m', '5m', '15m', '30m', '60m', '1d', '1w', '1M'].map((item) => <option key={item}>{item}</option>)}</select></Field></div><div className="grid split"><Field label="开始日期（可选）"><input type="date" value={start} onChange={(event) => setStart(event.target.value)} /></Field><Field label="结束日期（可选）"><input type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></Field></div><div className="data-integrity"><Badge kind="ok">数据完整性</Badge><span>运行时会校验来源、时间和缺失数据，发现问题会拒绝整次回测。</span></div></div></Panel></div>{result ? <Result result={result} equity={equity} scheme={scheme} /> : <Panel title="回测结果"><Empty text={running ? '正在读取历史行情并计算结果…' : '还没有运行结果。先配置规则，再运行一次回测。'} /></Panel>}<Panel title={'历史运行（' + runs.length + '）'}>{runs.length === 0 ? <Empty text="还没有保存过的回测运行" /> : <div className="scroll-x"><table><thead><tr><th>策略</th><th>标的</th><th>周期</th><th className="num">交易数</th><th className="num">净盈亏</th><th>运行时间</th></tr></thead><tbody>{runs.map((item) => <tr key={item.run_id} onClick={() => void openRun(item.run_id)}><td>{item.strategy_name || item.run_id}</td><td className="muted">{item.symbol || '—'}</td><td className="muted">{item.interval || '—'}</td><td className="num">{metricValue(item.metrics, 'trade_count') ?? '—'}</td><td className="num">{metricText(item.metrics, 'total_net_pnl')}</td><td className="muted">{item.started_at || item.created_at}</td></tr>)}</tbody></table></div>}</Panel></div>;
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="panel">
-      <div className="kpi-label">{label}</div>
-      <div className={'kpi-value ' + (tone || '')}>{value}</div>
-    </div>
-  );
-}
-
-function metricValue(metrics: Record<string, number | string | null> | undefined, key: string): number | null {
-  const raw = metrics ? metrics[key] : null;
-  if (raw === null || raw === undefined || raw === '') return null;
-  const parsed = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function metricText(metrics: Record<string, number | string | null> | undefined, key: string): string {
-  const value = metricValue(metrics, key);
-  if (value === null) return '—';
-  if (key.includes('pct') || key === 'win_rate') return formatPct(value);
-  return formatMoney(value);
-}
-
-function pctMetric(metrics: Record<string, number | string | null> | undefined, key: string): string {
-  const value = metricValue(metrics, key);
-  return value === null ? '—' : value.toFixed(2) + '%';
-}
-
-function number(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-/**
- * Why the selected source cannot answer, or an empty string when it can.
- *
- * The catalogue is shipped everywhere but the network is not, so a source may be
- * listed and unreachable. Saying so beside the picker is the difference between a
- * reader who knows the fetch will fail and a reader who concludes the app is
- * broken.
- */
-function unavailableNotice(providers: MarketProvider[], selected: string): string {
-  const item = providers.find((candidate) => candidate.provider_id === selected);
-  if (!item) return '';
-  if (!item.availability || item.availability === 'available') return '';
-  return '当前来源不可用：' + (item.availability_reason || item.availability);
-}
+function Guided({ form, update }: { form: Form; update: (change: Partial<Form>) => void }) { const ids = form.indicators.map((item) => item.id); const edit = (side: 'entry' | 'exit', index: number, change: Partial<Condition>) => { const next = [...form[side]]; next[index] = { ...next[index], ...change }; update({ [side]: next } as Partial<Form>); }; const add = (side: 'entry' | 'exit') => update({ [side]: [...form[side], { operator: 'crosses_above', left: ids[0] || '', right: ids[1] || ids[0] || '' }] } as Partial<Form>); return <div className="guided-editor"><Field label="策略名称"><input value={form.name} onChange={(event) => update({ name: event.target.value })} /></Field><section className="rule-section"><div className="section-heading"><strong>1. 指标</strong><button className="ghost" onClick={() => update({ indicators: [...form.indicators, { id: 'indicator_' + (form.indicators.length + 1), kind: 'sma', source: 'close', period: 20 }] })}>添加指标</button></div>{form.indicators.map((item, index) => <div className="rule-row" key={item.id + index}><input value={item.id} aria-label="指标名称" onChange={(event) => { const next = [...form.indicators]; next[index] = { ...item, id: event.target.value }; update({ indicators: next }); }} /><select value={item.kind} aria-label="指标类型" onChange={(event) => { const next = [...form.indicators]; next[index] = { ...item, kind: event.target.value }; update({ indicators: next }); }}>{Object.entries(INDICATORS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={item.source} aria-label="计算来源" onChange={(event) => { const next = [...form.indicators]; next[index] = { ...item, source: event.target.value }; update({ indicators: next }); }}>{SOURCES.map((source) => <option key={source}>{source}</option>)}</select><input type="number" min="1" value={item.period} aria-label="指标周期" onChange={(event) => { const next = [...form.indicators]; next[index] = { ...item, period: Number(event.target.value) || 1 }; update({ indicators: next }); }} /></div>)}</section><RuleGroup title="2. 入场条件" items={form.entry} ids={ids} onChange={(index, change) => edit('entry', index, change)} onAdd={() => add('entry')} /><RuleGroup title="3. 出场条件" items={form.exit} ids={ids} onChange={(index, change) => edit('exit', index, change)} onAdd={() => add('exit')} /><section className="rule-section"><strong>4. 风险与成交</strong><div className="grid split compact-grid"><Field label="止损"><select value={form.stopKind} onChange={(event) => update({ stopKind: event.target.value })}><option value="none">不设置</option><option value="percent">按百分比</option><option value="atr_multiple">按 ATR 倍数</option></select></Field><Field label="止损数值"><input type="number" min="0" step="0.1" value={form.stopValue} onChange={(event) => update({ stopValue: Number(event.target.value) || 0 })} /></Field><Field label="止盈"><select value={form.targetKind} onChange={(event) => update({ targetKind: event.target.value })}><option value="none">不设置</option><option value="r_multiple">按风险倍数</option><option value="percent">按百分比</option></select></Field><Field label="止盈数值"><input type="number" min="0" step="0.1" value={form.targetValue} onChange={(event) => update({ targetValue: Number(event.target.value) || 0 })} /></Field><Field label="每次投入"><select value={form.sizingKind} onChange={(event) => update({ sizingKind: event.target.value })}><option value="fixed_fraction">资金比例</option><option value="fixed_quantity">固定数量</option><option value="risk_percent">风险比例</option></select></Field><Field label="投入数值"><input type="number" min="0.001" step="0.01" value={form.sizingValue} onChange={(event) => update({ sizingValue: Number(event.target.value) || 0 })} /></Field><Field label="成交时机"><select value={form.fill} onChange={(event) => update({ fill: event.target.value })}><option value="next_open">下一根 K 线开盘</option><option value="same_close">本根 K 线收盘</option></select></Field><Field label="最少数据条数"><input type="number" min="1" value={form.minBars} onChange={(event) => update({ minBars: Number(event.target.value) || 1 })} /></Field></div></section></div>; }
+function RuleGroup({ title, items, ids, onChange, onAdd }: { title: string; items: Condition[]; ids: string[]; onChange: (index: number, change: Partial<Condition>) => void; onAdd: () => void }) { return <section className="rule-section"><div className="section-heading"><strong>{title}</strong><button className="ghost" onClick={onAdd}>添加条件</button></div>{items.length === 0 ? <div className="muted editor-help">暂未设置。</div> : items.map((item, index) => <div className="condition-row" key={index}><select value={item.left} onChange={(event) => onChange(index, { left: event.target.value })}><option value="">选择指标</option>{ids.map((id) => <option key={id}>{id}</option>)}</select><select value={item.operator} onChange={(event) => onChange(index, { operator: event.target.value })}>{Object.entries(OPERATORS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>{item.operator !== 'is_true' ? <select value={item.right} onChange={(event) => onChange(index, { right: event.target.value })}><option value="">选择指标</option>{ids.map((id) => <option key={id}>{id}</option>)}</select> : <span className="muted">指标成立时触发</span>}</div>)}</section>; }
+function Result({ result, equity, scheme }: { result: BacktestRunDetail; equity: { open_time: string; close: number }[]; scheme: 'cn' | 'intl' }) { return <div className="grid" style={{ gap: 14 }}><div className="grid kpi"><Metric label="期末权益" value={formatMoney(number(result.final_equity))} tone={toneOf(number(result.final_equity) - number(result.initial_cash), scheme)} /><Metric label="总收益" value={metricText(result.metrics, 'total_return_pct', true)} tone={toneOf(metricValue(result.metrics, 'total_return_pct'), scheme)} /><Metric label="交易次数" value={String(metricValue(result.metrics, 'trade_count') ?? result.trades.length)} /><Metric label="胜率" value={metricText(result.metrics, 'win_rate', true)} /><Metric label="盈亏比" value={metricText(result.metrics, 'profit_factor')} /><Metric label="最大回撤" value={metricText(result.metrics, 'max_drawdown', true)} /></div><Panel title={'权益曲线 · ' + (result.strategy_name || result.run_id)}>{equity.length < 2 ? <Empty text="这次运行没有足够的权益点" /> : <CandleChart bars={equity} variant="line" height={220} emptyText="这次运行没有产生可绘制的权益点" />}</Panel><Panel title="数据完整性"><div className="data-integrity"><Badge kind="ok">已检查</Badge><span>已完成来源、时间和数据质量检查。若后端返回完整性详情，将在此显示。</span></div></Panel><Panel title={'成交明细（' + (result.trades || []).length + '）'}>{(result.trades || []).length === 0 ? <Empty text="这次运行没有触发任何成交" /> : <div className="scroll-x"><table><thead><tr><th>标的</th><th>方向</th><th>进场</th><th>离场</th><th className="num">数量</th><th className="num">盈亏</th><th>离场原因</th></tr></thead><tbody>{result.trades.map((trade, index) => <tr key={(trade.entry_time || '') + '-' + index}><td>{trade.symbol}</td><td className="muted">{trade.side === 'long' ? '做多' : trade.side === 'short' ? '做空' : trade.side}</td><td className="muted">{trade.entry_time}</td><td className="muted">{trade.exit_time}</td><td className="num">{number(trade.quantity).toLocaleString('zh-CN')}</td><td className={'num ' + toneOf(number(trade.pnl), scheme)}>{formatMoney(number(trade.pnl))}</td><td className="muted">{trade.exit_reason || '—'}</td></tr>)}</tbody></table></div>}</Panel></div>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="field"><label>{label}</label>{children}</div>; }
+function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div className="panel"><div className="kpi-label">{label}</div><div className={'kpi-value ' + (tone || '')}>{value}</div></div>; }
+function metricValue(metrics: Record<string, number | string | null> | undefined, key: string): number | null { const raw = metrics ? metrics[key] : null; if (raw === null || raw === undefined || raw === '') return null; const parsed = typeof raw === 'number' ? raw : Number(raw); return Number.isFinite(parsed) ? parsed : null; }
+function metricText(metrics: Record<string, number | string | null> | undefined, key: string, percentage = false): string { const value = metricValue(metrics, key); if (value === null) return '—'; return percentage || key.includes('pct') || key === 'win_rate' || key === 'max_drawdown' ? formatPct(value) : key === 'profit_factor' ? value.toFixed(2) : formatMoney(value); }
+function number(value: unknown): number { const parsed = typeof value === 'number' ? value : Number(value); return Number.isFinite(parsed) ? parsed : 0; }

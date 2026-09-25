@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { MistakeCluster, MistakeResponse, EdgeResponse, InsightEvidence, InsightObservation, InsightPatternsResponse, PatternCandidate, Playbook } from '../types';
 import { Banner, Empty, Panel, formatMoney, formatPct, toneOf } from '../components/common';
+import { useI18n } from '../i18n';
+import { insightCopy, localizeInsightField, localizeInsightValue } from '../locales/insight';
 
 /**
  * Insight: the two questions a journal can answer about a trader rather than
@@ -19,16 +21,17 @@ import { Banner, Empty, Panel, formatMoney, formatPct, toneOf } from '../compone
 
 type InsightTab = 'mistakes' | 'edges' | 'patterns';
 
-const TABS: { key: InsightTab; label: string; hint: string }[] = [
-  { key: 'mistakes', label: '重复错误', hint: '可观察的重复行为，不据此判断情绪或动机' },
-  { key: 'edges', label: 'Edge 库', hint: '历史分组结果只是待验证假设，不代表稳定优势' },
-  { key: 'patterns', label: '模式画像', hint: '从成交事实推断趋势、超短和日内行为' },
-];
-
 export function InsightView({ scheme, onOpenTrade }: {
   scheme: 'cn' | 'intl';
   onOpenTrade?: (id: string) => void;
 }) {
+  const { locale } = useI18n();
+  const copy = insightCopy(locale);
+  const tabs: { key: InsightTab; label: string; hint: string }[] = [
+    { key: 'mistakes', label: copy.tabs.mistakes, hint: copy.hints.mistakes },
+    { key: 'edges', label: copy.tabs.edges, hint: copy.hints.edges },
+    { key: 'patterns', label: copy.tabs.patterns, hint: copy.hints.patterns },
+  ];
   const [tab, setTab] = useState<InsightTab>('patterns');
   const [mistakes, setMistakes] = useState<MistakeResponse | null>(null);
   const [edges, setEdges] = useState<EdgeResponse | null>(null);
@@ -74,16 +77,17 @@ export function InsightView({ scheme, onOpenTrade }: {
     return () => { cancelled = true; };
   }, [revision]);
 
-  const active = TABS.find((item) => item.key === tab) || TABS[0];
+  const active = tabs.find((item) => item.key === tab) || tabs[0];
 
   return (
     <div className="grid" style={{ gap: 14 }}>
       <div className="subnav" role="tablist">
-        {TABS.map((item) => (
+        {tabs.map((item) => (
           <button
             key={item.key}
             role="tab"
             aria-selected={tab === item.key}
+            data-insight-tab={item.key}
             className={'subnav-item' + (tab === item.key ? ' active' : '')}
             onClick={() => setTab(item.key)}
             title={item.hint}
@@ -93,18 +97,18 @@ export function InsightView({ scheme, onOpenTrade }: {
         ))}
       </div>
 
-      {error ? <Banner>洞察数据读取失败：{error} <button onClick={() => setRevision(value => value + 1)}>重试</button></Banner> : null}
+      {error ? <Banner>{copy.readFailed}: {error} <button onClick={() => setRevision(value => value + 1)}>{copy.retry}</button></Banner> : null}
       {playbookError ? <Banner>交易计划读取失败：{playbookError} <button onClick={() => setRevision(value => value + 1)}>重试</button></Banner> : null}
-      {loading ? <div className="muted">正在扫描台账…</div> : null}
+      {loading ? <div className="muted">{copy.scanning}</div> : null}
 
       {!loading && !error && tab === 'mistakes' ? (
-        <MistakesPanel data={mistakes} scheme={scheme} onOpenTrade={onOpenTrade} />
+        <MistakesPanel data={mistakes} scheme={scheme} onOpenTrade={onOpenTrade} copy={copy} />
       ) : null}
       {!loading && !error && tab === 'edges' ? (
-        <EdgesPanel data={edges} scheme={scheme} />
+        <EdgesPanel data={edges} scheme={scheme} copy={copy} />
       ) : null}
       {!loading && !error && tab === 'patterns' ? (
-        <PatternsPanel data={patterns} playbooks={playbooks} onOpenTrade={onOpenTrade} onRefresh={async () => {
+        <PatternsPanel data={patterns} playbooks={playbooks} onOpenTrade={onOpenTrade} copy={copy} onRefresh={async () => {
           setPatterns(await trader.insightPatterns());
         }} />
       ) : null}
@@ -114,16 +118,17 @@ export function InsightView({ scheme, onOpenTrade }: {
   );
 }
 
-function MistakesPanel({ data, scheme, onOpenTrade }: {
+function MistakesPanel({ data, scheme, onOpenTrade, copy }: {
   data: MistakeResponse | null;
   scheme: 'cn' | 'intl';
   onOpenTrade?: (id: string) => void;
+  copy: ReturnType<typeof insightCopy>;
 }) {
   const rows = data?.rows || [];
   const triggers = data?.triggers || [];
 
   return (
-    <Panel title={'重复错误（' + rows.length + ' 个簇）'}>
+    <Panel title={copy.tabs.mistakes + ' (' + rows.length + ')'}>
       {/*
         The triggers that found nothing are listed too. A scan that says "checked
         six triggers, four matched nothing" is a different statement from a scan
@@ -132,21 +137,21 @@ function MistakesPanel({ data, scheme, onOpenTrade }: {
       */}
       {triggers.length ? (
         <div className="muted" style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.7 }}>
-          已检查 {triggers.length} 类触发：
+          {copy.other} {triggers.length} checks:
           {triggers.map((trigger) => (
             <span key={trigger.kind} className="chip" style={{ marginLeft: 6 }} title={trigger.skipped_reason || ''}>
-              {trigger.label} {trigger.matched > 0 ? trigger.matched + ' 笔' : '无匹配'}
+              {localizeInsightValue(trigger.label || trigger.kind, copy)} {trigger.matched > 0 ? trigger.matched + ' ' + copy.evidenceCount : copy.unknown}
             </span>
           ))}
         </div>
       ) : null}
 
       {rows.length === 0 ? (
-        <Empty text="确定性触发没有找到成簇的坏交易。这不等于没有问题，只说明这些触发条件没有成簇命中。" />
+        <Empty text={copy.noMistakes} />
       ) : (
         <div className="grid" style={{ gap: 10 }}>
           {rows.map((row) => (
-            <MistakeCard key={row.cluster_id} row={row} scheme={scheme} onOpenTrade={onOpenTrade} />
+            <MistakeCard key={row.cluster_id} row={row} scheme={scheme} onOpenTrade={onOpenTrade} copy={copy} />
           ))}
         </div>
       )}
@@ -154,10 +159,11 @@ function MistakesPanel({ data, scheme, onOpenTrade }: {
   );
 }
 
-function MistakeCard({ row, scheme, onOpenTrade }: {
+function MistakeCard({ row, scheme, onOpenTrade, copy }: {
   row: MistakeCluster;
   scheme: 'cn' | 'intl';
   onOpenTrade?: (id: string) => void;
+  copy: ReturnType<typeof insightCopy>;
 }) {
   const [open, setOpen] = useState(false);
   // The round trips are what a click can open; the fills are the evidence. When
@@ -191,15 +197,15 @@ function MistakeCard({ row, scheme, onOpenTrade }: {
         trades it caught; the per-trade values are the same rule measured again,
         and they belong to the trade list below rather than to the definition.
       */}
-      {row.evidence?.length ? (
+          {row.evidence?.length ? (
         <div className="muted" style={{ fontSize: 11, marginTop: 6, lineHeight: 1.7 }}>
-          判定依据：
+          {copy.evidenceCount}:
           {distinctEvidence(row.evidence).map((item) => (
             <span key={item.field + item.comparator + String(item.threshold)} className="chip" style={{ marginLeft: 6 }}>
-              {item.field} {item.comparator} {String(item.threshold)}
+              {localizeInsightField(item.field, copy)} {copy.evidence[item.comparator] || copy.other} {String(item.threshold)}
             </span>
           ))}
-          <span style={{ marginLeft: 6 }}>命中 {row.evidence.length} 次</span>
+          <span style={{ marginLeft: 6 }}>{row.evidence.length} {copy.evidenceCount}</span>
         </div>
       ) : null}
 
@@ -210,34 +216,34 @@ function MistakeCard({ row, scheme, onOpenTrade }: {
             className="chip chip-action"
             onClick={() => onOpenTrade?.(id)}
             disabled={!onOpenTrade}
-            title={onOpenTrade ? '打开这一笔' : '该交易无法直接打开'}
+            title={onOpenTrade ? copy.viewEvidence : copy.unknown}
           >
             {id}
           </button>
         ))}
         {openable.length > 6 ? (
           <button className="chip chip-action" onClick={() => setOpen((previous) => !previous)}>
-            {open ? '收起' : '还有 ' + (openable.length - 6) + ' 笔'}
+            {open ? copy.hideEvidence : copy.other + ' ' + (openable.length - 6)}
           </button>
         ) : null}
         {openable.length === 0 ? (
           <span className="muted" style={{ fontSize: 11 }}>
-            这 {fillCount} 条触发成交没有配成已平仓回合，所以没有可以打开的交易明细。
+            {fillCount} {copy.evidenceCount}; no linked trade detail is available.
           </span>
         ) : null}
       </div>
 
-      <ObservationNote row={row} />
+      <ObservationNote row={row} copy={copy} />
     </div>
   );
 }
 
-function EdgesPanel({ data, scheme }: { data: EdgeResponse | null; scheme: 'cn' | 'intl' }) {
+function EdgesPanel({ data, scheme, copy }: { data: EdgeResponse | null; scheme: 'cn' | 'intl'; copy: ReturnType<typeof insightCopy> }) {
   const rows = data?.rows || [];
   return (
-    <Panel title={'Edge 库（' + rows.length + ' 个）'}>
+    <Panel title={copy.tabs.edges + ' (' + rows.length + ')'}>
       {rows.length === 0 ? (
-        <Empty text="还没有可以成组的盈利模式。标签、市场状态或持有周期需要先有成交才会出现分组。" />
+        <Empty text={copy.noEdges} />
       ) : (
         <div className="scroll-x">
           <table>
@@ -251,7 +257,7 @@ function EdgesPanel({ data, scheme }: { data: EdgeResponse | null; scheme: 'cn' 
             <tbody>
               {rows.map((row) => (
                 <tr key={row.edge_id}>
-                  <td className="muted">{dimensionLabel(row.dimension)}</td>
+                <td className="muted">{localizeInsightField(row.dimension, copy)}</td>
                   <td>
                     {row.name || row.key}
                     {row.small_sample ? (
@@ -278,7 +284,7 @@ function EdgesPanel({ data, scheme }: { data: EdgeResponse | null; scheme: 'cn' 
   );
 }
 
-function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade }: { data: InsightPatternsResponse | null; playbooks: Playbook[]; onRefresh: () => Promise<void>; onOpenTrade?: (id: string) => void }) {
+function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade, copy }: { data: InsightPatternsResponse | null; playbooks: Playbook[]; onRefresh: () => Promise<void>; onOpenTrade?: (id: string) => void; copy: ReturnType<typeof insightCopy> }) {
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -302,37 +308,37 @@ function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade }: { data: Insi
   return (
     <div className="grid" style={{ gap: 12 }}>
       {actionError ? <div className="banner" role="alert">{actionError}</div> : null}
-      <Panel title="模式总览">
+      <Panel title={copy.tabs.patterns}>
         <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
-          <span>样本 {data?.profile?.sample_count ?? 0}</span>
-          <span>数据质量 {data?.profile?.data_quality || 'unknown'}</span>
-          <span className="muted" style={{ fontSize: 11 }}>确认只改变本地标签，不会把推断变成交易建议。</span>
+          <span>{copy.sample} {data?.profile?.sample_count ?? 0}</span>
+          <span>{copy.fields.data_quality}: {localizeInsightValue(data?.profile?.data_quality, copy)}</span>
+          <span className="muted" style={{ fontSize: 11 }}>{copy.confirmNote}</span>
         </div>
         <div className="grid split" data-testid="pattern-axes">
           {Object.entries(data?.profile?.axes || {}).map(([axis, value]) => <section className="insight-card" key={axis}>
-            <strong>{axis}</strong><p>{value.label || 'unknown'}</p>
-            {Object.entries(value.counts).map(([label, count]) => <div className="row" key={label}><span>{label}</span><span className="num">{count}</span></div>)}
+            <strong>{localizeInsightField(axis, copy)}</strong><p>{localizeInsightValue(value.label, copy)}</p>
+            {Object.entries(value.counts).map(([label, count]) => <div className="row" key={label}><span>{localizeInsightValue(label, copy)}</span><span className="num">{count}</span></div>)}
           </section>)}
         </div>
         {data?.profile?.limitations?.length ? <ul className="muted" style={{ fontSize: 11, margin: '8px 0 0 16px' }}>{data.profile.limitations.map((item) => <li key={item}>{item}</li>)}</ul> : null}
       </Panel>
-      <Panel title={'候选模式（' + candidates.length + '）'}>
-        {candidates.length === 0 ? <Empty text="当前成交不足以形成可解释的模式画像。" /> : (
+      <Panel title={copy.tabs.patterns + ' (' + candidates.length + ')'}>
+        {candidates.length === 0 ? <Empty text={copy.noPatterns} /> : (
           <div className="grid" style={{ gap: 10 }}>
             {candidates.slice(page * 50, (page + 1) * 50).map((candidate) => (
               <div className="insight-card" key={candidate.pattern_id}>
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <strong>{candidate.label}</strong>
-                  <span className="badge">{candidate.status} · 证据支持度 {candidate.confidence}</span>
+                  <span className="badge">{localizeInsightValue(candidate.status, copy)} · {copy.fields.confidence} {localizeInsightValue(candidate.confidence, copy)}</span>
                 </div>
-                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{candidate.axis} · {candidate.data_quality} · {candidate.trade_ids.length} 条证据</div>
-                {candidate.missing_data.length ? <div className="notice" style={{ marginTop: 8, fontSize: 11 }}>数据限制：{candidate.missing_data.join('、')}</div> : null}
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{localizeInsightField(candidate.axis, copy)} · {localizeInsightValue(candidate.data_quality, copy)} · {candidate.trade_ids.length} {copy.evidenceCount}</div>
+                {candidate.missing_data.length ? <div className="notice" style={{ marginTop: 8, fontSize: 11 }}>{copy.dataLimits}: {candidate.missing_data.map((item) => localizeInsightValue(item, copy)).join('、')}</div> : null}
                 <div className="row">
-                  <button className="ghost" aria-expanded={Boolean(expanded[candidate.pattern_id])} onClick={() => setExpanded(current => ({ ...current, [candidate.pattern_id]: !current[candidate.pattern_id] }))}>查看证据</button>
+                  <button className="ghost" aria-expanded={Boolean(expanded[candidate.pattern_id])} onClick={() => setExpanded(current => ({ ...current, [candidate.pattern_id]: !current[candidate.pattern_id] }))}>{expanded[candidate.pattern_id] ? copy.hideEvidence : copy.viewEvidence}</button>
                   {candidate.round_trip_id && onOpenTrade ? <button className="ghost" onClick={() => onOpenTrade(candidate.round_trip_id!)}>打开交易</button> : null}
                 </div>
-                {expanded[candidate.pattern_id] ? <dl className="observation">{candidate.evidence.map((item, index) => <div key={index}><dt>{String(item.field || index)}</dt><dd>{typeof item.observed === 'object' ? JSON.stringify(item.observed) : String(item.observed ?? 'unknown')}</dd></div>)}</dl> : null}
-                <ObservationNote row={candidate} />
+                {expanded[candidate.pattern_id] ? <dl className="observation">{candidate.evidence.map((item, index) => <div key={index}><dt>{localizeInsightField(item.field || index, copy)}</dt><dd>{typeof item.observed === 'object' ? JSON.stringify(item.observed) : localizeInsightValue(item.observed, copy)}</dd></div>)}</dl> : null}
+                <ObservationNote row={candidate} copy={copy} />
                 <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button className="ghost" disabled={Boolean(pending)} onClick={() => void decide(candidate, 'confirm')}>确认模式</button>
                   <button className="ghost" disabled={Boolean(pending)} onClick={() => void decide(candidate, 'reject')}>否决</button>
@@ -357,27 +363,27 @@ function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade }: { data: Insi
  * fields part of the claim, and a claim whose limits are hidden behind a hover
  * is not stating them.
  */
-function ObservationNote({ row }: { row: InsightObservation }) {
+function ObservationNote({ row, copy }: { row: InsightObservation; copy: ReturnType<typeof insightCopy> }) {
   const [open, setOpen] = useState(false);
   const items: [string, string][] = [
-    ['失效条件', row.invalidation],
-    ['时间止损', row.time_stop],
-    ['放弃条件', row.give_up],
-    ['数据来源', row.data_source],
-    ['数据可用时间', row.available_at],
-    ['数据质量', row.data_quality],
+    [copy.fields.invalidation, row.invalidation],
+    [copy.fields.time_stop, row.time_stop],
+    [copy.fields.give_up, row.give_up],
+    [copy.fields.data_source, row.data_source],
+    [copy.fields.available_at, row.available_at],
+    [copy.fields.data_quality, localizeInsightValue(row.data_quality, copy)],
   ];
   return (
     <div style={{ marginTop: 8 }}>
       <button className="ghost" style={{ fontSize: 11 }} onClick={() => setOpen((previous) => !previous)}>
-        {open ? '收起观察条件' : '查看观察条件'}
+        {open ? copy.hideConditions : copy.viewConditions}
       </button>
       {open ? (
         <dl className="observation">
           {items.map(([label, value]) => (
             <div key={label}>
               <dt>{label}</dt>
-              <dd>{value || 'unknown'}</dd>
+              <dd>{value || copy.unknown}</dd>
             </div>
           ))}
         </dl>
@@ -385,10 +391,6 @@ function ObservationNote({ row }: { row: InsightObservation }) {
     </div>
   );
 }
-
-const DIMENSION_LABELS: Record<string, string> = {
-  tag: '标签', regime: '市场状态', holding: '持有周期', symbol: '标的', weekday: '星期',
-};
 
 /**
  * The distinct rules behind a cluster, in the order they first appear.
@@ -406,8 +408,4 @@ function distinctEvidence(evidence: InsightEvidence[]): InsightEvidence[] {
     if (!seen.has(key)) seen.set(key, item);
   }
   return [...seen.values()];
-}
-
-function dimensionLabel(dimension: string): string {
-  return DIMENSION_LABELS[dimension] || dimension;
 }

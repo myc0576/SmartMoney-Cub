@@ -1,7 +1,7 @@
 import type {
   AgentActionResponse, AgentsResponse, BenchmarkLatestResponse, JevStatusResponse, JevTracksResponse,
   AuditRecord, Extraction, Meta, Overview, RuleRecord,
-  SessionEvent, SessionSummary, UploadResult,
+  SessionEvent, SessionSummary, UploadResult, ReviewFromTradeResponse, ReviewAgent,
   PluginDetailResponse,
   PluginMarketResponse, PluginInstallRequest, PluginInstallResponse,
   PluginProbeResponse, PluginUninstallResponse,
@@ -240,8 +240,27 @@ export const api = {
     request<Record<string, any>>('/api/import/manual', { method: 'POST', body: JSON.stringify(payload) }),
 
   sessions: () => request<{ sessions: SessionSummary[] }>('/api/assistant/sessions'),
+  reviewAgents: () => request<{ agents: ReviewAgent[]; safety: string }>('/api/assistant/agents'),
+  setReviewAgent: (agentId: string, enabled: boolean) => request<{ agent: ReviewAgent; safety: string }>(
+    '/api/assistant/agents/' + encodeURIComponent(agentId) + '/' + (enabled ? 'enable' : 'disable'),
+    { method: 'POST', body: JSON.stringify({}) },
+  ),
+  reviewAgentDefault: () => request<{ default: { agent_id?: string | null; preset_id?: string | null } | null; safety: string }>('/api/assistant/agent-default'),
+  setReviewAgentDefault: (payload: { agent_id: string | null; preset_id?: string | null }) => request<{ default: Record<string, unknown>; safety: string }>(
+    '/api/assistant/agent-default', { method: 'POST', body: JSON.stringify(payload) },
+  ),
   createSession: (payload: Record<string, unknown>) =>
     request<{ session: SessionSummary }>('/api/assistant/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  reviewFromTrade: (payload: {
+    round_trip_id: string;
+    session_id?: string | null;
+    agent_id?: string | null;
+    preset_id?: string | null;
+    locale?: string;
+    account_id?: string;
+  }) => request<ReviewFromTradeResponse>('/api/assistant/reviews/from-trade', {
+    method: 'POST', body: JSON.stringify(withAccount(payload)),
+  }),
   sessionDetail: (id: string, afterSeq = 0) =>
     request<{ session: SessionSummary; events: SessionEvent[] }>(
       '/api/assistant/sessions/' + encodeURIComponent(id) + '?after_seq=' + afterSeq,

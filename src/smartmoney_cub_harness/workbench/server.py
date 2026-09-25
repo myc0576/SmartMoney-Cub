@@ -766,6 +766,12 @@ class WorkbenchService:
         }
 
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import validate_agent
+        try:
+            agent_id = validate_agent(payload.get("agent_id"))
+        except ValueError as error:
+            raise ApiError(str(error), code="unsupported_agent") from None
+        preset_id = payload.get("agent_preset_id") or payload.get("preset_id")
         session = self.store.create_session(
             title=str(payload.get("title") or "新会话"),
             context=payload.get("context") or {"portfolio_id": DEFAULT_PORTFOLIO_ID},
@@ -773,6 +779,11 @@ class WorkbenchService:
             model=str(payload.get("model") or ""),
             reasoning=str(payload.get("reasoning") or "medium"),
             forked_from=payload.get("forked_from"),
+            agent_id=agent_id,
+            agent_preset_id=str(preset_id) if preset_id else None,
+            agent_adapter=str(payload.get("agent_adapter") or "local_cli") if agent_id else None,
+            agent_mode=str(payload.get("agent_mode") or "review") if agent_id else None,
+            agent_version=str(payload.get("agent_version") or "") if agent_id else None,
         )
         return {"status": "ok", "session": session, "safety": SAFETY_DECLARATION}
 
@@ -795,8 +806,129 @@ class WorkbenchService:
             reasoning=payload.get("reasoning"),
             archived=payload.get("archived"),
             context=payload.get("context"),
+            agent_id=payload.get("agent_id"),
+            agent_preset_id=payload.get("agent_preset_id", payload.get("preset_id")),
+            agent_adapter=payload.get("agent_adapter"),
+            agent_mode=payload.get("agent_mode"),
+            agent_version=payload.get("agent_version"),
         )
         return {"status": "ok", "session": session, "safety": SAFETY_DECLARATION}
+
+    def review_agents(self) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import catalog
+        return catalog(self.store)
+
+    def review_agent_detail(self, agent_id: str) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import probe_agent
+        try:
+            return {"status": "ok", "agent": probe_agent(agent_id), "safety": SAFETY_DECLARATION}
+        except KeyError:
+            raise ApiError(f"unknown review agent: {agent_id}", status=404, code="not_found") from None
+
+    def review_agent_probe(self, agent_id: str) -> dict[str, Any]:
+        return self.review_agent_detail(agent_id)
+
+    def review_agent_toggle(self, agent_id: str, enabled: bool) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import probe_agent
+        try:
+            item = probe_agent(agent_id)
+        except KeyError:
+            raise ApiError(f"unknown review agent: {agent_id}", status=404, code="not_found") from None
+        if enabled and not item["detected"]:
+            raise ApiError("agent is not available", status=409, code="agent_unavailable")
+        current = self.store.get_setting("review_agent_enabled", {})
+        current = current if isinstance(current, dict) else {}
+        current[agent_id] = enabled
+        self.store.set_setting("review_agent_enabled", current)
+        item["enabled"] = enabled
+        return {"status": "ok", "agent": item, "safety": SAFETY_DECLARATION}
+
+    def review_agent_presets(self) -> dict[str, Any]:
+        presets = self.store.get_setting("review_agent_presets", [])
+        return {"status": "ok", "presets": presets if isinstance(presets, list) else [], "safety": SAFETY_DECLARATION}
+
+    def save_review_agent_preset(self, payload: dict[str, Any], preset_id: str | None = None) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import preset_defaults, validate_agent
+        import uuid
+        try:
+            agent_id = validate_agent(str(payload.get("agent_id") or ""))
+        except ValueError as error:
+            raise ApiError(str(error), code="unsupported_agent") from None
+        if not str(payload.get("name") or "").strip():
+            raise ApiError("preset name is required", code="missing_parameter")
+        presets = self.store.get_setting("review_agent_presets", [])
+        presets = presets if isinstance(presets, list) else []
+        item = {**preset_defaults(agent_id), **payload}
+        item["preset_id"] = preset_id or f"PRESET-{uuid.uuid4().hex[:12]}"
+        item["name"] = str(item["name"]).strip()
+        allowed = {"preset_id", "name", "agent_id", "reasoning_effort", "context_policy", "timeout_seconds", "max_output_tokens", "allow_tool_calls"}
+        item = {key: value for key, value in item.items() if key in allowed}
+        replaced = False
+        for index, existing in enumerate(presets):
+            if existing.get("preset_id") == item["preset_id"]:
+                presets[index] = item
+                replaced = True
+                break
+        if not replaced:
+            presets.append(item)
+        self.store.set_setting("review_agent_presets", presets)
+        return {"status": "ok", "preset": item, "safety": SAFETY_DECLARATION}
+
+    def delete_review_agent_preset(self, preset_id: str) -> dict[str, Any]:
+        presets = self.store.get_setting("review_agent_presets", [])
+        presets = presets if isinstance(presets, list) else []
+        kept = [item for item in presets if item.get("preset_id") != preset_id]
+        if len(kept) == len(presets):
+            raise ApiError("preset not found", status=404, code="not_found")
+        self.store.set_setting("review_agent_presets", kept)
+        return {"status": "ok", "deleted": preset_id, "safety": SAFETY_DECLARATION}
+
+    def review_agent_default(self) -> dict[str, Any]:
+        value = self.store.get_setting("review_agent_default", None)
+        return {"status": "ok", "default": value, "safety": SAFETY_DECLARATION}
+
+    def set_review_agent_default(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from smartmoney_cub_harness.agent.review_agents import validate_agent
+        try:
+            agent_id = validate_agent(payload.get("agent_id"))
+        except ValueError as error:
+            raise ApiError(str(error), code="unsupported_agent") from None
+        self.store.set_setting("review_agent_default", {"agent_id": agent_id, "preset_id": payload.get("preset_id")})
+        return self.review_agent_default()
+
+    def review_from_trade(self, payload: dict[str, Any]) -> dict[str, Any]:
+        round_trip_id = str(payload.get("round_trip_id") or "").strip()
+        if not round_trip_id:
+            raise ApiError("round_trip_id is required", code="missing_parameter")
+        portfolio_id = str(payload.get("portfolio_id") or DEFAULT_PORTFOLIO_ID)
+        analysis = self._analysis(portfolio_id=portfolio_id)
+        trade = next((item for item in analysis["round_trips"] if item.get("round_trip_id") == round_trip_id), None)
+        if trade is None:
+            raise ApiError(f"no round trip {round_trip_id!r}", status=404, code="not_found")
+        session_id = payload.get("session_id")
+        if session_id:
+            session = self.store.get_session(str(session_id))
+            if session.get("status") in {"running", "cancel_requested"}:
+                raise ApiError("session is busy", status=409, code="session_busy")
+        else:
+            default = self.store.get_setting("review_agent_default", {})
+            default = default if isinstance(default, dict) else {}
+            session = self.store.create_session(
+                title=f"交易复盘 · {trade.get('symbol') or round_trip_id}",
+                context={"portfolio_id": portfolio_id, "round_trip_id": round_trip_id, "focus_trade": trade, "locale": payload.get("locale") or "zh-CN"},
+                agent_id=payload.get("agent_id") or default.get("agent_id"),
+                agent_preset_id=payload.get("preset_id") or default.get("preset_id"),
+                agent_adapter="local_cli" if payload.get("agent_id") or default.get("agent_id") else None,
+                agent_mode="review" if payload.get("agent_id") or default.get("agent_id") else None,
+            )
+            session_id = session["session_id"]
+        if payload.get("session_id"):
+            context = dict(session.get("context") or {})
+            context.update({"round_trip_id": round_trip_id, "focus_trade": trade, "locale": payload.get("locale") or context.get("locale") or "zh-CN"})
+            session = self.store.update_session(session_id, context=context)
+        prompt = str(payload.get("prompt") or "请复盘这笔交易，先给结论，再引用本地台账中的执行证据，并说明数据限制。")
+        self.store.append_event(session_id, kind="review_session_ready", role="system", payload={"round_trip_id": round_trip_id, "safety": SAFETY_DECLARATION})
+        return {"status": "ok", "session": session, "round_trip_id": round_trip_id, "prompt": prompt, "safety": SAFETY_DECLARATION}
 
     def fork_session(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         session = self.store.fork_session(session_id, title=payload.get("title"))
@@ -1776,6 +1908,19 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/assistant/sessions":
                 self._json(self.service.sessions())
                 return
+            if path == "/api/assistant/agents":
+                self._json(self.service.review_agents())
+                return
+            if path.startswith("/api/assistant/agents/"):
+                agent_id = urllib.parse.unquote(path[len("/api/assistant/agents/"):].rstrip("/"))
+                self._json(self.service.review_agent_detail(agent_id))
+                return
+            if path == "/api/assistant/agent-presets":
+                self._json(self.service.review_agent_presets())
+                return
+            if path == "/api/assistant/agent-default":
+                self._json(self.service.review_agent_default())
+                return
             if path.startswith("/api/assistant/sessions/"):
                 rest = path[len("/api/assistant/sessions/"):]
                 if rest.endswith("/review/scope"):
@@ -1875,6 +2020,7 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 status=401,
             )
             return
+
         if self._trader("POST"):
             return
         parsed = urllib.parse.urlparse(self.path)
@@ -1917,6 +2063,35 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/assistant/sessions":
                 self._json(self.service.create_session(self._read_json()))
+                return
+            if path == "/api/assistant/reviews/from-trade":
+                self._json(self.service.review_from_trade(self._read_json()))
+                return
+            if path.startswith("/api/assistant/agents/"):
+                rest = path[len("/api/assistant/agents/"):].strip("/")
+                agent_id, _, action = rest.partition("/")
+                agent_id = urllib.parse.unquote(agent_id)
+                if action == "probe":
+                    self._json(self.service.review_agent_probe(agent_id))
+                    return
+                if action == "enable":
+                    self._json(self.service.review_agent_toggle(agent_id, True))
+                    return
+                if action == "disable":
+                    self._json(self.service.review_agent_toggle(agent_id, False))
+                    return
+            if path == "/api/assistant/agent-presets":
+                self._json(self.service.save_review_agent_preset(self._read_json()))
+                return
+            if path.startswith("/api/assistant/agent-presets/"):
+                preset_id = urllib.parse.unquote(path[len("/api/assistant/agent-presets/"):].strip("/"))
+                if self.command == "DELETE":
+                    self._json(self.service.delete_review_agent_preset(preset_id))
+                    return
+                self._json(self.service.save_review_agent_preset(self._read_json(), preset_id=preset_id))
+                return
+            if path == "/api/assistant/agent-default":
+                self._json(self.service.set_review_agent_default(self._read_json()))
                 return
             if path.startswith("/api/assistant/sessions/"):
                 rest = path[len("/api/assistant/sessions/"):]
@@ -2081,6 +2256,12 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             },
             status=404,
         )
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        self.do_POST()
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        self.do_POST()
 
     def _stream_turn(self, session_id: str, payload: dict[str, Any]) -> None:
         events = self.service.stream_turn(session_id, payload)

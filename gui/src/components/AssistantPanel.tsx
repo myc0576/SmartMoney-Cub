@@ -2,7 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { api, streamTurn } from '../api';
 import { Markdown } from './common';
 import { ModelPicker, effortLabel, findModel } from './ModelPicker';
-import type { Meta, SessionEvent, SessionSummary } from '../types';
+import type { Meta, ReviewAgent, SessionEvent, SessionSummary } from '../types';
+import { useLocale, type Locale } from '../i18n';
+
+const REVIEW_AGENT_LABELS: Record<Locale, { builtIn: string; available: string; preparing: string; incomplete: string }> = {
+  'zh-CN': { builtIn: '内置模型', available: '可用于复盘', preparing: '正在准备这笔交易的复盘', incomplete: '本轮未完成' },
+  'en-US': { builtIn: 'Built-in model', available: 'Available for review', preparing: 'Preparing this trade review', incomplete: 'This review did not complete' },
+  'zh-TW': { builtIn: '內建模型', available: '可用於複盤', preparing: '正在準備這筆交易的複盤', incomplete: '本輪未完成' },
+  'ja-JP': { builtIn: '内蔵モデル', available: 'レビューに使用可能', preparing: 'この取引のレビューを準備中', incomplete: 'レビューを完了できませんでした' },
+  'ko-KR': { builtIn: '내장 모델', available: '복기에 사용 가능', preparing: '이 거래 복기를 준비하는 중', incomplete: '복기를 완료하지 못했습니다' },
+  'es-ES': { builtIn: 'Modelo integrado', available: 'Disponible para revisión', preparing: 'Preparando la revisión de esta operación', incomplete: 'La revisión no se completó' },
+  'pt-BR': { builtIn: 'Modelo integrado', available: 'Disponível para revisão', preparing: 'Preparando a revisão desta operação', incomplete: 'A revisão não foi concluída' },
+  'de-DE': { builtIn: 'Integriertes Modell', available: 'Für Reviews verfügbar', preparing: 'Review dieses Trades wird vorbereitet', incomplete: 'Review wurde nicht abgeschlossen' },
+  'fr-FR': { builtIn: 'Modèle intégré', available: 'Disponible pour les revues', preparing: 'Préparation de la revue de cette opération', incomplete: 'La revue n’est pas terminée' },
+};
+
+function canUseReviewAgent(agent: ReviewAgent): boolean {
+  return agent.status === 'runnable' && agent.detected && agent.enabled && agent.protocol?.compatible !== false;
+}
 
 // The assistant panel mirrors the harness interaction model: a session list, a
 // transcript with expandable tool cards, and a live connection indicator. Every
@@ -131,12 +148,15 @@ function renderStep(input: {
   );
 }
 
-export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
+export function AssistantPanel({ meta, context, onClose, onMetaReload, reviewTradeId, onReviewTradeHandled }: {
   meta: Meta | null;
   context: Record<string, unknown>;
   onClose?: () => void;
   onMetaReload?: () => void;
+  reviewTradeId?: string | null;
+  onReviewTradeHandled?: () => void;
 }) {
+  const [locale] = useLocale();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [events, setEvents] = useState<SessionEvent[]>([]);
@@ -161,8 +181,12 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     model: meta?.default_model || '',
     reasoning: meta?.default_reasoning || 'off',
   });
+  const [reviewAgents, setReviewAgents] = useState<ReviewAgent[]>([]);
+  const [reviewAgentId, setReviewAgentId] = useState<string | null>(null);
+  const [reviewAgentsReady, setReviewAgentsReady] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const handledReviewRef = useRef<string | null>(null);
 
   const loadSessions = async () => {
     try {
@@ -181,6 +205,11 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     void loadSessions().then((list) => {
       if (list.length) setActiveId(list[0].session_id);
     });
+    void Promise.all([api.reviewAgents(), api.reviewAgentDefault()]).then(([agents, defaultAgent]) => {
+      setReviewAgents(agents.agents || []);
+      const candidate = defaultAgent.default?.agent_id || null;
+      setReviewAgentId(candidate && (agents.agents || []).some((agent) => agent.agent_id === candidate && canUseReviewAgent(agent)) ? candidate : null);
+    }).catch(() => setReviewAgents([])).finally(() => setReviewAgentsReady(true));
   }, []);
 
   useEffect(() => {
@@ -253,7 +282,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     setShowSessions(false);
   };
 
-  const send = async (explicit?: string) => {
+  const send = async (explicit?: string, sessionOverride?: string) => {
     // A quick action sends its own question; the composer sends what is typed.
     // One code path serves both, so the transcript, the session title, and the
     // busy state cannot differ between a typed question and a clicked one.
@@ -281,7 +310,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
       },
     ]);
 
-    let sessionId = activeId;
+    let sessionId = sessionOverride || activeId || null;
     if (!sessionId) {
       try {
         const created = await api.createSession({
@@ -290,6 +319,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
           provider_id: selection.provider_id,
           model: selection.model,
           reasoning: selection.reasoning,
+          agent_id: reviewAgentId,
         });
         sessionId = created.session.session_id;
         setActiveId(sessionId);
@@ -368,6 +398,24 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
     });
   };
 
+  useEffect(() => {
+    if (!reviewTradeId || !reviewAgentsReady || handledReviewRef.current === reviewTradeId || busy) return;
+    handledReviewRef.current = reviewTradeId;
+    setCurrentAction(agentLabels.preparing);
+    void api.reviewFromTrade({ round_trip_id: reviewTradeId, agent_id: reviewAgentId, locale: document.documentElement.lang || 'zh-CN' })
+      .then((result) => {
+        setActiveId(result.session.session_id);
+        setShowSessions(false);
+        return send(result.prompt, result.session.session_id);
+      })
+      .catch((failure) => {
+        setBusy(false);
+        setCurrentAction(agentLabels.incomplete);
+        setTurn({ text: '', toolCalls: [], error: failure instanceof Error ? failure.message : String(failure) });
+      })
+      .finally(() => onReviewTradeHandled?.());
+  }, [reviewTradeId, reviewAgentId, reviewAgentsReady, busy]);
+
   const stop = () => {
     abortRef.current?.abort();
     setBusy(false);
@@ -383,6 +431,8 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
   };
 
   const activeSession = sessions.find((session) => session.session_id === activeId) || null;
+  const agentLabels = REVIEW_AGENT_LABELS[locale];
+  const usableReviewAgents = reviewAgents.filter(canUseReviewAgent);
   // The offline template is a retired migration record. Keep it in backend
   // state for old sessions, but never offer it as a selectable model route.
   const providers = (meta?.providers || []).filter((provider) => provider.protocol !== 'offline');
@@ -648,6 +698,17 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload }: {
               </div>
             </div>
           </details>
+          <label className="assistant-agent-select" title={agentLabels.available}>
+            <span className="sr-only">复盘 Agent</span>
+            <select
+              value={reviewAgentId || ''}
+              disabled={Boolean(unavailable) || busy}
+              onChange={(event) => setReviewAgentId(event.target.value || null)}
+            >
+              <option value="">{agentLabels.builtIn}</option>
+              {usableReviewAgents.map((agent) => <option key={agent.agent_id} value={agent.agent_id}>{agent.display_name} · {agentLabels.available}</option>)}
+            </select>
+          </label>
           <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
             {busy ? (
               <button className="ghost" onClick={stop}>停止</button>
