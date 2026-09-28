@@ -16,6 +16,7 @@ from smartmoney_cub_harness.benchmark.runner import (
     compare_runs,
     run_benchmark,
     verify_run,
+    verify_typesafe_public_run,
 )
 from smartmoney_cub_harness.safety import redact
 
@@ -36,9 +37,13 @@ def register_benchmark_commands(sub: Any) -> None:
     run_cmd.add_argument("--mode", choices=["all", "dev", "holdout"], default="all", help="Split filter (default: all)")
     run_cmd.add_argument("--live", action="store_true", default=False, help="Enable live evaluation for external model backends")
     run_cmd.add_argument("--limit-per-track", type=int, default=None, help="Limit number of cases evaluated per track")
+    run_cmd.add_argument("--typesafe-checkpoint", default=None, help="Path for an atomic TypeSafe checkpoint")
+    run_cmd.add_argument("--resume-typesafe", action="store_true", help="Resume TypeSafe evaluation from the checkpoint")
+    run_cmd.add_argument("--typesafe-budget-usd", type=float, default=4.0, help="Maximum TypeSafe evaluation cost in USD")
 
     verify_cmd = bench_sub.add_parser("verify", help="Verify integrity of a benchmark run artifact")
     verify_cmd.add_argument("run_dir", help="Path to run directory or run.json")
+    verify_cmd.add_argument("--require-typesafe-public", action="store_true", help="Apply the strict 240-case TypeSafe publication gate")
 
     render_cmd = bench_sub.add_parser("render", help="Render scoring images (PNG and SVG) for a benchmark run")
     render_cmd.add_argument("run_dir", help="Path to run directory or run.json")
@@ -59,12 +64,19 @@ def handle_benchmark_cli(args: argparse.Namespace) -> int:
             mode=args.mode,
             live=getattr(args, "live", False),
             limit_per_track=getattr(args, "limit_per_track", None),
+            typesafe_checkpoint_path=getattr(args, "typesafe_checkpoint", None),
+            resume_typesafe=getattr(args, "resume_typesafe", False),
+            typesafe_budget_usd=getattr(args, "typesafe_budget_usd", 4.0),
         )
         _print_json(res)
         return 0
 
     if args.benchmark_command == "verify":
-        res = verify_run(args.run_dir)
+        res = (
+            verify_typesafe_public_run(args.run_dir)
+            if getattr(args, "require_typesafe_public", False)
+            else verify_run(args.run_dir)
+        )
         _print_json(res)
         return 0 if res.get("status") == "ok" else 2
 
@@ -79,4 +91,3 @@ def handle_benchmark_cli(args: argparse.Namespace) -> int:
         return 0
 
     return 2
-

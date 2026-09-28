@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import math
+import random
+from collections.abc import Mapping
 from typing import Any, Sequence
+
+
+CASE_BOOTSTRAP_SEED = 20260927
+CASE_BOOTSTRAP_REPLICATES = 10_000
+CASE_BOOTSTRAP_METHOD = "case_bootstrap_stratified_percentile"
+CASE_BOOTSTRAP_UNIT = "case"
 
 
 def normal_cdf(x: float) -> float:
@@ -132,6 +140,75 @@ def compute_confidence_interval_95(acc: float, n: int) -> tuple[float, float]:
     return (round(low, 4), round(high, 4))
 
 
+def _linear_percentile(values: Sequence[float], percentile: float) -> float:
+    """Return a deterministic linearly interpolated percentile."""
+    if not values:
+        return 0.0
+    ordered = sorted(float(value) for value in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (float(percentile) / 100.0) * (len(ordered) - 1)
+    low = int(math.floor(rank))
+    high = int(math.ceil(rank))
+    weight = rank - low
+    return ordered[low] * (1.0 - weight) + ordered[high] * weight
+
+
+def compute_case_bootstrap_confidence_interval_95(
+    case_evaluations: Sequence[Mapping[str, Any]],
+    *,
+    seed: int = CASE_BOOTSTRAP_SEED,
+    replicates: int = CASE_BOOTSTRAP_REPLICATES,
+    stratified_by: str = "track",
+) -> tuple[float, float]:
+    """Compute a case-level percentile bootstrap accuracy interval.
+
+    Cases are sampled with replacement inside each track. Every sampled case
+    carries all of its question outcomes into that replicate, so questions from
+    one case are never treated as independent sampling units.
+    """
+    if replicates <= 0:
+        raise ValueError("bootstrap replicates must be positive")
+    if stratified_by != "track":
+        raise ValueError("case bootstrap is only supported when stratified_by='track'")
+
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for case in case_evaluations:
+        if not isinstance(case, Mapping):
+            raise ValueError("case evaluation must be an object")
+        track = str(case.get(stratified_by, ""))
+        if not track:
+            raise ValueError("case evaluation is missing its track")
+        items = case.get("items")
+        if not isinstance(items, list) or not items:
+            raise ValueError(f"case evaluation {case.get('case_id', '<unknown>')} has no items")
+        groups.setdefault(track, []).append(case)
+
+    if not groups:
+        return (0.0, 0.0)
+
+    rng = random.Random(seed)
+    accuracies: list[float] = []
+    for _ in range(replicates):
+        correct = 0
+        total = 0
+        for track in sorted(groups):
+            cases = groups[track]
+            for _ in range(len(cases)):
+                sampled_case = cases[rng.randrange(len(cases))]
+                for item in sampled_case["items"]:
+                    if not isinstance(item, Mapping) or "prediction" not in item or "target" not in item:
+                        raise ValueError("case bootstrap item must contain prediction and target")
+                    correct += int(item["prediction"] == item["target"])
+                    total += 1
+        accuracies.append(correct / total if total else 0.0)
+
+    return (
+        round(_linear_percentile(accuracies, 2.5), 4),
+        round(_linear_percentile(accuracies, 97.5), 4),
+    )
+
+
 def compute_mcnemar_test(
     system_matches: Sequence[bool], baseline_matches: Sequence[bool]
 ) -> dict[str, Any]:
@@ -178,6 +255,9 @@ def calculate_system_metrics(
     abstained_indices: set[int] | None = None,
     baseline_preds: list[Any] | None = None,
     retries_count: int = 0,
+    case_evaluations: Sequence[Mapping[str, Any]] | None = None,
+    case_latencies_ms: Sequence[float] | None = None,
+    case_costs_usd: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Compute the full suite of required benchmark metrics."""
     n = total_cases
@@ -215,17 +295,39 @@ def calculate_system_metrics(
     stability = 1.0
 
     # Latencies
-    latency_stats = compute_percentiles(latencies_ms)
+    latency_stats = compute_percentiles(
+        list(case_latencies_ms) if case_latencies_ms is not None else latencies_ms
+    )
 
     # Cost
-    total_cost = sum(costs_usd)
+    total_cost = sum(
+        list(case_costs_usd) if case_costs_usd is not None else costs_usd
+    )
     cost_per_case = total_cost / n if n > 0 else 0.0
 
     # Retry rate
     retry_rate = retries_count / n if n > 0 else 0.0
 
     # 95% confidence interval
-    ci_95 = compute_confidence_interval_95(accuracy, num_questions)
+    if case_evaluations is not None:
+        ci_95 = compute_case_bootstrap_confidence_interval_95(case_evaluations)
+        ci_metadata = {
+            "confidence_interval_method": CASE_BOOTSTRAP_METHOD,
+            "confidence_interval_unit": CASE_BOOTSTRAP_UNIT,
+            "bootstrap": {
+                "seed": CASE_BOOTSTRAP_SEED,
+                "replicates": CASE_BOOTSTRAP_REPLICATES,
+                "stratified_by": "track",
+            },
+        }
+    else:
+        # v1 runs used an item-level Wilson interval. Keep this branch for
+        # reading and validating legacy artifacts without rewriting their claims.
+        ci_95 = compute_confidence_interval_95(accuracy, num_questions)
+        ci_metadata = {
+            "confidence_interval_method": "item_wilson_legacy",
+            "confidence_interval_unit": "item",
+        }
 
     # McNemar test against baseline
     if baseline_preds and len(baseline_preds) == len(preds):
@@ -253,5 +355,6 @@ def calculate_system_metrics(
         "cost_per_case": round(cost_per_case, 6),
         "retry_rate": round(retry_rate, 4),
         "confidence_interval_95": list(ci_95),
+        **ci_metadata,
         "mcnemar_against_baseline": mcnemar,
     }

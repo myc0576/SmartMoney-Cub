@@ -35,6 +35,7 @@ from smartmoney_cub_harness.benchmark.runner import (
     compute_benchmark_run_hash,
     run_benchmark,
     verify_run,
+    verify_typesafe_public_run,
 )
 
 __all__ = (
@@ -55,7 +56,7 @@ __all__ = (
     "baseline_predictions",
     "run_benchmark",
     "verify_run",
+    "verify_typesafe_public_run",
     "render_images",
     "compare_runs",
 )
-

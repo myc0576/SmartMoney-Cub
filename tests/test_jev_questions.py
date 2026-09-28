@@ -220,6 +220,7 @@ def test_score_question_api_payload_carries_real_rubric_not_placeholders():
                 }
             },
             "usage": {"input_tokens": 150, "output_tokens": 20},
+            "estimated_cost_usd": 0.0005,
         }
 
     from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend

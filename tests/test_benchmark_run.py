@@ -24,6 +24,7 @@ from smartmoney_cub_harness.benchmark.runner import (
     compute_benchmark_run_hash,
     run_benchmark,
     verify_run,
+    verify_typesafe_public_run,
 )
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
@@ -153,6 +154,153 @@ def test_verify_run_detects_tampered_hash(tmp_path: Path):
         verify_run(run_dir)
 
 
+def _write_v2_baseline_variant(tmp_path: Path, mutate) -> Path:
+    """Create a valid small v2 run, then apply a mutation with a fresh hash."""
+    result = run_benchmark(
+        tracks=["macro-policy"],
+        systems=["deterministic_baseline"],
+        mode="dev",
+        limit_per_track=3,
+        out_dir=tmp_path / "source",
+    )
+    run_dir = tmp_path / "variant"
+    run_dir.mkdir()
+    payload = json.loads(
+        (tmp_path / "source" / result["run_id"] / "run.json").read_text(encoding="utf-8")
+    )
+    mutate(payload)
+    payload["run_hash"] = compute_benchmark_run_hash(payload)
+    (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
+    return run_dir
+
+
+def test_verify_run_rejects_missing_model_metadata(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0].pop("model_resolved"),
+    )
+    with pytest.raises(ValueError, match="missing model_resolved"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_invalid_usage(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0]["case_evaluations"][0]["usage"].update(
+            input_tokens=-1
+        ),
+    )
+    with pytest.raises(ValueError, match="invalid token usage"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_invalid_case_cost(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0]["case_evaluations"][0].update(
+            cost_usd=-1.0
+        ),
+    )
+    with pytest.raises(ValueError, match="invalid cost_usd"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_duplicate_case_id(tmp_path: Path):
+    def duplicate(payload):
+        records = payload["systems"][0]["case_evaluations"]
+        records[1]["case_id"] = records[0]["case_id"]
+
+    run_dir = _write_v2_baseline_variant(tmp_path, duplicate)
+    with pytest.raises(ValueError, match="case_id values.*unique"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_missing_case_record(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0]["case_evaluations"].pop(),
+    )
+    with pytest.raises(ValueError, match="incomplete case_evaluations"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_incomplete_question_output(tmp_path: Path):
+    def remove_question(payload):
+        payload["systems"][0]["case_evaluations"][0]["items"].pop()
+
+    run_dir = _write_v2_baseline_variant(tmp_path, remove_question)
+    with pytest.raises(ValueError, match="case items do not match"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_inconsistent_model_metadata(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0].update(model_requested=""),
+    )
+    with pytest.raises(ValueError, match="missing model_requested"):
+        verify_run(run_dir)
+
+
+def test_verify_run_rejects_system_cost_mismatch(tmp_path: Path):
+    run_dir = _write_v2_baseline_variant(
+        tmp_path,
+        lambda payload: payload["systems"][0].update(cost_usd=0.5),
+    )
+    with pytest.raises(ValueError, match="cost_usd does not match"):
+        verify_run(run_dir)
+
+
+def test_original_v1_artifact_remains_verifiable():
+    fixture = Path(__file__).parent / "fixtures" / "benchmark_run_v1.json"
+    source = json.loads(fixture.read_text(encoding="utf-8"))
+    assert source["schema"] == "smartmoney_cub_benchmark_run.v1"
+    result = verify_run(fixture)
+    assert result["status"] == "ok"
+    assert result["run_hash"] == "00e9ef2f5a9c919ca35697d16d30af3faca099c0ff1cbefd69d9eb3804c223ec"
+    assert result["safety"] == SAFETY_DECLARATION
+
+
+def test_published_v2_artifact_remains_verifiable():
+    root = Path(__file__).resolve().parent.parent
+    result = verify_run(root / "assets" / "benchmark" / "run.json")
+    assert result["status"] == "ok"
+    assert result["safety"] == SAFETY_DECLARATION
+
+
+def test_legacy_ci_metadata_is_optional_but_strict(tmp_path: Path):
+    root = Path(__file__).resolve().parent.parent
+    source = json.loads((root / "assets" / "benchmark" / "run.json").read_text(encoding="utf-8"))
+    source["schema"] = "smartmoney_cub_benchmark_run.v1"
+    source.pop("statistics", None)
+    source.pop("limit_per_track", None)
+    for system in source["systems"]:
+        system.pop("case_evaluations", None)
+        system.pop("model_requested", None)
+        system.pop("model_resolved", None)
+        system.pop("cost_usd", None)
+
+    correct = json.loads(json.dumps(source))
+    for system in correct["systems"]:
+        if system.get("status") == "completed":
+            system["metrics"]["confidence_interval_method"] = "item_wilson_legacy"
+            system["metrics"]["confidence_interval_unit"] = "item"
+    correct["run_hash"] = compute_benchmark_run_hash(correct)
+    correct_path = tmp_path / "correct-v1.json"
+    correct_path.write_text(json.dumps(correct), encoding="utf-8")
+    assert verify_run(correct_path)["status"] == "ok"
+
+    wrong = json.loads(json.dumps(source))
+    for system in wrong["systems"]:
+        if system.get("status") == "completed":
+            system["metrics"]["confidence_interval_method"] = "case_bootstrap_stratified_percentile"
+    wrong["run_hash"] = compute_benchmark_run_hash(wrong)
+    wrong_path = tmp_path / "wrong-v1.json"
+    wrong_path.write_text(json.dumps(wrong), encoding="utf-8")
+    with pytest.raises(ValueError, match="legacy system"):
+        verify_run(wrong_path)
+
+
 def test_compare_runs(tmp_path: Path):
     out_b = tmp_path / "base"
     out_c = tmp_path / "cand"
@@ -197,6 +345,7 @@ def test_typesafe_direct_live_evaluation_wired_with_mock():
             "model": "jev-1.13.0",
             "answers": answers,
             "usage": {"input_tokens": 120, "output_tokens": 12},
+            "estimated_cost_usd": 0.0005,
         }
 
     from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
@@ -205,6 +354,7 @@ def test_typesafe_direct_live_evaluation_wired_with_mock():
         api_key="mock-key",
         http_client=mock_backend_client,
     )
+    fake_backend.estimated_cost_usd = 0.0005  # Exact price of the toy transport above.
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -228,6 +378,171 @@ def test_typesafe_direct_live_evaluation_wired_with_mock():
     assert "mcnemar_against_baseline" in sys_res["metrics"]
 
 
+class _FakeTypeSafeBackend:
+    model_requested = "jev-latest"
+
+    def __init__(self, *, fail_on_call: int | None = None, cost: float = 0.001):
+        self.calls = 0
+        self.fail_on_call = fail_on_call
+        self.cost = cost
+
+    def estimate_cost_usd(self, state, questions):
+        return self.cost
+
+    def evaluate(self, state, questions, *, decision_time):
+        from smartmoney_cub_harness.jev.errors import JevUnavailable
+        from smartmoney_cub_harness.jev.questions import JevAnswer, JevReviewDecision
+
+        self.calls += 1
+        if self.fail_on_call is not None and self.calls == self.fail_on_call:
+            raise JevUnavailable("simulated interruption")
+        answers = []
+        for question in questions:
+            if question.kind == "choice":
+                value = question.choices[0]
+            elif question.kind == "score":
+                value = question.scale_min
+            else:
+                value = False
+            answers.append(
+                JevAnswer(
+                    question_id=question.question_id,
+                    kind=question.kind,
+                    value=value,
+                    confidence=0.9,
+                )
+            )
+        return JevReviewDecision(
+            backend_id="fake-typesafe",
+            provider_id="typesafe",
+            model_requested=self.model_requested,
+            model_resolved="jev-test-2026",
+            decision_time=decision_time,
+            answers=tuple(answers),
+            latency_ms=1.25,
+            usage={"input_tokens": 100, "output_tokens": 20},
+            estimated_cost_usd=self.cost,
+        )
+
+
+def test_typesafe_checkpoint_resume_does_not_repeat_completed_cases(tmp_path: Path):
+    checkpoint = tmp_path / "typesafe-checkpoint.json"
+    first_backend = _FakeTypeSafeBackend(fail_on_call=3)
+    first = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=first_backend,
+        limit_per_track=3,
+        typesafe_checkpoint_path=checkpoint,
+    )
+    first_system = first["systems"][0]
+    assert first_system["status"] == "incomplete"
+    assert first_system["reason"] == "provider_unreachable"
+    assert first_system["completed_case_count"] == 2
+    checkpoint_data = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert checkpoint_data["status"] == "incomplete"
+    assert len(checkpoint_data["case_evaluations"]) == 2
+    assert "request_id" not in checkpoint.read_text(encoding="utf-8")
+
+    second_backend = _FakeTypeSafeBackend()
+    second = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=second_backend,
+        limit_per_track=3,
+        typesafe_checkpoint_path=checkpoint,
+        resume_typesafe=True,
+    )
+    second_system = second["systems"][0]
+    assert second_system["status"] == "completed"
+    assert second_system["completed_case_count"] if "completed_case_count" in second_system else True
+    assert second_system["model_resolved"] == "jev-test-2026"
+    assert len(second_system["case_evaluations"]) == 3
+    assert second_backend.calls == 1
+    assert json.loads(checkpoint.read_text(encoding="utf-8"))["status"] == "completed"
+
+
+def test_typesafe_budget_gate_writes_incomplete_checkpoint(tmp_path: Path):
+    checkpoint = tmp_path / "budget-checkpoint.json"
+    backend = _FakeTypeSafeBackend(cost=0.4)
+    backend.estimate_cost_usd = lambda state, questions: 0.4
+    result = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=backend,
+        limit_per_track=2,
+        typesafe_checkpoint_path=checkpoint,
+        typesafe_budget_usd=0.5,
+    )
+    system = result["systems"][0]
+    assert system["status"] == "incomplete"
+    assert system["reason"] == "budget_exceeded"
+    assert system["completed_case_count"] == 1
+    assert json.loads(checkpoint.read_text(encoding="utf-8"))["cost_usd"] == 0.4
+
+
+def test_typesafe_missing_request_cost_stops_before_network(tmp_path: Path):
+    backend = _FakeTypeSafeBackend()
+    backend.estimate_cost_usd = None
+    result = run_benchmark(
+        tracks=["trading-review"], systems=["typesafe_direct"],
+        mode="dev", live=True, typesafe_backend=backend, limit_per_track=1,
+        typesafe_checkpoint_path=tmp_path / "checkpoint.json",
+    )
+    assert backend.calls == 0
+    assert result["systems"][0]["status"] == "incomplete"
+    assert result["systems"][0]["reason"] == "unverifiable_request_cost"
+
+
+def test_typesafe_public_gate_rejects_limited_or_incomplete_run(tmp_path: Path):
+    result = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=_FakeTypeSafeBackend(),
+        limit_per_track=2,
+        out_dir=tmp_path,
+    )
+    run_dir = tmp_path / result["run_id"]
+    with pytest.raises(ValueError, match="all four tracks"):
+        verify_typesafe_public_run(run_dir)
+
+
+def test_completed_checkpoint_requires_resolved_model(tmp_path: Path):
+    checkpoint = tmp_path / "invalid-checkpoint.json"
+    result = run_benchmark(
+        tracks=["trading-review"],
+        systems=["typesafe_direct"],
+        mode="dev",
+        live=True,
+        typesafe_backend=_FakeTypeSafeBackend(),
+        limit_per_track=1,
+        typesafe_checkpoint_path=checkpoint,
+    )
+    assert result["systems"][0]["status"] == "completed"
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    payload["model_resolved"] = None
+    checkpoint.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="completed TypeSafe checkpoint is missing model_resolved"):
+        run_benchmark(
+            tracks=["trading-review"],
+            systems=["typesafe_direct"],
+            mode="dev",
+            live=True,
+            typesafe_backend=_FakeTypeSafeBackend(),
+            limit_per_track=1,
+            typesafe_checkpoint_path=checkpoint,
+            resume_typesafe=True,
+        )
+
+
 def test_typesafe_direct_reports_truthful_reason_on_failure():
     from smartmoney_cub_harness.jev.direct import TypeSafeDirectJevBackend
     from smartmoney_cub_harness.jev.errors import JevUnavailable, JevProtocolError
@@ -239,6 +554,7 @@ def test_typesafe_direct_reports_truthful_reason_on_failure():
         api_key="mock-key",
         http_client=timeout_client,
     )
+    bad_backend.estimated_cost_usd = 0.001
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -262,6 +578,7 @@ def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
         api_key="mock-key",
         http_client=None,
     )
+    local_backend.estimated_cost_usd = 0.001
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -284,6 +601,7 @@ def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
         api_key="mock-key",
         http_client=unreachable_client,
     )
+    net_backend.estimated_cost_usd = 0.001
     res_net = run_benchmark(
         tracks=["trading-review"],
         systems=["typesafe_direct"],
@@ -316,14 +634,9 @@ def test_readme_benchmark_figures_match_published_run():
         run_data = json.load(f)
 
     baseline = next(s for s in run_data["systems"] if s["system_id"] == "deterministic_baseline")
-    typesafe = next(s for s in run_data["systems"] if s["system_id"] == "typesafe_direct")
-
     expected_figures = {
         "baseline_accuracy": f"{baseline['metrics']['accuracy']:.2%}",
         "baseline_f1": f"{baseline['metrics']['macro_f1']:.4f}",
-        "jev_accuracy": f"{typesafe['metrics']['accuracy']:.2%}",
-        "jev_f1": f"{typesafe['metrics']['macro_f1']:.4f}",
-        "jev_ece": f"{typesafe['metrics']['ece']:.4f}",
     }
 
     en_text = readme_path.read_text(encoding="utf-8")

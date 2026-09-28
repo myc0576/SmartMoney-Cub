@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "=== [Gate 1] Harness Doctor & Safety Contract Audit ==="
 PYTHON_BIN="${PYTHON_BIN:-python}"
@@ -38,4 +39,3 @@ echo ""
 echo "========================================="
 echo "  Verification Loop: ALL GATES PASSED    "
 echo "========================================="
-

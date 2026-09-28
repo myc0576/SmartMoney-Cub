@@ -1,0 +1,105 @@
+{
+  "schema": "smartmoney_cub_benchmark_run.v1",
+  "run_id": "run_20260920_025046_240",
+  "benchmark_id": "finance-jev-v1",
+  "run_date": "2026-09-20T10:50:46+08:00",
+  "mode": "all",
+  "tracks": [
+    "trading-review",
+    "financial-filings",
+    "industry-events",
+    "macro-policy"
+  ],
+  "sample_count": 240,
+  "git_sha": "bdc78e9c54fff00cf03048a18d8bc0f4c4b8a0ef",
+  "systems": [
+    {
+      "system_id": "deterministic_baseline",
+      "status": "completed",
+      "model_requested": "rule_based",
+      "model_resolved": "deterministic_rules_v1",
+      "cost_usd": 0.0,
+      "latency_p50_ms": 0.002,
+      "latency_p95_ms": 0.005,
+      "latency_p99_ms": 0.009,
+      "metrics": {
+        "schema_valid_rate": 1.0,
+        "accuracy": 0.8333,
+        "macro_f1": 0.7792,
+        "recall": 0.8125,
+        "fpr": 0.0033,
+        "brier": 0.1667,
+        "ece": 0.1667,
+        "coverage": 1.0,
+        "abstention_rate": 0.0,
+        "selective_risk": 0.1667,
+        "stability": 1.0,
+        "p50_latency_ms": 0.002,
+        "p95_latency_ms": 0.005,
+        "p99_latency_ms": 0.009,
+        "cost_per_case": 0.0,
+        "retry_rate": 0.0,
+        "confidence_interval_95": [
+          0.8092,
+          0.8549
+        ],
+        "mcnemar_against_baseline": {
+          "statistic": 0.0,
+          "p_value": 1.0,
+          "b": 0,
+          "c": 0
+        }
+      }
+    },
+    {
+      "system_id": "typesafe_direct",
+      "status": "completed",
+      "model_requested": "jev-latest",
+      "model_resolved": "jev-1.13.0",
+      "cost_usd": 0.0,
+      "latency_p50_ms": 1034.39,
+      "latency_p95_ms": 2884.846,
+      "latency_p99_ms": 4583.809,
+      "metrics": {
+        "schema_valid_rate": 1.0,
+        "accuracy": 0.7843,
+        "macro_f1": 0.7319,
+        "recall": 0.7445,
+        "fpr": 0.0042,
+        "brier": 0.2011,
+        "ece": 0.1464,
+        "coverage": 1.0,
+        "abstention_rate": 0.0,
+        "selective_risk": 0.2157,
+        "stability": 1.0,
+        "p50_latency_ms": 1034.39,
+        "p95_latency_ms": 2884.846,
+        "p99_latency_ms": 4583.809,
+        "cost_per_case": 0.0,
+        "retry_rate": 0.0,
+        "confidence_interval_95": [
+          0.758,
+          0.8085
+        ],
+        "mcnemar_against_baseline": {
+          "statistic": 9.1641,
+          "p_value": 0.0025,
+          "b": 106,
+          "c": 156
+        }
+      }
+    },
+    {
+      "system_id": "openrouter_jev",
+      "status": "not_run",
+      "reason": "missing_credential",
+      "model_requested": "~typesafe/jev-latest",
+      "model_resolved": null,
+      "cost_usd": 0.0,
+      "latency_p50_ms": 0.0,
+      "metrics": null
+    }
+  ],
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE",
+  "run_hash": "00e9ef2f5a9c919ca35697d16d30af3faca099c0ff1cbefd69d9eb3804c223ec"
+}

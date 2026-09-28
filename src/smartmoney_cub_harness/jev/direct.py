@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -138,7 +139,11 @@ class TypeSafeDirectJevBackend:
 
         resp_data = self._execute_request(req, request_payload)
 
-        model_resolved = resp_data.get("model_resolved") or resp_data.get("model") or self.model_requested
+        if not isinstance(resp_data, dict):
+            raise JevProtocolError("TypeSafe response must be an object")
+        model_resolved = resp_data.get("model_resolved") or resp_data.get("model")
+        if not isinstance(model_resolved, str) or not model_resolved.strip():
+            raise JevProtocolError("TypeSafe response missing resolved model")
         raw_answers = resp_data.get("answers")
         if isinstance(raw_answers, list):
             answers_by_id = {
@@ -203,7 +208,12 @@ class TypeSafeDirectJevBackend:
             else:
                 conf = float(raw_ans.get("confidence", 1.0))
 
-            conf = float(raw_ans.get("confidence", conf))
+            try:
+                conf = float(raw_ans.get("confidence", conf))
+            except (TypeError, ValueError) as exc:
+                raise JevProtocolError(f"Invalid confidence for {q.question_id}") from exc
+            if not math.isfinite(conf) or not 0.0 <= conf <= 1.0:
+                raise JevProtocolError(f"Invalid confidence for {q.question_id}")
             rationale = str(raw_ans.get("rationale", ""))
             parsed_answers.append(
                 JevAnswer(
@@ -216,10 +226,24 @@ class TypeSafeDirectJevBackend:
             )
 
         latency_ms = round((time.perf_counter() - start_t) * 1000.0, 2)
-        usage = dict(resp_data.get("usage", {}))
-        estimated_cost_usd = (
-            None if resp_data.get("estimated_cost_usd") is None else float(resp_data["estimated_cost_usd"])
-        )
+        raw_usage = resp_data.get("usage")
+        if not isinstance(raw_usage, dict):
+            raise JevProtocolError("TypeSafe response missing usage object")
+        usage = {}
+        for target, aliases in (
+            ("input_tokens", ("input_tokens", "prompt_tokens")),
+            ("output_tokens", ("output_tokens", "completion_tokens")),
+        ):
+            value = next((raw_usage[key] for key in aliases if key in raw_usage), None)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise JevProtocolError(f"TypeSafe response has invalid {target}")
+            usage[target] = value
+        try:
+            estimated_cost_usd = float(resp_data["estimated_cost_usd"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise JevProtocolError("TypeSafe response missing verifiable estimated_cost_usd") from exc
+        if not math.isfinite(estimated_cost_usd) or estimated_cost_usd < 0:
+            raise JevProtocolError("TypeSafe response has invalid estimated_cost_usd")
         request_id = str(resp_data.get("request_id", "") or "")
 
         run_hash = compute_run_hash(
@@ -241,7 +265,7 @@ class TypeSafeDirectJevBackend:
             answers=tuple(parsed_answers),
             latency_ms=latency_ms,
             usage=usage,
-            estimated_cost_usd=estimated_cost_usd if estimated_cost_usd is not None else 0.0,
+            estimated_cost_usd=estimated_cost_usd,
             request_id=request_id,
             run_hash=run_hash,
             safety=SAFETY_DECLARATION,

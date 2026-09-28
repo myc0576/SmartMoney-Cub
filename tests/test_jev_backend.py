@@ -264,6 +264,7 @@ def test_typesafe_direct_backend_contract_mapping_choice_noul_score():
                 },
             },
             "usage": {"input_tokens": 499, "output_tokens": 20},
+            "estimated_cost_usd": 0.0005,
         }
 
     backend = TypeSafeDirectJevBackend(api_key="test-key", http_client=mock_wire_client)
@@ -291,7 +292,7 @@ def test_typesafe_direct_backend_contract_mapping_choice_noul_score():
     assert decision.model_requested == "jev-latest"
     assert decision.model_resolved == "jev-1.13.0"
     assert decision.request_id == ""
-    assert decision.estimated_cost_usd == 0.0
+    assert decision.estimated_cost_usd == 0.0005
     assert decision.usage == {"input_tokens": 499, "output_tokens": 20}
 
     ans_map = {a.question_id: a for a in decision.answers}
@@ -353,4 +354,3 @@ def test_typesafe_direct_backend_live_smoke_skipped_without_key():
     assert len(decision.answers) == 1
     assert isinstance(decision.answers[0].value, bool)
     assert 0.0 <= decision.answers[0].confidence <= 1.0
-
