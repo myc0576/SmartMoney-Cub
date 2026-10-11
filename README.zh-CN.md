@@ -18,7 +18,7 @@
 [![Agent-ready](https://img.shields.io/badge/agent--ready-loop%20artifacts-blueviolet)](docs/agent-loop.md)
 [![UZI-Skill](https://img.shields.io/badge/ecosystem-UZI--Skill-orange)](docs/integrations.md)
 [![TradingAgents-ready](https://img.shields.io/badge/TradingAgents--ready-optional--adapter-informational)](docs/tradingagents-adapter.md)
-[![官方 API 网关](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%20API%20%E7%BD%91%E5%85%B3-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
+[![官方 API 网关](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%20API%20%E7%BD%91%E5%85%B3-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness)
 
 只读 AI 复盘与规则进化 harness · 决策记录 · D1/D3 结果验证 · 本地 Markdown 记忆 · challenger -> champion 治理
 
@@ -26,7 +26,7 @@
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
-[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
+[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness)
 
 ![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
 
@@ -89,11 +89,13 @@ Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`en
 
 ## 官方 API 网关
 
-[alphatech.net.cn](https://alphatech.net.cn/) 是本项目自建的官方网关，提供 OpenAI 兼容的模型访问入口。若希望使用托管中转而不是自行配置上游，可把 Provider 指向它的端点：
+[alphatech.net.cn](https://alphatech.net.cn/?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness) 是本项目自建的官方网关，提供 OpenAI 兼容的模型访问入口。若希望使用托管中转而不是自行配置上游，可把 Provider 指向它的端点：
 
 ```text
 https://alphatech.net.cn/v1
 ```
+
+账号与令牌在 [alphatech.net.cn](https://alphatech.net.cn/sign-up?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness) 注册领取，支持支付宝按人民币充值。
 
 该网关是可选的。核心 harness 完全离线只读运行，也可以指向任何你自己配置的 Provider；使用网关不授予交易权限，也不改变执行禁令。Provider 与自定义网关的设置见 [docs/review-agent.md](docs/review-agent.md)。
 
@@ -150,11 +152,11 @@ smcub workspace promote-rule RULE-1 --note "样本 24 笔，误报率 0.12，确
 ## 🏢 Trader 产品（托管模式）
 
 同一个包还带有托管版 Trader 产品：一套多租户的交易日志与复盘界面，作为 alphatech 平台
-（[alphatech.net.cn/trader](https://alphatech.net.cn/trader)）的一个平级入口，与 Alpha Canvas、
+（[alphatech.net.cn/trader](https://alphatech.net.cn/trader?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness)）的一个平级入口，与 Alpha Canvas、
 Commerce Workbench 并列。它导入你自己的成交、计算绩效分析、为 Playbook 打分、
 回测一套 JSON 策略 DSL，并回放历史 K 线。
 
-托管产品的模型访问由官方网关提供：[alphatech.net.cn](https://alphatech.net.cn/)。
+托管产品的模型访问由官方网关提供：[alphatech.net.cn](https://alphatech.net.cn/?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness)。
 
 一条命令用同一个进程、同一个端口同时提供两个产品：
 
@@ -590,4 +592,4 @@ The public repo must not include real trades, real watchlists, account data, pri
 
 MIT. See [LICENSE](LICENSE).
 
-官方服务：[API 网关](https://alphatech.net.cn/) · [Trader 托管产品](https://alphatech.net.cn/trader)
+官方服务：[API 网关](https://alphatech.net.cn/?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness) · [Trader 托管产品](https://alphatech.net.cn/trader?utm_source=github&utm_medium=readme&utm_campaign=smcub-harness)
