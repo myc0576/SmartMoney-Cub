@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/myc0576/SmartMoney-Cub/schemas/onchain_evidence_pack.schema.json",
+  "title": "Smartmoney Cub Offline Onchain Evidence Pack v1",
+  "description": "Manifest for internally consistent offline Arbitrum One evidence. Hash verification, file safety, provenance time comparisons and cross-file associations are additionally enforced by the runtime. This schema and the seal do not prove source authenticity or current chain finality.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot_schema", "chain_id", "decision_time", "evaluation_mode", "files", "hashes", "finality_observation", "safety"],
+  "properties": {
+    "schema": {"const": "smartmoney_cub_onchain_evidence_pack.v1"},
+    "snapshot_schema": {"const": "smartmoney_cub_onchain_snapshot.v1"},
+    "chain_id": {"type": "integer", "const": 42161},
+    "decision_time": {"$ref": "#/$defs/timestamp"},
+    "evaluation_mode": {"enum": ["pre_decision", "post_decision"]},
+    "files": {
+      "const": {"transaction": "transaction.json", "receipt": "receipt.json", "block": "block.json", "claims": "claims.json"}
+    },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transaction.json", "receipt.json", "block.json", "claims.json"],
+      "properties": {
+        "transaction.json": {"$ref": "#/$defs/sha256"},
+        "receipt.json": {"$ref": "#/$defs/sha256"},
+        "block.json": {"$ref": "#/$defs/sha256"},
+        "claims.json": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "finality_observation": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/finalityEnvelope"}]},
+    "safety": {"const": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"}
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,6})?(?:Z|(?!-00:00$)[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "hash": {"type": "string", "pattern": "^0x[0-9a-fA-F]{64}$"},
+    "quantity": {"type": "string", "pattern": "^0x(?:0|[1-9a-f][0-9a-f]*)$"},
+    "finalityEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "observed_at", "available_at", "evidence_role", "data"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1, "pattern": "\\S"},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "available_at": {"$ref": "#/$defs/timestamp"},
+        "evidence_role": {"enum": ["pre_decision", "post_decision"]},
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "blockHash", "blockNumber"],
+          "properties": {
+            "tag": {"enum": ["safe", "finalized"]},
+            "blockHash": {"$ref": "#/$defs/hash"},
+            "blockNumber": {"$ref": "#/$defs/quantity"}
+          }
+        }
+      }
+    }
+  }
+}

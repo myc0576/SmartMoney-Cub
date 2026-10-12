@@ -73,12 +73,25 @@ def _review_status(failure_count: int, trailing_failures: int, metrics: dict[str
     return "challenger" if promotion_blockers(metrics) else "ready_for_review"
 
 
-def _write_replay_report(root: Path, report: dict[str, Any]) -> dict[str, Any]:
-    (root / "replay_report.json").write_bytes(_canonical_bytes(report))
+def _write_replay_report(
+    root: Path, report: dict[str, Any], *, persist: bool = True
+) -> dict[str, Any]:
+    if persist:
+        # The dispatcher also writes failures before a format can be trusted.
+        # Use the same checked atomic replacement for every version, including
+        # malformed packs, so an existing hard link never becomes a write target.
+        from smartmoney_cub_harness.onchain_evidence import _write_report
+
+        try:
+            _write_report(root, report)
+        except (OSError, ValueError):
+            report["evidence_status"] = "pending_review"
+            report["result_mismatches"].append("report_write_failed")
+            report["promotion_gate"]["eligible_for_human_review"] = False
     return report
 
 
-def _pending_replay(root: Path, reason: str) -> dict[str, Any]:
+def _pending_replay(root: Path, reason: str, *, persist: bool = True) -> dict[str, Any]:
     return _write_replay_report(
         root,
         safety_envelope(
@@ -105,6 +118,7 @@ def _pending_replay(root: Path, reason: str) -> dict[str, Any]:
                 },
             }
         ),
+        persist=persist,
     )
 
 
@@ -362,9 +376,21 @@ def build_evidence_pack(
 
 
 def replay_evidence_pack(pack_dir: str | Path) -> dict[str, Any]:
+    # Dispatch only a sealed, strictly parsed version. The original price-based
+    # v1 evaluator remains below; on-chain inputs never enter that evaluator.
+    from smartmoney_cub_harness.onchain_evidence import (
+        replay_onchain_evidence_pack,
+        safe_pack_path,
+        strict_json_loads,
+    )
+
     root = Path(pack_dir)
-    manifest_path = root / PACK_MANIFEST_NAME
-    seal_path = root / PACK_SEAL_NAME
+    try:
+        manifest_path = safe_pack_path(root, PACK_MANIFEST_NAME)
+        seal_path = safe_pack_path(root, PACK_SEAL_NAME)
+        safe_pack_path(root, "replay_report.json")
+    except (OSError, ValueError):
+        return _pending_replay(root, "invalid_pack:unsafe_path", persist=False)
     try:
         manifest_bytes = manifest_path.read_bytes()
     except OSError:
@@ -380,11 +406,15 @@ def replay_evidence_pack(pack_dir: str | Path) -> dict[str, Any]:
     if hashlib.sha256(manifest_bytes).hexdigest() != seal:
         return _pending_replay(root, "manifest_seal_mismatch")
     try:
-        pack = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        pack = strict_json_loads(manifest_bytes)
+    except (UnicodeDecodeError, ValueError):
         return _pending_replay(root, "invalid_pack:malformed_json")
     if not isinstance(pack, dict):
         return _pending_replay(root, "invalid_pack:not_an_object")
+    if pack.get("schema") == "smartmoney_cub_onchain_evidence_pack.v1":
+        return replay_onchain_evidence_pack(root)
+    if pack.get("schema") != EVIDENCE_PACK_SCHEMA:
+        return _pending_replay(root, "invalid_pack:schema")
     pack_errors = _pack_validation_errors(pack)
     if pack_errors:
         primary = "hash_inventory_mismatch" if "hash_inventory_mismatch" in pack_errors else pack_errors[0]

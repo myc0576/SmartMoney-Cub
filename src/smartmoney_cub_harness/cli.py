@@ -184,6 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
     build_evidence.add_argument("--rule-candidate", required=True)
     build_evidence.add_argument("--horizon", choices=["d1", "d3"], default="d1")
 
+    build_onchain = sub.add_parser(
+        "build-onchain-evidence-pack",
+        help="Import a frozen Arbitrum One snapshot into an offline evidence pack",
+    )
+    build_onchain.add_argument("output_dir")
+    build_onchain.add_argument("--snapshot", required=True, help="Local frozen snapshot JSON file")
+
     replay_evidence = sub.add_parser(
         "replay-evidence-pack", help="Verify and replay a frozen evidence pack"
     )
@@ -567,6 +574,21 @@ def main(argv: list[str] | None = None) -> int:
             _read_json(args.rule_candidate),
             horizon=args.horizon,
         )
+        _print_json(result)
+        return 0
+
+    if args.command == "build-onchain-evidence-pack":
+        from smartmoney_cub_harness.onchain_evidence import build_onchain_evidence_pack, read_snapshot
+
+        try:
+            result = build_onchain_evidence_pack(args.output_dir, read_snapshot(args.snapshot))
+        except (OSError, ValueError) as exc:
+            _print_json({
+                "evidence_status": "invalid",
+                "errors": [str(exc)],
+                "safety": SAFETY_DECLARATION,
+            })
+            return 2
         _print_json(result)
         return 0
 

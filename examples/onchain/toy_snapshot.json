@@ -1,0 +1,91 @@
+{
+  "schema": "smartmoney_cub_onchain_snapshot.v1",
+  "chain_id": 42161,
+  "decision_time": "2026-01-01T12:00:00Z",
+  "evaluation_mode": "post_decision",
+  "transaction": {
+    "source": "toy://synthetic-offline/transaction-not-real-chain-data",
+    "observed_at": "2026-01-01T12:05:00Z",
+    "available_at": "2026-01-01T12:05:00Z",
+    "evidence_role": "post_decision",
+    "data": {
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "chainId": "0xa4b1",
+      "from": "0x1111111111111111111111111111111111111111",
+      "to": "0x2222222222222222222222222222222222222222",
+      "blockHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "blockNumber": "0x64",
+      "transactionIndex": "0x0"
+    }
+  },
+  "receipt": {
+    "source": "toy://synthetic-offline/receipt-not-real-chain-data",
+    "observed_at": "2026-01-01T12:05:00Z",
+    "available_at": "2026-01-01T12:05:00Z",
+    "evidence_role": "post_decision",
+    "data": {
+      "transactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transactionIndex": "0x0",
+      "blockHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "blockNumber": "0x64",
+      "status": "0x1",
+      "logs": [
+        {
+          "address": "0x3333333333333333333333333333333333333333",
+          "topics": [
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+            "0x0000000000000000000000001111111111111111111111111111111111111111",
+            "0x0000000000000000000000002222222222222222222222222222222222222222"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000000000002a",
+          "blockHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "blockNumber": "0x64",
+          "transactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "transactionIndex": "0x0",
+          "logIndex": "0x0",
+          "removed": false
+        }
+      ]
+    }
+  },
+  "block": {
+    "source": "toy://synthetic-offline/block-not-real-chain-data",
+    "observed_at": "2026-01-01T12:05:00Z",
+    "available_at": "2026-01-01T12:05:00Z",
+    "evidence_role": "post_decision",
+    "data": {
+      "hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "number": "0x64",
+      "transactions": [
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    }
+  },
+  "claims": [
+    {"id": "sender_matches", "type": "sender", "value": "0x1111111111111111111111111111111111111111"},
+    {"id": "recipient_differs", "type": "recipient", "value": "0x4444444444444444444444444444444444444444"},
+    {"id": "execution_succeeded", "type": "execution_status", "value": "success"},
+    {
+      "id": "transfer_emitted",
+      "type": "event",
+      "event_type": "erc20_transfer",
+      "contract": "0x3333333333333333333333333333333333333333",
+      "from": "0x1111111111111111111111111111111111111111",
+      "to": "0x2222222222222222222222222222222222222222",
+      "value": "0x2a"
+    },
+    {"id": "profit_not_proven", "type": "profit", "value": "positive"}
+  ],
+  "finality_observation": {
+    "source": "toy://synthetic-offline/finality-provider-observation-not-real-chain-data",
+    "observed_at": "2026-01-01T12:06:00Z",
+    "available_at": "2026-01-01T12:06:00Z",
+    "evidence_role": "post_decision",
+    "data": {
+      "tag": "safe",
+      "blockHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "blockNumber": "0x64"
+    }
+  },
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}

@@ -11,6 +11,7 @@ import re
 import struct
 import sys
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 REPO = Path(__file__).resolve().parents[1]  # tests/ lives under the design worktree
 ASSETS = REPO / "assets"
@@ -22,6 +23,35 @@ FLOW = "smartmoney-cub-system-flow-bilingual.png"
 MARK = "smartmoney-cub-mark.png"
 BANNER = "smartmoney-cub-alphatech-banner.png"
 GATEWAY_URL = "https://alphatech.net.cn/"
+
+
+def without_approved_gateway_tracking(body: str) -> str:
+    """Normalize only the published campaign in complete Markdown destinations."""
+    campaign = {
+        "utm_source": "github",
+        "utm_medium": "readme",
+        "utm_campaign": "smcub-harness",
+    }
+
+    def normalize(match: re.Match[str]) -> str:
+        original = match.group(1)
+        try:
+            url = urlsplit(original)
+            params = parse_qsl(url.query, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            return match.group(0)
+        if (
+            url.scheme == "https"
+            and url.netloc == "alphatech.net.cn"
+            and url.path in {"/", "/sign-up", "/trader"}
+            and not url.fragment
+            and len(params) == len(campaign)
+            and dict(params) == campaign
+        ):
+            return "](" + urlunsplit((url.scheme, url.netloc, url.path, "", "")) + ")"
+        return match.group(0)
+
+    return re.sub(r"\]\(([^)\s]+)\)", normalize, body)
 
 # The company name burned into the source artwork below the mark. This test is
 # the one place the string is allowed to appear, because a guard has to name what
@@ -197,8 +227,8 @@ def test_readme_carries_official_gateway() -> None:
 
 def test_readme_gateway_mount_is_additive() -> None:
     """Mounting the official gateway must be strictly additive to existing content."""
-    en = read(README_EN)
-    zh = read(README_ZH)
+    en = without_approved_gateway_tracking(read(README_EN))
+    zh = without_approved_gateway_tracking(read(README_ZH))
 
     assert_(en.count("assets/smartmoney-cub-harness-cover.png") == 1,
             "README.md references assets/smartmoney-cub-harness-cover.png exactly once")
@@ -215,9 +245,9 @@ def test_readme_gateway_mount_is_additive() -> None:
             "README.zh-CN.md still contains READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE")
 
     assert_("?aff=" not in en and "utm_" not in en,
-            "README.md does not contain referral or tracking markers (?aff=, utm_)")
+            "README.md does not contain referral or unapproved tracking markers")
     assert_("?aff=" not in zh and "utm_" not in zh,
-            "README.zh-CN.md does not contain referral or tracking markers (?aff=, utm_)")
+            "README.zh-CN.md does not contain referral or unapproved tracking markers")
 
     assert_("[alphatech.net.cn](https://alphatech.net.cn/)" in en,
             "README.md contains link [alphatech.net.cn](https://alphatech.net.cn/)")
@@ -233,8 +263,8 @@ def test_gateway_banner_is_clickable() -> None:
     This guard exists so a future edit cannot silently unwrap it back into a
     non-clickable image.
     """
-    en = read(README_EN)
-    zh = read(README_ZH)
+    en = without_approved_gateway_tracking(read(README_EN))
+    zh = without_approved_gateway_tracking(read(README_ZH))
 
     # 1. README.md contains the exact linked form
     assert_("[![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)" in en,
@@ -252,13 +282,13 @@ def test_gateway_banner_is_clickable() -> None:
                 assert_(not (stripped.startswith("![") and not stripped.startswith("[![")),
                         f"{path.name} banner line is wrapped in link rather than bare image")
 
-    # 4. Both READMEs link the banner to clean gateway URL without tracking
+    # 4. Both READMEs link to the gateway; only the approved campaign is normalized.
     assert_("https://alphatech.net.cn/)" in en and "https://alphatech.net.cn/)" in zh,
             "both READMEs link banner to https://alphatech.net.cn/)")
     assert_("?aff=" not in en and "utm_" not in en,
-            "README.md does not contain tracking markers")
+            "README.md does not contain unapproved tracking markers")
     assert_("?aff=" not in zh and "utm_" not in zh,
-            "README.zh-CN.md does not contain tracking markers")
+            "README.zh-CN.md does not contain unapproved tracking markers")
 
     # 5. Asset exists and is exactly 1600x400
     banner_path = ASSETS / BANNER

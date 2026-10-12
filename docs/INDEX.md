@@ -7,6 +7,7 @@
 
 | 领域分类 | 文档名称 (大小) | 核心内容提要 | 何时查阅 |
 |---|---|---|---|
+| Offline onchain evidence | [onchain-evidence.md](onchain-evidence.md) | Arbitrum One frozen transaction packs, claim verdicts, temporal boundaries and toy replay | Importing or replaying offline onchain evidence |
 | Agent集成指南 | [agent-integration.md](agent-integration.md) (4.8KB) | 大语言模型 Provider 接入、API Key 管理与环境配置 | 添加或修改 LLM Provider (DeepSeek/OpenAI/Anthropic) 时 |
 | Agent执行循环 | [agent-loop.md](agent-loop.md) (1.7KB) | ReAct 循环、工具调用轮次控制与超时熔断 | 排查智能体死循环或工具调用异常时 |
 | 整体系统架构 | [architecture.md](architecture.md) (6.7KB) | 核心数据管道、本地离线模式、Workbench服务与GUI架构 | 需要掌握系统全局数据流与模块依赖时 |
