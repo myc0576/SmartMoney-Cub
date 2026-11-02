@@ -154,6 +154,10 @@ The harness is read-only with respect to markets and execution, and writable wit
 respect to your own journal. Your trades, notes, and backtest runs live in your
 local or tenant store and are never committed to this repository.
 
+The execution surface is permanently read-only and contains no order placement,
+order cancellation, or any trading automation.
+执行面恒为只读，不包含下单、撤单或任何交易自动化（`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`）。
+
 Every manifest, decision, outcome, evaluation, registry, and doctor output carries:
 
 ```text
