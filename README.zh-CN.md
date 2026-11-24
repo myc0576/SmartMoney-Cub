@@ -51,6 +51,8 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 
 ## 系统主链路
 
+![SmartMoney-Cub 中英双语封面](assets/smartmoney-cub-harness-cover.png)
+
 ![SmartMoney-Cub 中英双语系统流程](assets/smartmoney-cub-system-flow-bilingual.png)
 
 只读输入 → 核心控制平面（捕获 → 反未来函数 → 决策与风险契约 → 冻结证据）→ 延迟复盘（D1/D3 结果 → 确定性回放 → 评估与反方证据 → 记忆与案例库 → 挑战者规则 → 人工显式晋级门禁）→ 下一次计划。可选开源工具始终在可信核心外部，仅作为复盘证据加入。

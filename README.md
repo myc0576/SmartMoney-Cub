@@ -47,6 +47,8 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 | ![Local Import and Extraction Review](assets/screenshots/workbench-import-review.png) | ![Pattern Profile and Observation Conditions](assets/screenshots/workbench-insights.png) |
 | *Broker CSV/PDF/screenshots are parsed locally—or test with the built-in offline toy sample—and verified row by row before writing to your local SQLite ledger.* | *Every inferred pattern carries explicit invalidation, time stop, give-up conditions, data source, `available_at`, and human confirm/reject controls.* |
 
+`smartmoney-cub-harness` is a **local-first, agent-agnostic trading journal and review harness**: read-only over markets and execution, writable over your own journal. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
+
 It has **no embedded LLM** in its core, **no broker connection**, and
 **no automatic trading**: the control plane runs entirely offline. External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate. The review assistant
 is a separate, opt-in surface that calls the provider you configure and sends only
@@ -75,6 +77,8 @@ https://alphatech.net.cn/v1
 The gateway is optional. The core harness runs fully offline and read-only, and it works with any provider you configure yourself; using the gateway grants no trading authority and does not change the execution ban. Provider and custom-gateway settings are documented in [docs/review-agent.md](docs/review-agent.md).
 
 ## Bilingual System Flow
+
+![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
 
 ![SmartMoney-Cub bilingual system flow](assets/smartmoney-cub-system-flow-bilingual.png)
 
