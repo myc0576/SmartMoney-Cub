@@ -69,15 +69,10 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
   if (!summary) return <div className="muted">{t('reports.loading')}</div>;
 
   const days = calendar ? calendar.days.filter((day) => day.trade_count > 0) : [];
-  const bestDay = days.reduce<TraderCalendar['days'][number] | null>(
-    (best, day) => (best === null || day.net_pnl > best.net_pnl ? day : best), null,
-  );
-  const worstDay = days.reduce<TraderCalendar['days'][number] | null>(
-    (worst, day) => (worst === null || day.net_pnl < worst.net_pnl ? day : worst), null,
-  );
+  const bestDay = calendar?.best_day ?? null;
+  const worstDay = calendar?.worst_day ?? null;
   const grossProfit = summary.gross_profit ?? 0;
   const grossLoss = summary.gross_loss ?? 0;
-  const expectancy = summary.trade_count > 0 ? summary.total_net_pnl / summary.trade_count : 0;
 
   return (
     <div className="grid" style={{ gap: 14 }}>
@@ -101,7 +96,7 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
             <Kpi label={t('reports.tradeCount')} value={summary.trade_count + ' ' + t('reports.tradeUnit')} note={summary.win_count + ' ' + t('reports.wins') + ' / ' + summary.loss_count + ' ' + t('reports.losses') + ' / ' + summary.flat_count + ' ' + t('reports.flat')} />
             <Kpi label={t('reports.netPnl')} value={formatMoney(summary.total_net_pnl)} tone={toneOf(summary.total_net_pnl, scheme)} />
             <Kpi label={t('reports.winRate')} value={summary.win_rate + '%'} />
-            <Kpi label={t('reports.expectancy')} value={formatMoney(expectancy)} tone={toneOf(expectancy, scheme)} note={t('reports.expectancyNote')} />
+            <Kpi label={t('reports.expectancy')} value={formatMoney(summary.expectancy)} tone={toneOf(summary.expectancy, scheme)} note={t('reports.expectancyNote')} />
             <Kpi label={t('reports.avgReturn')} value={formatPct(summary.avg_return_pct)} tone={toneOf(summary.avg_return_pct, scheme)} />
             <Kpi label={t('reports.fees')} value={formatCost(summary.total_fees)} />
           </div>
@@ -134,8 +129,8 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
                     </tr>
                     <tr>
                       <td>{t('reports.profitableDays')}</td>
-                      <td className="muted">{days.filter((day) => day.net_pnl > 0).length} {t('reports.days')}</td>
-                      <td className="num muted">{days.filter((day) => day.net_pnl < 0).length} {t('reports.lossDays')}</td>
+                      <td className="muted">{calendar?.profitable_day_count ?? 0} {t('reports.days')}</td>
+                      <td className="num muted">{calendar?.loss_day_count ?? 0} {t('reports.lossDays')}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -151,7 +146,7 @@ export function ReportsView({ scheme }: { scheme: 'cn' | 'intl' }) {
             <Kpi label={t('reports.maxDrawdown')} value={formatMoney(summary.max_drawdown)} tone={toneOf(summary.max_drawdown, scheme)} note={t('reports.drawdownNote')} />
             <Kpi label={t('reports.avgHolding')} value={summary.avg_holding_days + ' ' + t('reports.days')} />
             <Kpi label={t('reports.openPositions')} value={summary.open_position_count + ' ' + t('reports.positions')} note={t('reports.noClosedResult')} />
-            <Kpi label={t('reports.feeShare')} value={feeShare(summary)} />
+            <Kpi label={t('reports.feeShare')} value={summary.fee_share} />
           </div>
           <Panel title={t('reports.drawdownFees')}>
             <div className="grid split">
@@ -241,12 +236,6 @@ function BreakdownTable({ rows, scheme }: { rows: BreakdownRow[]; scheme: 'cn' |
       </table>
     </div>
   );
-}
-
-function feeShare(summary: TraderSummary): string {
-  const gross = Math.abs(summary.total_net_pnl) + Math.abs(summary.total_fees);
-  if (!gross || Number.isNaN(gross)) return '—';
-  return ((Math.abs(summary.total_fees) / gross) * 100).toFixed(1) + '%';
 }
 
 function rowsOf(rows: BreakdownRow[] | null | undefined): BreakdownRow[] {

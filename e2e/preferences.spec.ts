@@ -29,3 +29,21 @@ test('all shell locales use complete native hints and action labels', async ({ p
     if (!['zh-CN', 'zh-TW', 'ja-JP'].includes(locale)) expect(hint).not.toMatch(/[\u4e00-\u9fff]/);
   }
 });
+
+test('preferences use the shared server snapshot and persist changes through the API', async ({ page, mockWorkbenchApis, waitForAppReady }) => {
+  await page.addInitScript(() => window.localStorage.setItem('smcub.theme', 'light'));
+  await mockWorkbenchApis(page); await page.goto('/'); await waitForAppReady(page);
+
+  await page.getByRole('button', { name: '偏好', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: '深色', exact: true })).toHaveClass(/primary/);
+  await dialog.getByRole('button', { name: '浅色', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: '浅色', exact: true })).toHaveClass(/primary/);
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => window.localStorage.setItem('smcub.theme', 'dark'));
+  await page.reload();
+  await waitForAppReady(page);
+  await page.getByRole('button', { name: '偏好', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: '浅色', exact: true })).toHaveClass(/primary/);
+});

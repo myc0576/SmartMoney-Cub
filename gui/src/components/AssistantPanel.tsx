@@ -164,6 +164,7 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload, reviewTra
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [currentAction, setCurrentAction] = useState('');
   const [liveArtifacts, setLiveArtifacts] = useState<Record<string, any>[]>([]);
@@ -185,8 +186,27 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload, reviewTra
   const [reviewAgentId, setReviewAgentId] = useState<string | null>(null);
   const [reviewAgentsReady, setReviewAgentsReady] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const handledReviewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowMoreMenu(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showMoreMenu]);
 
   const loadSessions = async () => {
     try {
@@ -507,19 +527,62 @@ export function AssistantPanel({ meta, context, onClose, onMetaReload, reviewTra
   return (
     <aside className={'assistant' + (expanded ? ' expanded' : '')}>
       <div className="assistant-head">
-        <strong style={{ fontSize: 12 }}>复盘助手</strong>
-        <span className="muted" style={{ fontSize: 11 }}>
-          {activeSession ? activeSession.title : '未选择会话'}
-        </span>
-        <div style={{ flex: 1 }} />
-        <span className={'assistant-live-dot' + (busy ? ' busy' : '')} title={busy ? '正在处理' : '已就绪'} />
-        <button className="ghost" onClick={() => setShowSessions((prev) => !prev)} title="会话列表">
-          会话
-        </button>
-        <button className="ghost" onClick={startSession} title="新建会话">新建</button>
-        {activeId ? <button className="ghost" onClick={fork} title="分叉会话">分叉</button> : null}
-        <button className="ghost" onClick={() => setExpanded((prev) => !prev)} title={expanded ? '恢复停靠' : '展开助手'}>{expanded ? '恢复' : '展开'}</button>
-        {onClose ? <button className="ghost" onClick={onClose}>收起</button> : null}
+        <div className="assistant-head-title">
+          <span className={'assistant-live-dot' + (busy ? ' busy' : '')} title={busy ? '正在处理' : '已就绪'} />
+          <strong className="assistant-title">复盘助手</strong>
+          <span className="muted assistant-session-name" title={activeSession ? activeSession.title : '未选择会话'}>
+            {activeSession ? activeSession.title : '未选择会话'}
+          </span>
+        </div>
+        <div className="assistant-head-actions">
+          <button className="ghost assistant-head-btn" onClick={() => { setShowMoreMenu(false); setShowSessions((prev) => !prev); }} title="会话列表">
+            会话
+          </button>
+          <button className="ghost assistant-head-btn" onClick={() => { setShowMoreMenu(false); void startSession(); }} title="新建会话">
+            新建
+          </button>
+          <div className="assistant-more-wrap" ref={moreMenuRef}>
+            <button
+              className="ghost assistant-head-btn assistant-more-trigger"
+              aria-label="更多会话操作"
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
+              title="更多操作（分叉 / 展开）"
+              onClick={() => setShowMoreMenu((prev) => !prev)}
+            >
+              ⋯
+            </button>
+            {showMoreMenu ? (
+              <div className="assistant-more-menu" role="menu">
+                {activeId ? (
+                  <button
+                    className="assistant-more-item"
+                    role="menuitem"
+                    onClick={() => { setShowMoreMenu(false); void fork(); }}
+                  >
+                    分叉会话
+                  </button>
+                ) : null}
+                <button
+                  className="assistant-more-item"
+                  role="menuitem"
+                  onClick={() => { setShowMoreMenu(false); setExpanded((prev) => !prev); }}
+                >
+                  {expanded ? '恢复停靠' : '展开助手'}
+                </button>
+                {onClose ? (
+                  <button
+                    className="assistant-more-item"
+                    role="menuitem"
+                    onClick={() => { setShowMoreMenu(false); onClose(); }}
+                  >
+                    收起助手
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {showSessions ? (

@@ -1,69 +1,69 @@
 # smartmoney-cub-harness
 
-<div align="center">
-
-<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="88" height="88" />
-
-![smartmoney-cub-harness cover](assets/smartmoney-cub-harness-cover.png)
-
-## 游资复盘引擎 · 让每一次决策都变成系统的进化
-
-*"散户靠感觉，高手靠系统。把你的感觉，变成可复盘、可验证、可进化的规则。"*
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="64" height="64" align="right" />
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest-informational)](tests/)
 [![Read-only](https://img.shields.io/badge/mode-read--only-brightgreen)](docs/safety.md)
 [![Local-first](https://img.shields.io/badge/local--first-no%20telemetry-success)](docs/privacy.md)
-[![Agent-ready](https://img.shields.io/badge/agent--ready-loop%20artifacts-blueviolet)](docs/agent-loop.md)
-[![UZI-Skill](https://img.shields.io/badge/ecosystem-UZI--Skill-orange)](docs/integrations.md)
-[![TradingAgents-ready](https://img.shields.io/badge/TradingAgents--ready-optional--adapter-informational)](docs/tradingagents-adapter.md)
-[![官方 API 网关](https://img.shields.io/badge/%E5%AE%98%E6%96%B9%20API%20%E7%BD%91%E5%85%B3-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
+[![Release](https://img.shields.io/badge/release-v1.1.0-informational)](docs/versioning.md)
 
-只读 AI 复盘与规则进化 harness · 决策记录 · D1/D3 结果验证 · 本地 Markdown 记忆 · challenger -> champion 治理
+[English](README.md) · `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
-[30 秒上手](#30-秒上手) · [5 秒体验闭环](#5-秒体验复盘闭环) · [核心理念](#核心理念系统--感觉) · [AI 助手接入](#给-ai-助手只读复盘协作) · [开源生态矩阵](#优秀开源项目集成矩阵) · [安全边界](#安全边界你的系统只属于你) · [CLI](#cli-commands)
+**专为厌倦了翻截图、靠印象复盘的主观交易者打造：** 把零散成交沉淀为可审计的本地复盘日志与人工确认的规则进化闭环。
 
-`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
+- **只读安全内建** — 本地优先的 SQLite/Markdown 台账；不连接券商执行、不下单、不撤单，原文件只在本机解析，外发可选模型前默认强脱敏。
+- **反未来函数与证据溯源** — 每条非静默观察都必须携带失效条件、时间止损、放弃条件、数据源、`available_at <= decision_time` 与数据质量；确定性回放自动拦截篡改与偷看未来。
+- **Challenger → Champion 人工晋级门禁** — D1/D3 延迟结果与复盘助手只能提出候选规则（challenger）；只有你写下确认说明后，规则才可晋级为正式规则（champion）。
 
-[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
+![SmartMoney-Cub 复盘工作台总览（离线 Toy 示例数据）](assets/screenshots/workbench-overview.png)
+*基于虚构离线 Toy 数据（`TOY.CUB` / `TOY.ALPHA` / `TOY.BETA`）运行的本地复盘工作台：今日关注卡片、6 项核心指标、累计盈亏曲线与右侧脱敏复盘助手。*
 
-![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+### 复制即用快速上手
 
-### Jev 审查推理层与四轨金融评测基准
-
-SmartMoney-Cub 原生支持 Jev（[TypeSafe 官方主页](https://typesafe.ai/) | [OpenRouter 托管主页](https://openrouter.ai/typesafe/jev)）作为可选的类型化语义判断层，提供 TypeSafe 原生直连与 OpenRouter 路由两种可插拔后端。Jev 仅用于回答结构化的 `noul`、`choice` 与 `score` 语义审查问题，所有数值运算、日期比较以及严格的时效边界门禁（`available_at <= decision_time`）始终由确定性 Python 代码执行与强制校验。
-
-仓库内置 `finance-jev-v1` 离线评测基准套件，包含涵盖四大赛道（`trading-review`、`financial-filings`、`industry-events`、`macro-policy`）的 240 例冻结离线案例。在完成全赛道可回答性审计并彻底移除输入中的答案泄漏后，案例采用真实的证据叙述（交易执行日志、财报披露节选、行业电讯简报与央行公报原文）供模型进行结构化审方。在官方发布的参考运行产物（[assets/benchmark/run.json](assets/benchmark/run.json)）中，确定性规则基线实现了 **83.33%** 的综合准确率（95% Wilson 置信区间 [80.92%, 85.49%]）与 **0.7792** 的宏平均 F1（共 1,020 项评测问题）。TypeSafe Jev 在线评测系统（`typesafe_direct`，通过真实 API 评测，服务端解析为 `jev-1.13.0` 模型）实现了 **78.43%** 的综合准确率（95% Wilson 置信区间 [75.80%, 80.85%]）、**0.7319** 的宏平均 F1 以及 1034 ms 的 P50 延迟，并在概率校准上表现更优（ECE 为 0.1464 对比基线的 0.1667）。在财务财报赛道上，Jev 准确率达到 **77.00%**（F1: 0.6990）优于规则基线（73.33%），在行业事件赛道达到 **93.33%**（F1: 0.9215），在宏观政策赛道达到 **74.44%**（F1: 0.7148）。该指标如实反映在当前去泄漏冻结玩具案例集上的真实表现，不代表能泛化至真实实盘环境。OpenRouter 后端（`openrouter_jev`）因未配置密钥继续如实标注为 `not_run`。
-
-### 30 秒极速上手
-
-当前最新版本为 `v1.1.0`。可从 GitHub Releases 下载匹配的 wheel、源码包和 npm 启动器；Python 包尚未发布到 PyPI。
+当前最新版本为 `v1.1.0`（通过 GitHub Releases 提供 wheel、源码包与 npm 启动器；Python 包尚未发布到 PyPI）。
 
 ```bash
-# 1. 安装核心库与开发依赖
+# 方式一：启动本地复盘工作台（无需手工配置 Python）
+npx smartmoney-cub
+# 打开 http://127.0.0.1:8787 -> 点击「导入」->「载入离线 Toy 示例（4 笔完整闭环）」
+
+# 方式二：30 秒跑通确定性离线 CLI 闭环（Toy 示例数据）
+git clone https://github.com/myc0576/SmartMoney-Cub.git && cd SmartMoney-Cub
 pip install -e ".[dev]"
-
-# 2. 环境健康检查与确定性安全声明验证
 smcub doctor
-
-# 3. 确定性离线复盘闭环（捕获、评估、打包、回放）
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
 smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
+---
 
-[English](README.md)
+## 工作台界面导览（离线 Toy 示例）
 
-</div>
+| 本地交割单解析与逐行校对 | 证据驱动的模式画像与观察契约 |
+| --- | --- |
+| ![本地导入与逐行校对](assets/screenshots/workbench-import-review.png) | ![模式画像与观察条件](assets/screenshots/workbench-insights.png) |
+| *券商 CSV/PDF/截图全部在本机解析（也支持一键载入离线 Toy 示例），逐行核对置信度后再写入本地 SQLite 台账。* | *每条推断出的模式都显式展示失效条件、时间止损、放弃条件、数据源与可用时间，由人工确认或否决。* |
+
+[快速上手](#30-秒上手) · [5 秒体验闭环](#5-秒体验复盘闭环) · [核心理念](#核心理念系统--感觉) · [AI 助手接入](#给-ai-助手只读复盘协作) · [Jev 评测基准](#jev-审查推理层与四轨金融评测基准) · [开源生态矩阵](#优秀开源项目集成矩阵) · [安全边界](#安全边界你的系统只属于你) · [CLI](#cli-commands)
+
+## 系统主链路
 
 ![SmartMoney-Cub 中英双语系统流程](assets/smartmoney-cub-system-flow-bilingual.png)
 
 只读输入 → 核心控制平面（捕获 → 反未来函数 → 决策与风险契约 → 冻结证据）→ 延迟复盘（D1/D3 结果 → 确定性回放 → 评估与反方证据 → 记忆与案例库 → 挑战者规则 → 人工显式晋级门禁）→ 下一次计划。可选开源工具始终在可信核心外部，仅作为复盘证据加入。
 
 对应文本与可维护 Mermaid 流程见 [docs/architecture.md](docs/architecture.md)。
+
+## Jev 审查推理层与四轨金融评测基准
+
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+
+SmartMoney-Cub 原生支持 Jev（[TypeSafe 官方主页](https://typesafe.ai/) | [OpenRouter 托管主页](https://openrouter.ai/typesafe/jev)）作为可选的类型化语义判断层，提供 TypeSafe 原生直连与 OpenRouter 路由两种可插拔后端。Jev 仅用于回答结构化的 `noul`、`choice` 与 `score` 语义审查问题，所有数值运算、日期比较以及严格的时效边界门禁（`available_at <= decision_time`）始终由确定性 Python 代码执行与强制校验。
+
+仓库内置 `finance-jev-v1` **早期合成离线评测套件**，包含四大赛道（`trading-review`、`financial-filings`、`industry-events`、`macro-policy`）共 240 个冻结案例，每个系统评测 1,020 个问题。参考运行产物（[assets/benchmark/run.json](assets/benchmark/run.json)，从 checkpoint 续跑，于 2026-09-29 完成）中，确定性基线准确率为 **83.33%**，95% 置信区间 **[81.57%, 85.10%]**，宏平均 F1 **0.7792**；TypeSafe **`jev-1.13.0`** 准确率为 **78.43%**，95% 置信区间 **[76.08%, 80.69%]**，宏平均 F1 **0.7350**。两个区间均按赛道分层做 case-level bootstrap（种子 `20260927`，10,000 次重采样），每次携带被抽中 case 的全部问题。TypeSafe 已完成 **240 cases / 1,020 items**，记录 218,438 输入及 43,836 输出 token，按 usage 计算的成功评测费用为 **$0.009175**，低于 $4.00 上限，并通过严格公开产物门禁；该费用不是服务商账单。结果只代表冻结的离线玩具案例集，不代表真实市场泛化；保留的旧 item-level McNemar 字段不构成按 case 调整后的显著性结论。OpenRouter 未参与本次评测。安全声明始终为 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`。
 
 ---
 
@@ -88,6 +88,8 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 Run Envelope 的权限范围是**声明式、未经验证的策略记录**（`enforcement: declarative`、`verified: false`），不是子进程沙箱。CLI 的 `--sandbox` 只选择一次性的 `tmp/sandbox` 输出目录，并不隔离进程；不可信命令必须放在操作系统或容器沙箱中运行。`evidence_pack.sha256` 用于本地篡改检测，不是经过身份认证的数字签名；任何不一致只会进入 `pending_review` 或 `blocked`，绝不会自动晋级。
 
 ## 官方 API 网关
+
+[![SmartMoney-Cub 官方 API 网关](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
 
 [alphatech.net.cn](https://alphatech.net.cn/) 是本项目自建的官方网关，提供 OpenAI 兼容的模型访问入口。若希望使用托管中转而不是自行配置上游，可把 Provider 指向它的端点：
 

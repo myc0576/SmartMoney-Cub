@@ -12,6 +12,12 @@ import type {
   ConnectionsResponse, ConnectionManifest, ConnectionAccount, ConnectionStatus, Preferences, InsightPatternsResponse,
 } from './types';
 
+export type PreferencesResponse = {
+  preferences: Preferences;
+  missing_fields?: Array<keyof Preferences>;
+  safety?: string;
+};
+
 let activeAccountId = '';
 export function setTraderAccountScope(accountId: string): void { activeAccountId = accountId; }
 export function getTraderAccountScope(): string { return activeAccountId; }
@@ -332,8 +338,8 @@ export const api = {
       '/api/trader/connections/snaptrade-personal-mcp/oauth/start',
       { method: 'POST', body: JSON.stringify({ redirect_uri: redirectUri }) },
     ),
-  preferences: () => request<{ preferences: Preferences; safety?: string }>('/api/preferences'),
-  updatePreferences: (preferences: Partial<Preferences>) => request<{ preferences: Preferences; safety?: string }>('/api/preferences', { method: 'POST', body: JSON.stringify(preferences) }),
+  preferences: () => request<PreferencesResponse>('/api/preferences'),
+  updatePreferences: (preferences: Partial<Preferences>) => request<PreferencesResponse>('/api/preferences', { method: 'POST', body: JSON.stringify(preferences) }),
 
   cancelTurn: (id: string) =>
     request<{ status: string; session: SessionSummary }>(

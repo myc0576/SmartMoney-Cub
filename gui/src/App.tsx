@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { api, trader } from './api';
 import { BRAND_MARK_SRC } from './assets/brand';
-import type { Issue, Meta, OpenPosition, TradeLogEntry, TraderMeta, TraderSummary } from './types';
+import type { Issue, Meta, OpenPosition, Preferences, TradeLogEntry, TraderMeta, TraderSummary } from './types';
 import { AssistantPanel } from './components/AssistantPanel';
 import { OverviewView } from './views/OverviewView';
 const CalendarView = lazy(() => import('./views/CalendarView').then(module => ({ default: module.CalendarView })));
@@ -16,8 +16,8 @@ const InsightView = lazy(() => import('./views/InsightView').then(module => ({ d
 const ConnectionsView = lazy(() => import('./views/ConnectionsView').then(module => ({ default: module.ConnectionsView })));
 import { PreferencesView } from './views/PreferencesView';
 import { setTraderAccountScope } from './api';
-import { LOCALE_LABELS, LOCALES, useI18n } from './i18n';
-import type { MessageKey } from './i18n';
+import { LOCALE_LABELS, LOCALES, setPreferredTimeZone, useI18n } from './i18n';
+import type { Locale, MessageKey } from './i18n';
 
 // A-plan layout: navigation and portfolio switch on the left, the working page
 // in the middle, and the review assistant docked on the right.
@@ -61,7 +61,12 @@ const NAV_KEYS: { sectionKey: MessageKey; items: NavItem[] }[] = [
       { key: 'drill', labelKey: 'nav.drill', hintKey: 'hint.drill' },
     ],
   },
-  { sectionKey: 'nav.research', items: [{ key: 'connections', labelKey: 'nav.connections', hintKey: 'hint.connections' }] },
+  {
+    sectionKey: 'nav.data',
+    items: [
+      { key: 'connections', labelKey: 'nav.connections', hintKey: 'hint.connections' },
+    ],
+  },
 ];
 
 // Settings renders at the foot of the sidebar from its own entry rather than as
@@ -99,6 +104,9 @@ export function App() {
   const [ledgerStatus, setLedgerStatus] = useState('ok');
   const [scheme, setScheme] = useState<'cn' | 'intl'>(() => readStoredScheme());
   const [theme, setTheme] = useState<'light' | 'dark'>(() => readStoredTheme());
+  const [timezone, setTimezone] = useState(() => readStoredValue('smcub.timezone', 'local'));
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
+  const [preferencesError, setPreferencesError] = useState('');
   const [error, setError] = useState('');
   const [assistantOpen, setAssistantOpen] = useState(true);
   const [openTradeId, setOpenTradeId] = useState<string | null>(null);
@@ -108,17 +116,13 @@ export function App() {
   const [accounts, setAccounts] = useState<{ account_id: string; name: string; currency: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const loadGeneration = useRef(0);
+  const preferenceWrite = useRef(Promise.resolve());
 
   // The theme lives on the document element, not in a wrapper class, so the
   // tokens resolve for portalled and fixed-position surfaces too (the trade
   // drawer and the model picker both render outside this tree).
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try {
-      window.localStorage.setItem('smcub.theme', theme);
-    } catch {
-      // A blocked localStorage is not a reason to fail a theme switch.
-    }
   }, [theme]);
 
   useEffect(() => {
@@ -171,16 +175,94 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => { void load(); void loadMeta(); }, [load, loadMeta]);
+  const applyPreferences = useCallback((preferences: Partial<Preferences>) => {
+    if (preferences.locale && LOCALES.includes(preferences.locale as Locale)) {
+      setLocale(preferences.locale as Locale);
+    }
+    if (preferences.timezone) {
+      setTimezone(preferences.timezone);
+      setPreferredTimeZone(preferences.timezone);
+    }
+    if (preferences.color_scheme === 'cn' || preferences.color_scheme === 'intl') {
+      setScheme(preferences.color_scheme);
+    }
+    if (preferences.theme === 'light' || preferences.theme === 'dark') {
+      setTheme(preferences.theme);
+    }
+  }, [setLocale]);
+
+  const loadPreferences = useCallback(async () => {
+    setPreferencesLoading(true);
+    setPreferencesError('');
+    try {
+      const response = await api.preferences();
+      if (!response.preferences || typeof response.preferences !== 'object') {
+        throw new Error('preferences response is missing preferences');
+      }
+      const serverPreferences = response.preferences;
+      const missing = new Set(response.missing_fields || []);
+      const migration: Partial<Preferences> = {};
+      const hasMissing = (key: keyof Preferences) =>
+        missing.has(key) || !Object.prototype.hasOwnProperty.call(serverPreferences, key);
+      const storedLocale = readStoredValue('smcub.locale', '');
+      const storedTimezone = readStoredValue('smcub.timezone', '');
+      const storedScheme = readStoredValue('smcub.scheme', '');
+      const storedTheme = readStoredValue('smcub.theme', '');
+      if (hasMissing('locale') && LOCALES.includes(storedLocale as Locale)) migration.locale = storedLocale;
+      if (hasMissing('timezone') && isValidTimezone(storedTimezone)) migration.timezone = storedTimezone;
+      if (hasMissing('color_scheme') && (storedScheme === 'cn' || storedScheme === 'intl')) migration.color_scheme = storedScheme;
+      if (hasMissing('theme') && (storedTheme === 'light' || storedTheme === 'dark')) migration.theme = storedTheme;
+      const migrated = Object.keys(migration).length > 0
+        ? await api.updatePreferences(migration)
+        : response;
+      if (!migrated.preferences || typeof migrated.preferences !== 'object') {
+        throw new Error('preferences migration response is missing preferences');
+      }
+      applyPreferences(migrated.preferences);
+    } catch (failure) {
+      setPreferencesError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setPreferencesLoading(false);
+    }
+  }, [applyPreferences]);
+
+  const persistPreferences = useCallback((patch: Partial<Preferences>) => {
+    preferenceWrite.current = preferenceWrite.current.then(async () => {
+      try {
+        setPreferencesError('');
+        const response = await api.updatePreferences(patch);
+        if (!response.preferences || typeof response.preferences !== 'object') {
+          throw new Error('preferences update response is missing preferences');
+        }
+        applyPreferences(response.preferences);
+      } catch (failure) {
+        setPreferencesError(failure instanceof Error ? failure.message : String(failure));
+      }
+    });
+  }, [applyPreferences]);
+
+  useEffect(() => { void load(); void loadMeta(); void loadPreferences(); }, [load, loadMeta, loadPreferences]);
 
   const toggleScheme = () => {
     const next = scheme === 'cn' ? 'intl' : 'cn';
     setScheme(next);
-    try {
-      window.localStorage.setItem('smcub.scheme', next);
-    } catch {
-      // A colour preference that fails to persist is not worth blocking on.
-    }
+    persistPreferences({ color_scheme: next });
+  };
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    persistPreferences({ theme: next });
+  };
+
+  const changeLocale = (next: Locale) => {
+    setLocale(next);
+    persistPreferences({ locale: next });
+  };
+
+  const changeTimezone = (next: string) => {
+    setTimezone(next);
+    persistPreferences({ timezone: next });
   };
 
   const changeAccountScope = (value: string) => {
@@ -199,10 +281,10 @@ export function App() {
   if (error && !summary) {
     return (
       <div className="shell">
-        <div style={{ margin: 'auto', textAlign: 'center' }}>
-          <div style={{ marginBottom: 10 }}>无法连接本地复盘服务</div>
+        <div style={{ margin: 'auto', textAlign: 'center', padding: 24 }}>
+          <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('error.service')}</div>
           <div className="muted" style={{ marginBottom: 12, fontSize: 11 }}>{error}</div>
-          <button className="primary" onClick={() => void load()}>重试</button>
+          <button className="primary" onClick={() => void load()}>{t('state.retry')}</button>
         </div>
       </div>
     );
@@ -231,7 +313,7 @@ export function App() {
             <img className="brand-mark" src={BRAND_MARK_SRC} alt="" width={26} height={26} />
             <span className="brand-name">SmartMoney-Cub</span>
           </div>
-          <small>本地复盘工作台 v{traderMeta?.version || '1.0.0'}</small>
+          <small>{t('app.local')} v{traderMeta?.version || '1.0.0'}</small>
         </div>
         {NAV_KEYS.map((group) => (
           <div className="nav-group" key={group.items[0]?.key || group.sectionKey}>
@@ -250,7 +332,7 @@ export function App() {
         ))}
         <div className="sidebar-locale">
           <label htmlFor="sidebar-locale-select">{t('prefs.locale')}</label>
-          <select id="sidebar-locale-select" value={locale} onChange={(event) => setLocale(event.target.value as typeof locale)}>
+          <select id="sidebar-locale-select" value={locale} onChange={(event) => changeLocale(event.target.value as Locale)}>
             {LOCALES.map((item) => (
               <option key={item} value={item}>{LOCALE_LABELS[item]}</option>
             ))}
@@ -292,6 +374,11 @@ export function App() {
         <div className={'content' + (assistantOpen ? ' with-assistant' : '')}>
           <div className="page" key={accountScope}>
             <Suspense fallback={<p role="status">{t('state.loading')}</p>}>
+            {tab === 'overview' && !summary ? (
+              <div className="panel" role="status">
+                <div className="muted">{t('state.loading')}</div>
+              </div>
+            ) : null}
             {tab === 'overview' && summary ? (
               <OverviewView
                 summary={summary}
@@ -315,11 +402,17 @@ export function App() {
             ) : null}
             {tab === 'calendar' ? <CalendarView scheme={scheme} initial={thisMonth()} /> : null}
             {tab === 'reports' ? <ReportsView scheme={scheme} /> : null}
-            {tab === 'insight' ? <InsightView scheme={scheme} onOpenTrade={setOpenTradeId} /> : null}
+            {tab === 'insight' ? <InsightView scheme={scheme} onOpenTrade={setOpenTradeId} onGoToImport={() => setTab('import')} /> : null}
             {tab === 'lab' ? <LabView scheme={scheme} /> : null}
             {tab === 'drill' ? <DrillView scheme={scheme} /> : null}
             {tab === 'connections' ? <ConnectionsView /> : null}
-            {tab === 'import' ? <ImportView onImported={() => void load()} /> : null}
+            {tab === 'import' ? (
+              <ImportView
+                onImported={() => void load()}
+                onGoToOverview={() => setTab('overview')}
+                onGoToInsight={() => setTab('insight')}
+              />
+            ) : null}
             {tab === 'settings' ? (
               <SettingsView
                 meta={meta}
@@ -327,7 +420,7 @@ export function App() {
                 scheme={scheme}
                 theme={theme}
                 onToggleScheme={toggleScheme}
-                onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+                onToggleTheme={toggleTheme}
               />
             ) : null}
             </Suspense>
@@ -353,7 +446,7 @@ export function App() {
           onOpenAssistant={(id) => { setOpenTradeId(id); setReviewTradeId(id); setAssistantOpen(true); }}
         />
       ) : null}
-      {preferencesOpen ? <PreferencesView scheme={scheme} theme={theme} onToggleScheme={toggleScheme} onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))} onClose={() => setPreferencesOpen(false)} /> : null}
+      {preferencesOpen ? <PreferencesView timezone={timezone} loading={preferencesLoading} error={preferencesError} onRetry={() => void loadPreferences()} scheme={scheme} theme={theme} onChangeTimezone={changeTimezone} onToggleScheme={toggleScheme} onToggleTheme={toggleTheme} onClose={() => setPreferencesOpen(false)} /> : null}
     </div>
   );
 }
@@ -376,20 +469,26 @@ function thisMonth(): { year: number; month: number } {
 /** The colour convention is the domestic default; a stored choice wins. Reading
  *  it lazily keeps the initializer pure and safe when storage is blocked. */
 function readStoredScheme(): 'cn' | 'intl' {
-  try {
-    return window.localStorage.getItem('smcub.scheme') === 'intl' ? 'intl' : 'cn';
-  } catch {
-    return 'cn';
-  }
+  return readStoredValue('smcub.scheme', 'cn') === 'intl' ? 'intl' : 'cn';
 }
 
 /** Dark is the product's default; a stored choice wins. Reading the value
  *  lazily keeps the initializer pure and safe when storage is blocked. */
 function readStoredTheme(): 'light' | 'dark' {
+  return readStoredValue('smcub.theme', 'dark') === 'light' ? 'light' : 'dark';
+}
+
+function readStoredValue(key: string, fallback: string): string {
+  try { return window.localStorage.getItem(key) || fallback; } catch { return fallback; }
+}
+
+function isValidTimezone(value: string): boolean {
+  if (!value || value === 'local') return value === 'local';
   try {
-    return window.localStorage.getItem('smcub.theme') === 'light' ? 'light' : 'dark';
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+    return true;
   } catch {
-    return 'dark';
+    return false;
   }
 }
 

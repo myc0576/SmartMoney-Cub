@@ -213,6 +213,210 @@
 .today-head { line-height: 1.8; }
 .today-line strong { font-weight: 600; }
 
+/* Tabular numerals across Overview KPI cards so figures align cleanly. */
+.kpi-value { font-variant-numeric: tabular-nums; }
+
+/* Prevent wide tables inside .scroll-x from pushing grid-child panels past the viewport. */
+.grid > .panel,
+.grid > section {
+  min-width: 0;
+}
+
+/* Symmetrical 3x2 KPI grid when the 400px review assistant is docked open. */
+.content.with-assistant .grid.kpi {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1180px) {
+  .content.with-assistant .grid.kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Single-line Assistant header and right-edge overflow protection for message bubbles. */
+.assistant {
+  min-width: 0;
+  overflow: hidden;
+}
+.assistant-head {
+  padding: 8px 10px;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.assistant-head-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.assistant-live-dot {
+  flex: none;
+}
+.assistant-title {
+  font-size: 12px;
+  white-space: nowrap;
+  flex: none;
+}
+.assistant-session-name {
+  font-size: 11px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.assistant-head-btn {
+  padding: 4px 8px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  flex: none;
+}
+.assistant-more-wrap {
+  position: relative;
+  flex: none;
+}
+.assistant-more-trigger {
+  min-width: 28px;
+  padding: 4px 6px;
+  text-align: center;
+}
+.assistant-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 45;
+  min-width: 116px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px var(--color-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.assistant-more-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text);
+}
+.assistant-more-item:hover {
+  background: var(--panel-2);
+}
+
+.assistant-body {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.assistant-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.bubble {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.bubble.assistant {
+  align-self: stretch;
+  white-space: normal;
+}
+.bubble.assistant ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  min-width: 0;
+}
+.bubble.assistant li,
+.bubble.assistant div,
+.bubble.assistant span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.bubble.assistant code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* First-run onboarding guide shown only when the local ledger is completely empty. */
+.onboarding-card {
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 9%, var(--panel)) 0%,
+    var(--panel) 65%
+  );
+}
+.onboarding-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.onboarding-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.onboarding-body {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.onboarding-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.onboarding-steps li {
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+/* Post-import next-step confirmation bar */
+.import-success-bar {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-status-success) 45%, var(--border));
+  background: var(--color-status-success-fill);
+  color: var(--color-status-success-content);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
 /* The model seat, collapsed to one line. It opens into the picker rather than
    occupying the composer: the panel asks what to review, not which model to
    review it with. */

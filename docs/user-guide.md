@@ -15,6 +15,13 @@ smcub replay-evidence-pack tmp/toy-evidence-pack
 
 This runs a deterministic offline toy capture, builds the D1 outcome and evidence pack, and verifies the replay result. For the full Agent Loop, run `smcub loop --preset toy --agent-trigger "自进化"`, then inspect `loop_report.md` and `trace.jsonl`.
 
+## First-Run Workbench Path (GUI)
+
+1. Start the local workbench with `npx smartmoney-cub` (or `smcub workbench`) and open `http://127.0.0.1:8787`.
+2. From the **Overview** first-run guide, click **Import trades / Try toy sample**.
+3. Drop a local broker statement (CSV/TSV/PDF/screenshot) or click **Load offline toy sample (4 round-trips)** to populate the editable review table with synthetic symbols (`TOY.CUB`, `TOY.ALPHA`, `TOY.BETA`).
+4. Verify each row, click **Confirm import**, and jump straight to **Overview** or **Insights** to inspect KPIs, cumulative P&L, and evidence-backed pattern candidates.
+
 ## Normal Inputs
 
 The public repo ships toy examples only. In private local work, the workflow can structure:

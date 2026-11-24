@@ -556,6 +556,8 @@ export interface TraderSummary extends SafetyEnvelope {
   open_position_count: number;
   sample_note: string;
   equity_curve: { exit_time: string; symbol: string; net_pnl: number; cumulative_pnl: number }[];
+  expectancy: number;
+  fee_share: string;
   /**
    * The ledger counts the summary route returns beside the metrics. The api
    * adapter lifts them onto the metrics it hands back, so the shell can report
@@ -633,6 +635,10 @@ export interface TraderCalendar extends SafetyEnvelope {
   year: number;
   month: number;
   days: TraderCalendarDay[];
+  best_day: TraderCalendarDay | null;
+  worst_day: TraderCalendarDay | null;
+  profitable_day_count: number;
+  loss_day_count: number;
 }
 
 export interface Playbook {

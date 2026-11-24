@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220" />
+      <stop offset="55%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#131c31" />
+    </linearGradient>
+    <linearGradient id="header-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#172236" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="glow-blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
+    </linearGradient>
+    <pattern id="subtle-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="1" stroke-opacity="0.55" />
+    </pattern>
+  </defs>
+
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; }
+    .mono { font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .brand { font-size: 22px; font-weight: 700; fill: #f8fafc; letter-spacing: -0.01em; }
+    .brand-sub { font-size: 12px; fill: #94a3b8; }
+    .pill-text { font-size: 12px; font-weight: 600; fill: #cbd5e1; letter-spacing: 0.04em; }
+    .hero-title { font-size: 42px; font-weight: 700; fill: #f8fafc; letter-spacing: -0.02em; }
+    .hero-zh { font-size: 21px; font-weight: 600; fill: #e2e8f0; }
+    .hero-sub { font-size: 15px; fill: #94a3b8; }
+    .card-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+    .card-title { font-size: 19px; font-weight: 700; fill: #f8fafc; }
+    .card-body { font-size: 13.5px; fill: #cbd5e1; }
+    .card-zh { font-size: 12.5px; fill: #94a3b8; }
+    .flow-label { font-size: 13px; font-weight: 600; fill: #e2e8f0; }
+    .flow-sub { font-size: 11px; fill: #94a3b8; }
+    .term-cmd { font-size: 13px; fill: #e2e8f0; }
+    .term-prompt { font-size: 13px; fill: #3b82f6; font-weight: 700; }
+    .term-ok { font-size: 12px; fill: #10b981; font-weight: 600; }
+    .term-muted { font-size: 11.5px; fill: #64748b; }
+    .safety { font-size: 13px; font-weight: 700; fill: #f43f5e; letter-spacing: 0.02em; }
+    .meta { font-size: 12px; fill: #64748b; }
+  </style>
+
+  <!-- Base Canvas -->
+  <rect width="1280" height="640" fill="url(#bg-grad)" />
+  <rect width="1280" height="640" fill="url(#subtle-grid)" />
+  <circle cx="220" cy="180" r="280" fill="url(#glow-blue)" />
+  <rect x="1" y="1" width="1278" height="638" fill="none" stroke="#334155" stroke-width="2" />
+
+  <!-- Top Header Strip -->
+  <rect x="2" y="2" width="1276" height="78" fill="url(#header-grad)" />
+  <line x1="2" y1="80" x2="1278" y2="80" stroke="#334155" stroke-width="1" />
+
+  <!-- Brand Mark on crisp light backing plate -->
+  <rect x="36" y="18" width="44" height="44" rx="10" fill="#f6f7f9" stroke="#cbd5e1" stroke-width="1" />
+  <g transform="translate(44, 25) scale(0.28)">
+    <!-- Top emerald arc segments -->
+    <path d="M 8 42 C 8 20 24 10 46 10 L 46 24 C 31 24 22 30 22 42 Z" fill="#527467" />
+    <path d="M 92 42 C 92 20 76 10 54 10 L 54 24 C 69 24 78 30 78 42 Z" fill="#527467" />
+    <!-- Lower charcoal frame & central T -->
+    <path d="M 8 54 C 8 76 24 88 42 88 L 42 74 C 30 74 22 66 22 54 Z" fill="#35383c" />
+    <path d="M 92 54 C 92 76 76 88 58 88 L 58 74 C 70 74 78 66 78 54 Z" fill="#35383c" />
+    <path d="M 27 42 L 73 42 L 73 54 L 56 54 L 56 108 L 44 100 L 44 54 L 27 54 Z" fill="#35383c" />
+  </g>
+
+  <text x="94" y="39" class="sans brand">SmartMoney-Cub</text>
+  <text x="94" y="58" class="mono brand-sub">smartmoney-cub-harness · v1.1.0</text>
+
+  <!-- Top-right Pill -->
+  <rect x="920" y="24" width="324" height="32" rx="16" fill="#0f172a" stroke="#334155" stroke-width="1.5" />
+  <circle cx="940" cy="40" r="4.5" fill="#10b981" />
+  <text x="954" y="45" class="mono pill-text">LOCAL-FIRST · READ-ONLY · MIT</text>
+
+  <!-- Hero Section -->
+  <text x="36" y="144" class="sans hero-title">Audit Every Trade. Evolve Rules Safely.</text>
+  <text x="36" y="182" class="sans hero-zh">聪明资金幼年体 · 陪你复盘，不替你下单</text>
+  <text x="36" y="216" class="sans hero-sub">Local-first trading journal &amp; review harness for subjective traders —</text>
+  <text x="36" y="238" class="sans hero-sub">anti-future-leakage provenance, D1/D3 outcomes, and human-gated rule evolution.</text>
+
+  <!-- Right-side Terminal Quickstart Card -->
+  <rect x="854" y="106" width="390" height="148" rx="10" fill="#111827" stroke="#334155" stroke-width="1.5" />
+  <rect x="854" y="106" width="390" height="30" rx="10" fill="#1e293b" />
+  <rect x="854" y="124" width="390" height="12" fill="#1e293b" />
+  <circle cx="874" cy="121" r="4.5" fill="#f43f5e" opacity="0.85" />
+  <circle cx="890" cy="121" r="4.5" fill="#f59e0b" opacity="0.85" />
+  <circle cx="906" cy="121" r="4.5" fill="#10b981" opacity="0.85" />
+  <text x="926" y="125" class="mono term-muted">30-second offline start</text>
+
+  <text x="872" y="162" class="mono term-prompt">$</text>
+  <text x="888" y="162" class="mono term-cmd">npx smartmoney-cub</text>
+  <text x="872" y="188" class="mono term-prompt">$</text>
+  <text x="888" y="188" class="mono term-cmd">smcub doctor</text>
+  <text x="872" y="214" class="mono term-ok">✓ READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
+  <text x="872" y="236" class="mono term-muted">No broker keys · No telemetry · Toy data ready</text>
+
+  <!-- 3 Pillar Cards -->
+  <!-- Card 1: Blue -->
+  <rect x="36" y="280" width="388" height="162" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+  <rect x="36" y="280" width="388" height="4" rx="2" fill="#3b82f6" />
+  <text x="58" y="312" class="mono card-kicker" fill="#60a5fa">01 · READ-ONLY BY DESIGN</text>
+  <text x="58" y="342" class="sans card-title">Local-First &amp; Redacted</text>
+  <text x="58" y="370" class="sans card-body">Parses CSV, PDF &amp; screenshots locally.</text>
+  <text x="58" y="391" class="sans card-body">Zero order placement, zero broker control.</text>
+  <text x="58" y="422" class="sans card-zh">本机解析台账 · 外发默认脱敏 · 永不触碰下单</text>
+
+  <!-- Card 2: Emerald -->
+  <rect x="446" y="280" width="388" height="162" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+  <rect x="446" y="280" width="388" height="4" rx="2" fill="#10b981" />
+  <text x="468" y="312" class="mono card-kicker" fill="#34d399">02 · ANTI-FUTURE-LEAKAGE</text>
+  <text x="468" y="342" class="sans card-title">Strict Provenance Gate</text>
+  <text x="468" y="370" class="sans card-body">Enforces available_at ≤ decision_time,</text>
+  <text x="468" y="391" class="sans card-body">invalidation, time stop &amp; sealed replay.</text>
+  <text x="468" y="422" class="sans card-zh">反未来函数门禁 · 失效条件留痕 · 确定性回放</text>
+
+  <!-- Card 3: Amber -->
+  <rect x="856" y="280" width="388" height="162" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+  <rect x="856" y="280" width="388" height="4" rx="2" fill="#f59e0b" />
+  <text x="878" y="312" class="mono card-kicker" fill="#fbbf24">03 · HUMAN-IN-THE-LOOP</text>
+  <text x="878" y="342" class="sans card-title">Challenger → Champion</text>
+  <text x="878" y="370" class="sans card-body">D1/D3 outcomes &amp; AI review propose rules;</text>
+  <text x="878" y="391" class="sans card-body">written human approval promotes champions.</text>
+  <text x="878" y="422" class="sans card-zh">D1/D3 延迟复盘 · 候选规则需人工确认晋级</text>
+
+  <!-- Pipeline Flow Bar -->
+  <rect x="36" y="468" width="1208" height="86" rx="10" fill="#162033" stroke="#334155" stroke-width="1.5" />
+
+  <!-- Node 1 -->
+  <rect x="58" y="484" width="196" height="54" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5" />
+  <text x="156" y="508" text-anchor="middle" class="sans flow-label">1. Capture &amp; Import</text>
+  <text x="156" y="526" text-anchor="middle" class="sans flow-sub">交割单 / 截图 / CLI Run</text>
+
+  <path d="M 262 511 L 288 511 M 282 505 L 289 511 L 282 517" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Node 2 -->
+  <rect x="298" y="484" width="196" height="54" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5" />
+  <text x="396" y="508" text-anchor="middle" class="sans flow-label">2. Provenance Check</text>
+  <text x="396" y="526" text-anchor="middle" class="sans flow-sub">available_at ≤ decision</text>
+
+  <path d="M 502 511 L 528 511 M 522 505 L 529 511 L 522 517" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Node 3 -->
+  <rect x="538" y="484" width="196" height="54" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="1.5" />
+  <text x="636" y="508" text-anchor="middle" class="sans flow-label">3. D1/D3 Outcome</text>
+  <text x="636" y="526" text-anchor="middle" class="sans flow-sub">延迟验证与确定性回放</text>
+
+  <path d="M 742 511 L 768 511 M 762 505 L 769 511 L 762 517" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Node 4 -->
+  <rect x="778" y="484" width="204" height="54" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5" />
+  <text x="880" y="508" text-anchor="middle" class="sans flow-label">4. Challenger Rule</text>
+  <text x="880" y="526" text-anchor="middle" class="sans flow-sub">AI 脱敏复盘提出候选规则</text>
+
+  <path d="M 990 511 L 1016 511 M 1010 505 L 1017 511 L 1010 517" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Node 5 -->
+  <rect x="1026" y="484" width="196" height="54" rx="8" fill="#1e293b" stroke="#f43f5e" stroke-width="1.5" />
+  <text x="1124" y="508" text-anchor="middle" class="sans flow-label">5. Human Gate</text>
+  <text x="1124" y="526" text-anchor="middle" class="sans flow-sub">人工确认后晋级 Champion</text>
+
+  <!-- Bottom Safety Strip (matching benchmark-hero-1200x630.svg) -->
+  <line x1="2" y1="582" x2="1278" y2="582" stroke="#334155" stroke-width="1" />
+  <rect x="2" y="583" width="1276" height="55" fill="#0b1220" />
+  <text x="36" y="616" class="mono safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
+  <text x="1244" y="616" text-anchor="end" class="mono meta">github.com/myc0576/SmartMoney-Cub · Not financial advice · Offline toy data ready</text>
+</svg>

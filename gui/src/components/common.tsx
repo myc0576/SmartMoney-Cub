@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDateTime as formatLocaleDateTime, formatNumber as formatLocaleNumber, getLocale } from '../i18n';
+import { formatDateTime as formatLocaleDateTime, formatNumber as formatLocaleNumber, getLocale, useI18n } from '../i18n';
 
 export function formatMoney(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
@@ -69,7 +69,8 @@ export function Banner({ children }: { children: React.ReactNode }) {
 // A tiny inline sparkline. Charts stay dependency-free so the built interface
 // works in a fully offline install.
 export function Sparkline({ points, scheme }: { points: number[]; scheme: 'cn' | 'intl' }) {
-  if (points.length < 2) return <div className="muted">至少需要 2 笔平仓交易才能绘制曲线</div>;
+  const { t } = useI18n();
+  if (points.length < 2) return <div className="muted">{t('chart.sparklineEmpty')}</div>;
   const width = 620;
   const height = 120;
   const min = Math.min(...points, 0);
@@ -98,7 +99,8 @@ export function Bars({ rows, scheme, labelOf }: {
   scheme: 'cn' | 'intl';
   labelOf?: (row: { key: string; name?: string; is_st?: boolean }) => any;
 }) {
-  if (!rows.length) return <Empty text="暂无可归因的样本" />;
+  const { t } = useI18n();
+  if (!rows.length) return <Empty text={t('chart.barsEmpty')} />;
   const max = Math.max(...rows.map((row) => Math.abs(row.net_pnl)), 1);
   return (
     <div className="grid" style={{ gap: 8 }}>
@@ -129,7 +131,7 @@ export function Bars({ rows, scheme, labelOf }: {
             {formatMoney(row.net_pnl)}
           </div>
           <div className="muted" style={{ width: 56, textAlign: 'right' }}>
-            {row.trade_count} 笔
+            {t('chart.tradeUnit', { count: row.trade_count })}
           </div>
         </div>
         );

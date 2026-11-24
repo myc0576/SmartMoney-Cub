@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { trader } from '../api';
 import type { MistakeCluster, MistakeResponse, EdgeResponse, InsightEvidence, InsightObservation, InsightPatternsResponse, PatternCandidate, Playbook } from '../types';
-import { Banner, Empty, Panel, formatMoney, formatPct, toneOf } from '../components/common';
+import { Banner, Panel, formatMoney, formatPct, toneOf } from '../components/common';
 import { useI18n } from '../i18n';
 import { insightCopy, localizeInsightField, localizeInsightValue } from '../locales/insight';
 
@@ -21,11 +21,12 @@ import { insightCopy, localizeInsightField, localizeInsightValue } from '../loca
 
 type InsightTab = 'mistakes' | 'edges' | 'patterns';
 
-export function InsightView({ scheme, onOpenTrade }: {
+export function InsightView({ scheme, onOpenTrade, onGoToImport }: {
   scheme: 'cn' | 'intl';
   onOpenTrade?: (id: string) => void;
+  onGoToImport?: () => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const copy = insightCopy(locale);
   const tabs: { key: InsightTab; label: string; hint: string }[] = [
     { key: 'mistakes', label: copy.tabs.mistakes, hint: copy.hints.mistakes },
@@ -98,17 +99,17 @@ export function InsightView({ scheme, onOpenTrade }: {
       </div>
 
       {error ? <Banner>{copy.readFailed}: {error} <button onClick={() => setRevision(value => value + 1)}>{copy.retry}</button></Banner> : null}
-      {playbookError ? <Banner>交易计划读取失败：{playbookError} <button onClick={() => setRevision(value => value + 1)}>重试</button></Banner> : null}
-      {loading ? <div className="muted">{copy.scanning}</div> : null}
+      {playbookError ? <Banner>{t('insight.playbookError', { error: playbookError })} <button onClick={() => setRevision(value => value + 1)}>{copy.retry}</button></Banner> : null}
+      {loading ? <div className="muted" role="status">{copy.scanning}</div> : null}
 
       {!loading && !error && tab === 'mistakes' ? (
-        <MistakesPanel data={mistakes} scheme={scheme} onOpenTrade={onOpenTrade} copy={copy} />
+        <MistakesPanel data={mistakes} scheme={scheme} onOpenTrade={onOpenTrade} onGoToImport={onGoToImport} copy={copy} />
       ) : null}
       {!loading && !error && tab === 'edges' ? (
-        <EdgesPanel data={edges} scheme={scheme} copy={copy} />
+        <EdgesPanel data={edges} scheme={scheme} onGoToImport={onGoToImport} copy={copy} />
       ) : null}
       {!loading && !error && tab === 'patterns' ? (
-        <PatternsPanel data={patterns} playbooks={playbooks} onOpenTrade={onOpenTrade} copy={copy} onRefresh={async () => {
+        <PatternsPanel data={patterns} playbooks={playbooks} onOpenTrade={onOpenTrade} onGoToImport={onGoToImport} copy={copy} onRefresh={async () => {
           setPatterns(await trader.insightPatterns());
         }} />
       ) : null}
@@ -118,12 +119,14 @@ export function InsightView({ scheme, onOpenTrade }: {
   );
 }
 
-function MistakesPanel({ data, scheme, onOpenTrade, copy }: {
+function MistakesPanel({ data, scheme, onOpenTrade, onGoToImport, copy }: {
   data: MistakeResponse | null;
   scheme: 'cn' | 'intl';
   onOpenTrade?: (id: string) => void;
+  onGoToImport?: () => void;
   copy: ReturnType<typeof insightCopy>;
 }) {
+  const { t } = useI18n();
   const rows = data?.rows || [];
   const triggers = data?.triggers || [];
 
@@ -137,7 +140,7 @@ function MistakesPanel({ data, scheme, onOpenTrade, copy }: {
       */}
       {triggers.length ? (
         <div className="muted" style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.7 }}>
-          {copy.other} {triggers.length} checks:
+          {t('insight.checksRun', { count: triggers.length })}
           {triggers.map((trigger) => (
             <span key={trigger.kind} className="chip" style={{ marginLeft: 6 }} title={trigger.skipped_reason || ''}>
               {localizeInsightValue(trigger.label || trigger.kind, copy)} {trigger.matched > 0 ? trigger.matched + ' ' + copy.evidenceCount : copy.unknown}
@@ -147,7 +150,14 @@ function MistakesPanel({ data, scheme, onOpenTrade, copy }: {
       ) : null}
 
       {rows.length === 0 ? (
-        <Empty text={copy.noMistakes} />
+        <div className="empty">
+          <div>{copy.noMistakes}</div>
+          {onGoToImport ? (
+            <button className="ghost" style={{ marginTop: 10, fontSize: 11 }} onClick={onGoToImport}>
+              {t('insight.goImport')} →
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="grid" style={{ gap: 10 }}>
           {rows.map((row) => (
@@ -165,6 +175,7 @@ function MistakeCard({ row, scheme, onOpenTrade, copy }: {
   onOpenTrade?: (id: string) => void;
   copy: ReturnType<typeof insightCopy>;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // The round trips are what a click can open; the fills are the evidence. When
   // the route resolved no round trip for a fill, the fill id is still listed --
@@ -183,7 +194,7 @@ function MistakeCard({ row, scheme, onOpenTrade, copy }: {
       </div>
 
       <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-        {row.count} 笔 · 平均收益 <span className={toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</span>
+        {t('insight.avgReturnLine', { count: row.count })}<span className={toneOf(row.avg_return_pct, scheme)}>{formatPct(row.avg_return_pct)}</span>
         {' · '}{row.first_at} → {row.last_at}
       </div>
 
@@ -228,7 +239,7 @@ function MistakeCard({ row, scheme, onOpenTrade, copy }: {
         ) : null}
         {openable.length === 0 ? (
           <span className="muted" style={{ fontSize: 11 }}>
-            {fillCount} {copy.evidenceCount}; no linked trade detail is available.
+            {t('insight.noLinkedDetail', { count: fillCount, unit: copy.evidenceCount })}
           </span>
         ) : null}
       </div>
@@ -238,12 +249,20 @@ function MistakeCard({ row, scheme, onOpenTrade, copy }: {
   );
 }
 
-function EdgesPanel({ data, scheme, copy }: { data: EdgeResponse | null; scheme: 'cn' | 'intl'; copy: ReturnType<typeof insightCopy> }) {
+function EdgesPanel({ data, scheme, onGoToImport, copy }: { data: EdgeResponse | null; scheme: 'cn' | 'intl'; onGoToImport?: () => void; copy: ReturnType<typeof insightCopy> }) {
+  const { t } = useI18n();
   const rows = data?.rows || [];
   return (
     <Panel title={copy.tabs.edges + ' (' + rows.length + ')'}>
       {rows.length === 0 ? (
-        <Empty text={copy.noEdges} />
+        <div className="empty">
+          <div>{copy.noEdges}</div>
+          {onGoToImport ? (
+            <button className="ghost" style={{ marginTop: 10, fontSize: 11 }} onClick={onGoToImport}>
+              {t('insight.goImport')} →
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="scroll-x">
           <table>
@@ -284,7 +303,8 @@ function EdgesPanel({ data, scheme, copy }: { data: EdgeResponse | null; scheme:
   );
 }
 
-function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade, copy }: { data: InsightPatternsResponse | null; playbooks: Playbook[]; onRefresh: () => Promise<void>; onOpenTrade?: (id: string) => void; copy: ReturnType<typeof insightCopy> }) {
+function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade, onGoToImport, copy }: { data: InsightPatternsResponse | null; playbooks: Playbook[]; onRefresh: () => Promise<void>; onOpenTrade?: (id: string) => void; onGoToImport?: () => void; copy: ReturnType<typeof insightCopy> }) {
+  const { t } = useI18n();
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -323,7 +343,16 @@ function PatternsPanel({ data, playbooks, onRefresh, onOpenTrade, copy }: { data
         {data?.profile?.limitations?.length ? <ul className="muted" style={{ fontSize: 11, margin: '8px 0 0 16px' }}>{data.profile.limitations.map((item) => <li key={item}>{item}</li>)}</ul> : null}
       </Panel>
       <Panel title={copy.tabs.patterns + ' (' + candidates.length + ')'}>
-        {candidates.length === 0 ? <Empty text={copy.noPatterns} /> : (
+        {candidates.length === 0 ? (
+          <div className="empty">
+            <div>{copy.noPatterns}</div>
+            {onGoToImport ? (
+              <button className="ghost" style={{ marginTop: 10, fontSize: 11 }} onClick={onGoToImport}>
+                {t('insight.goImport')} →
+              </button>
+            ) : null}
+          </div>
+        ) : (
           <div className="grid" style={{ gap: 10 }}>
             {candidates.slice(page * 50, (page + 1) * 50).map((candidate) => (
               <div className="insight-card" key={candidate.pattern_id}>

@@ -285,11 +285,33 @@ export const test = base.extend<CustomFixtures>({
 
   mockWorkbenchApis: async ({}, use) => {
     await use(async (page: Page) => {
+      const preferenceState = {
+        locale: 'zh-CN',
+        timezone: 'local',
+        currency: 'original',
+        number_format: 'auto',
+        color_scheme: 'cn',
+        theme: 'dark',
+      };
       // 拦截所有 /api 请求并提供完整的符合前端契约的 Mock 数据
       await page.route('**/api/**', async (route) => {
         const url = route.request().url();
 
-        if (url.includes('/api/trader/meta')) {
+        if (url.includes('/api/preferences')) {
+          if (route.request().method() === 'POST') {
+            Object.assign(preferenceState, route.request().postDataJSON() || {});
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              status: 'ok',
+              preferences: preferenceState,
+              missing_fields: [],
+              safety: 'READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE',
+            }),
+          });
+        } else if (url.includes('/api/trader/meta')) {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { api, readFileAsBase64, trader } from '../api';
 import type { Extraction, UploadResult } from '../types';
 import { Banner, Panel } from '../components/common';
+import { useI18n } from '../i18n';
 import { useLegacyI18n } from '../locales/legacy';
 
 // Import flow: pick a file, let the local engine read it, correct every field,
@@ -24,14 +25,36 @@ const EMPTY_ROW: DraftRow = {
   trade_date: '', trade_time: '', symbol: '', name: '', side: 'BUY', price: '', quantity: '', fee: '', thesis: '',
 };
 
-export function ImportView({ onImported }: { onImported: () => void }) {
+/** Strictly offline synthetic fills for first-run walkthroughs (no real tickers). */
+const TOY_SAMPLE_ROWS: DraftRow[] = [
+  { trade_date: '2026-06-01', trade_time: '09:42:00', symbol: 'TOY.CUB', name: 'Toy Cub A', side: 'BUY', price: '10.00', quantity: '1000', fee: '5.00', thesis: 'First pullback to opening range; invalidation 9.40' },
+  { trade_date: '2026-06-02', trade_time: '10:15:00', symbol: 'TOY.CUB', name: 'Toy Cub A', side: 'SELL', price: '10.85', quantity: '1000', fee: '5.40', thesis: 'D1 target reached; scaled out cleanly' },
+  { trade_date: '2026-06-03', trade_time: '13:20:00', symbol: 'TOY.ALPHA', name: 'Toy Alpha', side: 'BUY', price: '22.40', quantity: '500', fee: '5.60', thesis: 'Breakout probe; invalidation 21.60' },
+  { trade_date: '2026-06-04', trade_time: '14:40:00', symbol: 'TOY.ALPHA', name: 'Toy Alpha', side: 'SELL', price: '21.30', quantity: '500', fee: '5.30', thesis: 'Exited past invalidation; review chase timing' },
+  { trade_date: '2026-06-05', trade_time: '09:50:00', symbol: 'TOY.CUB', name: 'Toy Cub A', side: 'BUY', price: '11.10', quantity: '1000', fee: '5.55', thesis: 'Leader re-test; invalidation 10.60' },
+  { trade_date: '2026-06-08', trade_time: '11:05:00', symbol: 'TOY.CUB', name: 'Toy Cub A', side: 'SELL', price: '11.90', quantity: '1000', fee: '5.95', thesis: 'Followed plan into volume expansion' },
+  { trade_date: '2026-06-09', trade_time: '10:05:00', symbol: 'TOY.BETA', name: 'Toy Beta', side: 'BUY', price: '15.20', quantity: '800', fee: '6.08', thesis: 'Divergence reversal setup; invalidation 14.70' },
+  { trade_date: '2026-06-10', trade_time: '14:10:00', symbol: 'TOY.BETA', name: 'Toy Beta', side: 'SELL', price: '16.05', quantity: '800', fee: '6.42', thesis: 'D1 momentum follow-through' },
+];
+
+export function ImportView({
+  onImported,
+  onGoToOverview,
+  onGoToInsight,
+}: {
+  onImported: () => void;
+  onGoToOverview?: () => void;
+  onGoToInsight?: () => void;
+}) {
   const { t } = useLegacyI18n();
+  const { t: shellT } = useI18n();
   const [upload, setUpload] = useState<UploadResult | null>(null);
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [status, setStatus] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [importedOnce, setImportedOnce] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const applyExtraction = (result: UploadResult) => {
@@ -51,10 +74,19 @@ export function ImportView({ onImported }: { onImported: () => void }) {
     );
   };
 
+  const loadToySample = () => {
+    setUpload(null);
+    setError('');
+    setImportedOnce(false);
+    setRows(TOY_SAMPLE_ROWS.map((item) => ({ ...item })));
+    setStatus(shellT('import.toy.loaded', { count: TOY_SAMPLE_ROWS.length }));
+  };
+
   const handleFile = useCallback(async (file: File) => {
     setBusy(true);
     setError('');
     setStatus('');
+    setImportedOnce(false);
     try {
       const content_base64 = await readFileAsBase64(file);
       const result = await api.upload({ file_name: file.name, media_type: file.type, content_base64 });
@@ -65,10 +97,10 @@ export function ImportView({ onImported }: { onImported: () => void }) {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [t]);
 
   const submit = async () => {
-    if (!upload) return;
+    if (rows.length === 0) return;
     setBusy(true);
     setError('');
     try {
@@ -93,6 +125,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
       setStatus(t('import.written', { inserted: result.inserted_count, updated: result.updated_count }));
       setUpload(null);
       setRows([]);
+      setImportedOnce(true);
       onImported();
     } catch (commitError) {
       setError(commitError instanceof Error ? commitError.message : String(commitError));
@@ -120,6 +153,7 @@ export function ImportView({ onImported }: { onImported: () => void }) {
         }],
       });
       setStatus(t('import.done'));
+      setImportedOnce(true);
       onImported();
       return true;
     } catch (manualError) {
@@ -132,7 +166,14 @@ export function ImportView({ onImported }: { onImported: () => void }) {
 
   return (
     <div className="grid" style={{ gap: 14 }}>
-      <Panel title={t('import.title')}>
+      <Panel
+        title={t('import.title')}
+        actions={(
+          <button className="ghost" onClick={loadToySample} disabled={busy} data-testid="load-toy-sample">
+            {shellT('import.toy.cta')}
+          </button>
+        )}
+      >
         <div
           className={'drop' + (dragging ? ' over' : '')}
           onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -162,8 +203,24 @@ export function ImportView({ onImported }: { onImported: () => void }) {
             }}
           />
         </div>
-        {status ? <div className="muted" style={{ marginTop: 10 }}>{status}</div> : null}
-        {error ? <div className="banner-error" style={{ marginTop: 10 }}><Banner>{error}</Banner></div> : null}
+        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          {shellT('import.toy.hint')}
+        </div>
+        {status ? <div className="status-line ok" role="status" style={{ marginTop: 10 }}>{status}</div> : null}
+        {importedOnce && (onGoToOverview || onGoToInsight) ? (
+          <div className="import-success-bar" data-testid="import-next-steps">
+            <span>{shellT('import.next.title')}</span>
+            <div className="row">
+              {onGoToOverview ? (
+                <button className="primary" onClick={onGoToOverview}>{shellT('import.next.overview')}</button>
+              ) : null}
+              {onGoToInsight ? (
+                <button className="ghost" onClick={onGoToInsight}>{shellT('import.next.insight')}</button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {error ? <div className="banner-error" role="alert" style={{ marginTop: 10 }}><Banner>{error}</Banner></div> : null}
         {upload && upload.extraction.status === 'engine_missing' ? (
           <div style={{ marginTop: 10 }}>
             <Banner>
@@ -194,6 +251,7 @@ function ExtractionTable({ rows, extraction, onChange }: {
   onChange: (rows: DraftRow[]) => void;
 }) {
   const { t } = useLegacyI18n();
+  const { t: shellT } = useI18n();
   const update = (index: number, key: keyof DraftRow, value: string) => {
     onChange(rows.map((row, position) => (position === index ? { ...row, [key]: value } : row)));
   };
@@ -213,9 +271,9 @@ function ExtractionTable({ rows, extraction, onChange }: {
             const lowest = Math.min(...Object.values(confidence).concat(1));
             return (
               <tr key={index}>
-                <td><input style={{ width: 110 }} value={row.trade_date} onChange={(event) => update(index, 'trade_date', event.target.value)} /></td>
-                <td><input style={{ width: 88 }} value={row.trade_time} onChange={(event) => update(index, 'trade_time', event.target.value)} /></td>
-                <td><input style={{ width: 84 }} value={row.symbol} onChange={(event) => update(index, 'symbol', event.target.value)} /></td>
+                <td><input style={{ width: 108 }} value={row.trade_date} onChange={(event) => update(index, 'trade_date', event.target.value)} /></td>
+                <td><input style={{ width: 84 }} value={row.trade_time} onChange={(event) => update(index, 'trade_time', event.target.value)} /></td>
+                <td><input style={{ width: 96 }} value={row.symbol} onChange={(event) => update(index, 'symbol', event.target.value)} /></td>
                 <td><input style={{ width: 96 }} value={row.name} onChange={(event) => update(index, 'name', event.target.value)} /></td>
                 <td>
                   <select value={row.side} onChange={(event) => update(index, 'side', event.target.value)}>
@@ -227,9 +285,9 @@ function ExtractionTable({ rows, extraction, onChange }: {
                 <td><input style={{ width: 92 }} value={row.quantity} onChange={(event) => update(index, 'quantity', event.target.value)} /></td>
                 <td><input style={{ width: 72 }} value={row.fee} onChange={(event) => update(index, 'fee', event.target.value)} /></td>
                 <td>
-                  {lowest >= 0.85 ? <span className="badge ok">高</span>
-                    : lowest >= 0.6 ? <span className="badge warn">中</span>
-                      : <span className="badge error">低</span>}
+                  {lowest >= 0.85 ? <span className="badge ok">{shellT('import.confidence.high')}</span>
+                    : lowest >= 0.6 ? <span className="badge warn">{shellT('import.confidence.medium')}</span>
+                      : <span className="badge error">{shellT('import.confidence.low')}</span>}
                 </td>
                 <td>
                   <button className="ghost" onClick={() => onChange(rows.filter((_, position) => position !== index))}>{t('import.delete')}</button>
@@ -245,14 +303,19 @@ function ExtractionTable({ rows, extraction, onChange }: {
 
 function ManualEntry({ onSubmit, busy }: { onSubmit: (row: DraftRow) => Promise<boolean>; busy: boolean }) {
   const { t } = useLegacyI18n();
+  const { t: shellT } = useI18n();
   const [row, setRow] = useState<DraftRow>({ ...EMPTY_ROW });
-  const update = (key: keyof DraftRow, value: string) => setRow((prev) => ({ ...prev, [key]: value }));
+  const [validationError, setValidationError] = useState('');
+  const update = (key: keyof DraftRow, value: string) => {
+    setValidationError('');
+    setRow((prev) => ({ ...prev, [key]: value }));
+  };
   return (
     <Panel title={t('import.manual')}>
       <div className="row">
         <div className="field"><label>{t('import.date')}</label><input value={row.trade_date} onChange={(event) => update('trade_date', event.target.value)} placeholder="2026-09-01" /></div>
         <div className="field"><label>{t('import.time')}</label><input value={row.trade_time} onChange={(event) => update('trade_time', event.target.value)} placeholder="09:35:00" /></div>
-        <div className="field"><label>{t('import.code')}</label><input style={{ width: 90 }} value={row.symbol} onChange={(event) => update('symbol', event.target.value)} /></div>
+        <div className="field"><label>{t('import.code')}</label><input style={{ width: 90 }} value={row.symbol} onChange={(event) => update('symbol', event.target.value)} placeholder="TOY.CUB" /></div>
         <div className="field"><label>{t('playbook.name')}</label><input value={row.name} onChange={(event) => update('name', event.target.value)} /></div>
         <div className="field">
           <label>{t('import.direction')}</label>
@@ -260,19 +323,26 @@ function ManualEntry({ onSubmit, busy }: { onSubmit: (row: DraftRow) => Promise<
             <option value="BUY">{t('import.buy')}</option><option value="SELL">{t('import.sell')}</option>
           </select>
         </div>
-        <div className="field"><label>{t('import.price')}</label><input style={{ width: 90 }} value={row.price} onChange={(event) => update('price', event.target.value)} /></div>
-        <div className="field"><label>{t('import.quantity')}</label><input style={{ width: 100 }} value={row.quantity} onChange={(event) => update('quantity', event.target.value)} /></div>
-        <div className="field"><label>{t('import.fee')}</label><input style={{ width: 80 }} value={row.fee} onChange={(event) => update('fee', event.target.value)} /></div>
+        <div className="field"><label>{t('import.price')}</label><input style={{ width: 90 }} value={row.price} onChange={(event) => update('price', event.target.value)} placeholder="10.00" /></div>
+        <div className="field"><label>{t('import.quantity')}</label><input style={{ width: 100 }} value={row.quantity} onChange={(event) => update('quantity', event.target.value)} placeholder="1000" /></div>
+        <div className="field"><label>{t('import.fee')}</label><input style={{ width: 80 }} value={row.fee} onChange={(event) => update('fee', event.target.value)} placeholder="5.00" /></div>
         <button
           className="primary"
           disabled={busy}
           onClick={async () => {
+            const price = Number(row.price);
+            const qty = Number(row.quantity);
+            if (!row.trade_date.trim() || !row.symbol.trim() || !Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || qty <= 0) {
+              setValidationError(shellT('import.validation.required'));
+              return;
+            }
             if (await onSubmit(row)) setRow({ ...EMPTY_ROW });
           }}
         >
           {t('import.reentry')}
         </button>
       </div>
+      {validationError ? <div className="notice" role="alert" style={{ marginTop: 10 }}>{validationError}</div> : null}
     </Panel>
   );
 }

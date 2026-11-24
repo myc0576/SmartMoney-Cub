@@ -1,63 +1,70 @@
 # smartmoney-cub-harness
 
-<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="72" height="72" align="right" />
+<img src="assets/smartmoney-cub-mark.png" alt="SmartMoney-Cub" width="64" height="64" align="right" />
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest-informational)](tests/)
 [![Read-only](https://img.shields.io/badge/mode-read--only-brightgreen)](docs/safety.md)
-[![No financial advice](https://img.shields.io/badge/no-financial%20advice-critical)](docs/safety.md)
-[![Human-in-the-loop](https://img.shields.io/badge/human--in--the--loop-required-blueviolet)](docs/harness-contract.md)
-[![Agent-ready](https://img.shields.io/badge/agent--ready-offline%20artifacts-success)](docs/agent-integration.md)
-[![Official API gateway](https://img.shields.io/badge/official%20API%20gateway-alphatech.net.cn-C96F4A)](https://alphatech.net.cn/)
+[![Local-first](https://img.shields.io/badge/local--first-no%20telemetry-success)](docs/privacy.md)
+[![Release](https://img.shields.io/badge/release-v1.1.0-informational)](docs/versioning.md)
 
-[![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
+[简体中文](README.zh-CN.md) · `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
-![SmartMoney-Cub bilingual cover](assets/smartmoney-cub-harness-cover.png)
+**For subjective traders tired of scattered fills and hindsight notes:** turn past trades into an auditable local review journal and human-gated rule loop.
 
-`smartmoney-cub-harness` is a **local-first, agent-agnostic trading journal and review harness**: read-only over markets and execution, writable over your own journal. It turns an external caller's offline run into portable, reviewable artifacts without taking trading authority.
+- **Read-only by design** — Local-first SQLite/Markdown journal; zero broker automation, zero order placement or cancellation, and mandatory local parsing with default PII/size redaction before any opt-in model call.
+- **Anti-future-leakage provenance** — Every non-silent observation requires invalidation, time stop, give-up conditions, data source, `available_at <= decision_time`, and data quality; deterministic replay rejects tampered or leaky evidence packs.
+- **Challenger → Champion human gate** — Delayed D1/D3 outcomes and AI review only propose challenger rule candidates; promoting any rule to champion requires an explicit written human confirmation note.
 
-External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate.
+![SmartMoney-Cub Review Workbench Overview (Toy Offline Data)](assets/screenshots/workbench-overview.png)
+*Local review workbench running on synthetic toy data (`TOY.CUB` / `TOY.ALPHA` / `TOY.BETA`): Today focus cards, KPI strip, cumulative P&L curve, and docked read-only review assistant.*
 
-![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+### Copy-Paste Quickstart
 
-### Jev Reasoning Layer & Four-Track Financial Benchmark
-
-SmartMoney-Cub supports Jev ([TypeSafe](https://typesafe.ai/) | [OpenRouter](https://openrouter.ai/typesafe/jev)) as an optional typed-judgment layer with two pluggable backends: TypeSafe direct and OpenRouter. Jev evaluates only structured `noul`, `choice`, and `score` judgments, while all arithmetic, date comparisons, and strict temporal boundary validation (`available_at <= decision_time`) remain enforced in deterministic Python code.
-
-The repository ships `finance-jev-v1`, a frozen offline evaluation suite containing 240 cases across four tracks (`trading-review`, `financial-filings`, `industry-events`, `macro-policy`). Following full answerability auditing and the elimination of input label leakage, cases present realistic evidence narratives (post-trade logs, disclosure excerpts, wire dispatches, central bank communiques) evaluated against strictly typed questions without answer leakage. In the published reference run ([assets/benchmark/run.json](assets/benchmark/run.json)), the deterministic rule baseline achieves **83.33%** overall accuracy (95% Wilson confidence interval [80.92%, 85.49%]) and a macro F1 of **0.7792** across all 240 cases (1,020 evaluated items). The live TypeSafe Jev backend (`typesafe_direct`, evaluated against the real API resolving to model `jev-1.13.0`) achieves **78.43%** overall accuracy (95% Wilson confidence interval [75.80%, 80.85%]) and a macro F1 of **0.7319** with a median latency of 1034 ms and superior probabilistic calibration (ECE of 0.1464 vs 0.1667). On `financial-filings`, Jev achieves **77.00%** accuracy (F1: 0.6990) outperforming the baseline (73.33%), while achieving **93.33%** accuracy (F1: 0.9215) on `industry-events` and **74.44%** (F1: 0.7148) on `macro-policy`. These figures reflect empirical performance on this frozen toy suite and do not imply generalization to production market regimes. The OpenRouter backend (`openrouter_jev`) remains reported as `not_run` due to unconfigured credentials.
-
-`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
-
-### 30-Second Quickstart
-
-The latest release is `v1.1.0`. GitHub Releases provides the matching wheel, source archive, and npm launcher package. The Python package is not on PyPI.
+Latest release: `v1.1.0` (wheel, source archive, and npm launcher via GitHub Releases; not on PyPI).
 
 ```bash
-# 1. Install harness and dev dependencies
+# Option A: Launch the local review workbench (no Python setup required)
+npx smartmoney-cub
+# Open http://127.0.0.1:8787 -> Import -> "Load offline toy sample (4 round-trips)"
+
+# Option B: Run the 30-second deterministic offline CLI loop (toy data)
+git clone https://github.com/myc0576/SmartMoney-Cub.git && cd SmartMoney-Cub
 pip install -e ".[dev]"
-
-# 2. Verify environment and strict read-only safety boundary
 smcub doctor
-
-# 3. Deterministic review loop (capture, evaluate, package, replay)
 smcub capture-run --mode after-close --preset toy --sandbox --decision-time "2026-06-01T15:31:00+08:00"
 smcub build-outcome tmp/sandbox/20260601/20260601_153100-after-close --horizon d1 --price-source smartmoney_cub_harness:data/sample_prices.json
 smcub build-evidence-pack tmp/toy-evidence-pack --sample tmp/sandbox/20260601/20260601_153100-after-close --rule-candidate examples/toy_strategy/sample_rule_candidate.json --horizon d1
 smcub replay-evidence-pack tmp/toy-evidence-pack
 ```
 
+---
+
+## Workbench Tour (Toy Offline Data)
+
+| Local Import & Extraction Review | Evidence-Backed Pattern Insights |
+| --- | --- |
+| ![Local Import and Extraction Review](assets/screenshots/workbench-import-review.png) | ![Pattern Profile and Observation Conditions](assets/screenshots/workbench-insights.png) |
+| *Broker CSV/PDF/screenshots are parsed locally—or test with the built-in offline toy sample—and verified row by row before writing to your local SQLite ledger.* | *Every inferred pattern carries explicit invalidation, time stop, give-up conditions, data source, `available_at`, and human confirm/reject controls.* |
 
 It has **no embedded LLM** in its core, **no broker connection**, and
-**no automatic trading**: the control plane runs entirely offline. The review assistant
+**no automatic trading**: the control plane runs entirely offline. External Agent or CLI caller → Run Envelope → frozen Benchmark/Evidence Pack → deterministic replay → explicit human promotion gate. The review assistant
 is a separate, opt-in surface that calls the provider you configure and sends only
 redacted structured fields. The project does not place, cancel, or execute trades;
 select stocks; mutate accounts; run a background autonomous trading Agent; or
 automatically mutate core rules.
 
-[简体中文](README.zh-CN.md)
+## Jev Reasoning Layer & Four-Track Financial Benchmark
+
+![Finance-JEV Benchmark Hero](assets/benchmark/benchmark-hero-1200x630.png)
+
+SmartMoney-Cub supports Jev ([TypeSafe](https://typesafe.ai/) | [OpenRouter](https://openrouter.ai/typesafe/jev)) as an optional typed-judgment layer with two pluggable backends: TypeSafe direct and OpenRouter. Jev evaluates only structured `noul`, `choice`, and `score` judgments, while all arithmetic, date comparisons, and strict temporal boundary validation (`available_at <= decision_time`) remain enforced in deterministic Python code.
+
+The repository ships `finance-jev-v1`, an **early-stage synthetic offline benchmark** containing 240 frozen cases across four tracks (`trading-review`, `financial-filings`, `industry-events`, `macro-policy`) and 1,020 evaluated items per system. The reference run ([assets/benchmark/run.json](assets/benchmark/run.json), completed 2026-09-29 from a resumed checkpoint) records the deterministic baseline at **83.33%** accuracy, **[81.57%, 85.10%]** 95% CI and macro F1 **0.7792**; TypeSafe **`jev-1.13.0`** records **78.43%** accuracy, **[76.08%, 80.69%]** 95% CI and macro F1 **0.7350**. Both intervals use case-level, track-stratified bootstrap (seed `20260927`, 10,000 resamples), carrying all questions from each sampled case. TypeSafe completed all **240 cases / 1,020 items**, with recorded usage of 218,438 input and 43,836 output tokens and usage-derived cost **$0.009175**, below the $4.00 cap; this is the cost recorded for successful evaluations, not a provider billing statement. The strict TypeSafe public-artifact gate passes. These toy-suite results do not establish generalization to real markets; the legacy item-level McNemar field is not a case-adjusted significance claim. OpenRouter was not evaluated. All benchmark behavior preserves `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`.
 
 ## Official API Gateway
+
+[![SmartMoney-Cub official API gateway](assets/smartmoney-cub-alphatech-banner.png)](https://alphatech.net.cn/)
 
 [alphatech.net.cn](https://alphatech.net.cn/) is this project's own hosted gateway for OpenAI-compatible model access. Point a provider at its endpoint when you prefer a managed relay over configuring an upstream yourself:
 

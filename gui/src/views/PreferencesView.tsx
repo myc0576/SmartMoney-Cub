@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { LOCALES, useI18n } from '../i18n';
 
 interface PreferencesViewProps {
+  timezone: string;
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+  onChangeTimezone: (timezone: string) => void;
   scheme: 'cn' | 'intl';
   theme: 'light' | 'dark';
   onToggleScheme: () => void;
@@ -23,17 +28,13 @@ const ORIGINAL_CURRENCY = [
 ];
 const DEVICE_TIME = ['设备时区', 'Device time zone', '裝置時區', '端末のタイムゾーン', '기기 시간대', 'Zona horaria del dispositivo', 'Fuso horário do dispositivo', 'Gerätezeitzone', 'Fuseau horaire de l’appareil'];
 
-export function PreferencesView({ scheme, theme, onToggleScheme, onToggleTheme, onClose }: PreferencesViewProps) {
+export function PreferencesView({ timezone, loading, error, onRetry, onChangeTimezone, scheme, theme, onToggleScheme, onToggleTheme, onClose }: PreferencesViewProps) {
   const { locale, t } = useI18n();
-  const [timezone, setTimezone] = useState(() => readStored('smcub.timezone', 'local'));
   const dialog = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const localeIndex = LOCALES.indexOf(locale);
 
-  useEffect(() => {
-    try { window.localStorage.setItem('smcub.timezone', timezone); } catch { /* optional preference */ }
-  }, [timezone]);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
@@ -58,24 +59,22 @@ export function PreferencesView({ scheme, theme, onToggleScheme, onToggleTheme, 
 
   return (
     <div className="preferences-backdrop" role="presentation" onClick={onClose}>
-      <section ref={dialog} className="preferences-drawer" role="dialog" aria-modal="true" aria-labelledby="preferences-title" onClick={(event) => event.stopPropagation()}>
+      <section ref={dialog} className="preferences-drawer" role="dialog" aria-modal="true" aria-labelledby="preferences-title" aria-busy={loading} onClick={(event) => event.stopPropagation()}>
         <div className="preferences-head">
           <div><h2 id="preferences-title">{t('prefs.title')}</h2><span className="muted">{t('connection.readOnly')}</span></div>
           <button className="ghost" onClick={onClose} aria-label={t('action.close')}>×</button>
         </div>
         <div className="preferences-body">
-          <div className="field"><label htmlFor="preference-timezone">{t('prefs.timezone')}</label><select id="preference-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)}>{TIMEZONES.map((item) => <option key={item} value={item}>{item === 'local' ? DEVICE_TIME[localeIndex] : item}</option>)}</select></div>
+          {loading ? <div className="notice" role="status">{t('state.loading')}</div> : null}
+          {error ? <div className="notice" role="alert">{error}<button className="ghost" onClick={onRetry}>{t('state.retry')}</button></div> : null}
+          <div className="field"><label htmlFor="preference-timezone">{t('prefs.timezone')}</label><select id="preference-timezone" value={timezone} disabled={loading} onChange={(event) => onChangeTimezone(event.target.value)}>{TIMEZONES.map((item) => <option key={item} value={item}>{item === 'local' ? DEVICE_TIME[localeIndex] : item}</option>)}</select></div>
           <p className="notice">{ORIGINAL_CURRENCY[localeIndex]}</p>
-          <div className="field"><label>{t('prefs.theme')}</label><div className="row"><button className={theme === 'dark' ? 'primary' : 'ghost'} onClick={() => theme !== 'dark' && onToggleTheme()}>{t('prefs.theme.dark')}</button><button className={theme === 'light' ? 'primary' : 'ghost'} onClick={() => theme !== 'light' && onToggleTheme()}>{t('prefs.theme.light')}</button></div></div>
-          <div className="field"><label>{t('prefs.scheme')}</label><div className="row"><button className={scheme === 'cn' ? 'primary' : 'ghost'} onClick={() => scheme !== 'cn' && onToggleScheme()}>{t('prefs.scheme.cn')}</button><button className={scheme === 'intl' ? 'primary' : 'ghost'} onClick={() => scheme !== 'intl' && onToggleScheme()}>{t('prefs.scheme.intl')}</button></div></div>
+          <div className="field"><label>{t('prefs.theme')}</label><div className="row"><button disabled={loading} className={theme === 'dark' ? 'primary' : 'ghost'} onClick={() => theme !== 'dark' && onToggleTheme()}>{t('prefs.theme.dark')}</button><button disabled={loading} className={theme === 'light' ? 'primary' : 'ghost'} onClick={() => theme !== 'light' && onToggleTheme()}>{t('prefs.theme.light')}</button></div></div>
+          <div className="field"><label>{t('prefs.scheme')}</label><div className="row"><button disabled={loading} className={scheme === 'cn' ? 'primary' : 'ghost'} onClick={() => scheme !== 'cn' && onToggleScheme()}>{t('prefs.scheme.cn')}</button><button disabled={loading} className={scheme === 'intl' ? 'primary' : 'ghost'} onClick={() => scheme !== 'intl' && onToggleScheme()}>{t('prefs.scheme.intl')}</button></div></div>
           <div className="notice" style={{ marginTop: 4 }}><code>READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</code></div>
         </div>
         <div className="preferences-foot"><button className="primary" onClick={onClose}>{t('prefs.close')}</button></div>
       </section>
     </div>
   );
-}
-
-function readStored(key: string, fallback: string): string {
-  try { return window.localStorage.getItem(key) || fallback; } catch { return fallback; }
 }
