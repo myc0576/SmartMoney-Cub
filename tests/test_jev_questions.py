@@ -184,6 +184,49 @@ def test_deterministic_temporality_check_fails_on_nested_source_future_leakage()
     with pytest.raises(ValueError, match="future_leakage"):
         build_questions(TRACK_FINANCIAL_FILINGS, state=state)
 
+
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize(
+    ("available_at", "error"),
+    [
+        ("2026-06-01T23:00:00+08:00", None),
+        ("2026-06-01T14:30:00-04:00", "future_leakage"),
+        ("2026-06-01T14:30:00", "invalid_available_at"),
+    ],
+)
+def test_temporality_compares_instants(nested, available_at, error):
+    source = {"available_at": available_at}
+    state = {"decision_time": "2026-06-01T15:00:00Z"}
+    state.update({"data_sources": [source]} if nested else source)
+
+    if error is None:
+        assert build_questions(TRACK_TRADING_REVIEW, state=state)
+    else:
+        with pytest.raises(ValueError, match=error):
+            build_questions(TRACK_TRADING_REVIEW, state=state)
+
+
+@pytest.mark.parametrize(
+    ("source_decision", "available_at"),
+    [
+        ("2026-06-01T16:00:00Z", "2026-06-01T15:30:00Z"),
+        ("2026-06-01T14:00:00Z", "2026-06-01T14:30:00Z"),
+    ],
+)
+def test_source_cannot_exceed_its_own_or_review_cutoff(source_decision, available_at):
+    state = {
+        "decision_time": "2026-06-01T15:00:00Z",
+        "data_sources": [{"decision_time": source_decision, "available_at": available_at}],
+    }
+    with pytest.raises(ValueError, match="future_leakage"):
+        build_questions(TRACK_TRADING_REVIEW, state=state)
+
+
+def test_temporality_rejects_invalid_decision_time():
+    with pytest.raises(ValueError, match="invalid_decision_time"):
+        build_questions(TRACK_TRADING_REVIEW, state={"decision_time": "2026-06-01"})
+
+
 def test_score_question_without_levels_raises():
     with pytest.raises(ValueError, match="must provide non-empty levels rubric"):
         JevQuestion("q_no_levels", "score", "Rate severity", scale_min=1, scale_max=5)

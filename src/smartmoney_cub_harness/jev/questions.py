@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Mapping, TYPE_CHECKING
 
+from smartmoney_cub_harness.manifest import parse_timestamp
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 if TYPE_CHECKING:
@@ -176,34 +178,43 @@ def compute_run_hash(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def validate_state_temporality(state: Any, decision_time: str | None = None) -> None:
-    """Fail validation if any data source or observation has available_at > decision_time."""
-    if not isinstance(state, Mapping):
-        return
-    dt = decision_time or state.get("decision_time")
-    if not dt:
-        return
-    dt_str = str(dt)
+def _review_timestamp(value: Any, field_name: str, location: str) -> datetime:
+    parsed = parse_timestamp(value)
+    if parsed is None or parsed.tzinfo is None:
+        raise ValueError(f"invalid_{field_name}: {location} requires a timezone-aware ISO timestamp")
+    return parsed
 
-    # Direct available_at check
-    avail = state.get("available_at")
-    if avail and str(avail) > dt_str:
+
+def _check_available_at(record: Mapping[str, Any], cutoff: datetime, location: str) -> None:
+    value = record.get("available_at")
+    if value is not None and _review_timestamp(value, "available_at", location) > cutoff:
         raise ValueError(
-            f"future_leakage: available_at ({avail}) > decision_time ({dt_str})"
+            f"future_leakage: {location} available_at ({value}) > decision_time ({cutoff.isoformat()})"
         )
 
-    # Nested collections
+
+def validate_state_temporality(state: Any, decision_time: str | None = None) -> None:
+    """Reject evidence available after its review or record decision time."""
+    if not isinstance(state, Mapping):
+        return
+    value = decision_time if decision_time is not None else state.get("decision_time")
+    if value is None:
+        return
+    review_cutoff = _review_timestamp(value, "decision_time", "review")
+    _check_available_at(state, review_cutoff, "review")
+
     for key in ("data_sources", "sources", "observations", "evidence", "records", "cases"):
         items = state.get(key)
-        if isinstance(items, (list, tuple)):
-            for item in items:
-                if isinstance(item, Mapping):
-                    item_avail = item.get("available_at")
-                    item_dt = item.get("decision_time", dt_str)
-                    if item_avail and str(item_avail) > str(item_dt):
-                        raise ValueError(
-                            f"future_leakage: {key} item available_at ({item_avail}) > decision_time ({item_dt})"
-                        )
+        if not isinstance(items, (list, tuple)):
+            continue
+        for index, item in enumerate(items):
+            if not isinstance(item, Mapping):
+                continue
+            location = f"{key}[{index}]"
+            cutoff = review_cutoff
+            if item.get("decision_time") is not None:
+                cutoff = min(cutoff, _review_timestamp(item["decision_time"], "decision_time", location))
+            _check_available_at(item, cutoff, location)
 
 
 def available_tracks() -> tuple[str, ...]:
