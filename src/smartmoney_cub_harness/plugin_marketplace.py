@@ -44,6 +44,77 @@ def _now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
+def _runtime_integrated(
+    entry: dict[str, Any], record: dict[str, Any] | None = None, health: dict[str, Any] | None = None
+) -> bool:
+    """Return whether this catalog item has a harness runtime adapter.
+
+    A companion can be installed as documentation or a source checkout, but it
+    never becomes callable merely because its files exist on disk.
+    """
+    if entry.get("level") == LEVEL_COMPANION:
+        return False
+    if health is not None and "runtime_integrated" in health:
+        return health["runtime_integrated"] is True
+    manifest = (record or {}).get("manifest")
+    if isinstance(manifest, dict) and "runtime_integrated" in manifest:
+        return manifest["runtime_integrated"] is True
+    return True
+
+
+def _project_record(entry: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    """Project persisted lifecycle state into honest market-facing flags."""
+    rec_state = record.get("state")
+    runtime_integrated = _runtime_integrated(entry, record)
+    is_enabled = bool(record.get("enabled"))
+
+    if rec_state in (PluginState.REVOKED, PluginState.DEPRECATED):
+        derived_state = STATE_AVAILABLE
+    elif rec_state in (PluginState.FAILED, "FAILED", "ERROR"):
+        derived_state = STATE_ERROR
+    elif rec_state in (PluginState.ACTIVE, PluginState.ENABLED, PluginState.SERVING, "ACTIVE", "ENABLED", "SERVING"):
+        derived_state = STATE_ENABLED if is_enabled and runtime_integrated else STATE_INSTALLED
+    elif rec_state in (PluginState.INSTALLED, "INSTALLED"):
+        derived_state = STATE_INSTALLED
+    elif rec_state in (PluginState.DISABLED, "DISABLED"):
+        derived_state = STATE_DISABLED
+    else:
+        derived_state = STATE_INSTALLED if runtime_integrated and is_enabled else STATE_DISABLED
+
+    installed = derived_state != STATE_AVAILABLE
+    active = bool(installed and runtime_integrated and is_enabled and derived_state == STATE_ENABLED)
+    enabled = bool(installed and runtime_integrated and is_enabled)
+    callable_ = active
+    if not installed:
+        callable_reason = "not_installed"
+    elif not runtime_integrated:
+        callable_reason = (
+            "companion_only_no_runtime_adapter"
+            if entry.get("level") == LEVEL_COMPANION
+            else "no_runtime_adapter"
+        )
+    elif not active:
+        callable_reason = "disabled_or_inactive"
+    else:
+        callable_reason = None
+
+    result = {
+        **record,
+        "state": derived_state,
+        "installed": installed,
+        "active": active,
+        "callable": callable_,
+        "runtime_integrated": runtime_integrated,
+        "enabled": enabled,
+        "mounted": active,
+        "callable_reason": callable_reason,
+        "health": "error" if derived_state == STATE_ERROR else ("healthy" if installed else "pending"),
+        "last_error": record.get("last_error"),
+        "updated_at": record.get("updated_at") or _now(),
+    }
+    return result
+
+
 class MarketplaceStore:
     """Marketplace store integrating curated catalog with PluginStateStore."""
 
@@ -114,55 +185,21 @@ class MarketplaceStore:
                 rec = installed_records.get(pid)
 
                 if rec is not None:
-                    # Derived state from PluginStateStore
-                    rec_state = rec.get("state")
-                    is_enabled = bool(rec.get("enabled"))
-                    # A revoked or deprecated record keeps its audit trail in the
-                    # store but is no longer installed: the plugin is gone from
-                    # this machine, and reporting it as installed would be the
-                    # same class of lie the previous marketplace told.
-                    if rec_state in (PluginState.REVOKED, PluginState.DEPRECATED):
-                        derived_state = STATE_AVAILABLE
-                    elif rec_state in (PluginState.ACTIVE, PluginState.ENABLED, PluginState.SERVING, "ACTIVE", "ENABLED", "SERVING"):
-                        derived_state = STATE_ENABLED if is_enabled else STATE_DISABLED
-                    elif rec_state in (PluginState.INSTALLED, "INSTALLED"):
-                        derived_state = STATE_INSTALLED
-                    elif rec_state in (PluginState.DISABLED, "DISABLED"):
-                        derived_state = STATE_DISABLED
-                    elif rec_state in (PluginState.FAILED, "FAILED", "ERROR"):
-                        derived_state = STATE_ERROR
-                    else:
-                        derived_state = STATE_INSTALLED if is_enabled else STATE_DISABLED
-
-                    installed_bool = derived_state != STATE_AVAILABLE
-                    enabled_bool = is_enabled
-                    mounted_bool = is_enabled and installed_bool
-                    if derived_state == STATE_ERROR:
-                        health_status = "error"
-                    elif installed_bool:
-                        health_status = "healthy"
-                    else:
-                        health_status = "pending"
-                    last_error = rec.get("last_error")
-                    updated_at = rec.get("updated_at") or _now()
-
-                    item.update({
-                        "state": derived_state,
-                        "installed": installed_bool,
-                        "enabled": enabled_bool,
-                        "mounted": mounted_bool,
-                        "health": health_status,
-                        "last_error": last_error,
-                        "updated_at": updated_at,
-                    })
-                    if installed_bool:
+                    projection = _project_record(entry, rec)
+                    item.update(projection)
+                    if projection["installed"]:
                         installed_list.append(copy.deepcopy(item))
                 else:
+                    runtime_integrated = _runtime_integrated(item)
                     item.update({
                         "state": STATE_AVAILABLE,
                         "installed": False,
+                        "active": False,
+                        "callable": False,
+                        "runtime_integrated": runtime_integrated,
                         "enabled": False,
                         "mounted": False,
+                        "callable_reason": "not_installed",
                         "health": "pending",
                         "last_error": None,
                         "updated_at": None,
@@ -184,6 +221,8 @@ class MarketplaceStore:
                 "counts": {
                     "total": len(catalog),
                     "installed": len(installed_list),
+                    "active": sum(1 for item in catalog if item.get("active")),
+                    "callable": sum(1 for item in catalog if item.get("callable")),
                     "by_category": by_cat,
                 },
                 "policy": (
@@ -206,6 +245,10 @@ class MarketplaceStore:
             name = str(entry.get("name") or plugin_id)
             version = "1.0.0"
             capabilities = list(entry.get("capabilities") or ["market_context"])
+            runtime_integrated = _runtime_integrated(entry, health=health)
+            active = bool(health.get("healthy") and runtime_integrated)
+            healthy = health.get("healthy") is True
+            initial_state = PluginState.ACTIVE if active else (PluginState.INSTALLED if healthy else PluginState.FAILED)
 
             manifest = {
                 "schema": PLUGIN_MANIFEST_SCHEMA,
@@ -219,6 +262,8 @@ class MarketplaceStore:
                 "api_range": SUPPORTED_API_RANGE,
                 "capabilities": capabilities,
                 "data_time_semantics": DataTimeSemantics.HISTORICAL_EXPORT,
+                "runtime_integrated": runtime_integrated,
+                "catalog_level": entry.get("level"),
                 "safety": SAFETY_DECLARATION,
             }
 
@@ -229,7 +274,7 @@ class MarketplaceStore:
             instance = PluginInstance(
                 plugin_id=plugin_id,
                 version=version,
-                state=PluginState.ACTIVE,
+                state=initial_state,
                 manifest=manifest,
                 capabilities=capabilities,
             )
@@ -241,11 +286,19 @@ class MarketplaceStore:
             st = self._load()
             rec = {
                 "plugin_id": plugin_id,
-                "state": STATE_ENABLED,
+                "state": STATE_ENABLED if active else (STATE_INSTALLED if healthy else STATE_ERROR),
                 "installed": True,
-                "enabled": True,
-                "mounted": True,
-                "health": "healthy" if health.get("healthy") else "error",
+                "active": active,
+                "callable": active,
+                "runtime_integrated": runtime_integrated,
+                "enabled": active,
+                "mounted": active,
+                "callable_reason": None if active else (
+                    "companion_only_no_runtime_adapter"
+                    if entry.get("level") == LEVEL_COMPANION
+                    else "no_runtime_adapter"
+                ),
+                "health": "healthy" if healthy else "error",
                 "config_keys": config_keys or [],
                 "updated_at": _now(),
                 "safety": SAFETY_DECLARATION,
@@ -295,7 +348,7 @@ class MarketplaceStore:
                 "safety": SAFETY_DECLARATION,
             }
         rec = self.install_record(entry, health={"healthy": True}, config_keys=sorted(config.keys()))
-        return {"status": "ok", "plugin": rec, "mounted": True, "safety": SAFETY_DECLARATION}
+        return {"status": "ok", "plugin": rec, "mounted": rec["mounted"], "safety": SAFETY_DECLARATION}
     def update(self, plugin_id: str, *, confirm: bool = False) -> dict[str, Any]:
         with self._lock:
             store = self._get_state_store()
@@ -312,6 +365,14 @@ class MarketplaceStore:
             rec = store.get(plugin_id)
             if rec is None:
                 raise KeyError(plugin_id)
+            entry = catalog_index().get(plugin_id, {})
+            if enabled and not _runtime_integrated(entry, rec):
+                return {
+                    "status": "not_callable",
+                    "plugin": _project_record(entry, rec),
+                    "error": "companion has no runtime adapter",
+                    "safety": SAFETY_DECLARATION,
+                }
             new_state = PluginState.ACTIVE if enabled else PluginState.DISABLED
             instance = PluginInstance(
                 plugin_id=plugin_id,
@@ -322,10 +383,5 @@ class MarketplaceStore:
             )
             store.record(instance, from_state=rec.get("state"), detail=f"set_enabled:{enabled}")
             updated_rec = store.get(plugin_id) or {}
-            mounted = bool(enabled)
-            plugin_info = {
-                **updated_rec,
-                "state": "ACTIVE" if enabled else "DISABLED",
-                "mounted": mounted,
-            }
+            plugin_info = _project_record(entry, updated_rec)
             return {"status": "ok", "plugin": plugin_info, "safety": SAFETY_DECLARATION}

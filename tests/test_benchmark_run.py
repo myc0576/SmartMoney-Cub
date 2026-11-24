@@ -354,7 +354,7 @@ def test_typesafe_direct_live_evaluation_wired_with_mock():
         api_key="mock-key",
         http_client=mock_backend_client,
     )
-    fake_backend.estimated_cost_usd = 0.0005  # Exact price of the toy transport above.
+    fake_backend.estimate_cost_usd = lambda state, questions: 0.0005  # Exact price of the toy transport above.
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -554,7 +554,7 @@ def test_typesafe_direct_reports_truthful_reason_on_failure():
         api_key="mock-key",
         http_client=timeout_client,
     )
-    bad_backend.estimated_cost_usd = 0.001
+    bad_backend.estimate_cost_usd = lambda state, questions: 0.001
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -578,7 +578,7 @@ def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
         api_key="mock-key",
         http_client=None,
     )
-    local_backend.estimated_cost_usd = 0.001
+    local_backend.estimate_cost_usd = lambda state, questions: 0.001
 
     res = run_benchmark(
         tracks=["trading-review"],
@@ -601,7 +601,7 @@ def test_typesafe_direct_distinguishes_no_client_from_provider_unreachable():
         api_key="mock-key",
         http_client=unreachable_client,
     )
-    net_backend.estimated_cost_usd = 0.001
+    net_backend.estimate_cost_usd = lambda state, questions: 0.001
     res_net = run_benchmark(
         tracks=["trading-review"],
         systems=["typesafe_direct"],

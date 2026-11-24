@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-smartmoney-cub"
+version = "0.2.0"
+description = "Hermes Agent plugin exposing the read-only SmartMoney-Cub trading review harness"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "myc0576" }]
+keywords = ["hermes", "hermes-plugin", "trading-journal", "review", "read-only"]
+# No runtime dependencies: the plugin only shells out to the smcub CLI.
+# Hermes installs this from the directory plugin.yaml; do not add an
+# entry point here or the pip path and the directory plugin would diverge.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "pyyaml>=6,<7"]

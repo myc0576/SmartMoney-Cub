@@ -40,7 +40,7 @@ from smartmoney_cub_harness.privacy_audit import inspect_run_artifacts, load_pay
 from smartmoney_cub_harness.registry import register_candidate
 from smartmoney_cub_harness.run_capture import capture_run, get_command_preset, parse_command
 from smartmoney_cub_harness.run_envelope import validate_run_envelope
-from smartmoney_cub_harness.safety import redact
+from smartmoney_cub_harness.safety import confined_artifact_path, redact
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.self_evolve import run_self_evolve
 from smartmoney_cub_harness.share_cli import build_share_pack_from_source
@@ -84,7 +84,7 @@ def evaluate_run(run_dir: str | Path, horizon: str = "d1") -> dict[str, Any]:
     run_path = Path(run_dir)
     decision_path = run_path / "decision.json"
     outcome_path = run_path / f"outcome_{horizon}.json"
-    eval_path = run_path / "eval.json"
+    eval_path = confined_artifact_path(run_path, "eval.json")
     decision = _read_json(decision_path)
     if str(decision.get("action_label", "")).upper() == "ERROR":
         result = {
@@ -370,7 +370,8 @@ def build_parser() -> argparse.ArgumentParser:
     import_commit.add_argument("--state-dir", default=None)
     import_commit.add_argument("--portfolio-id", default=None)
     import_commit.add_argument("--json", action="store_true")
-    import_sub.add_parser("list", help="List local documents already imported")
+    import_list_parser = import_sub.add_parser("list", help="List local documents already imported")
+    import_list_parser.add_argument("--state-dir", default=None)
 
     store_cmd = sub.add_parser("store", help="Inspect and maintain the local review store")
     store_sub = store_cmd.add_subparsers(dest="store_command", required=True)
@@ -441,9 +442,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     plugin_install_cmd = plugin_sub.add_parser(
         "install",
-        help="Register a locally obtained plugin (never downloads)",
+        help="Register a local plugin or install a curated catalog entry with explicit consent",
     )
-    plugin_install_cmd.add_argument("source", help="Local plugin directory or manifest path")
+    plugin_install_cmd.add_argument("source", help="Local plugin directory, manifest path, or curated catalog id")
+    plugin_install_cmd.add_argument("--confirm", action="store_true", help="Confirm catalog installation and its declared permissions")
     add_common(plugin_install_cmd)
 
     profile_cmd = sub.add_parser("profile", help="Inspect and reload plugin composition profiles")
@@ -524,12 +526,19 @@ def build_parser() -> argparse.ArgumentParser:
     register_jev_commands(sub)
     register_benchmark_commands(sub)
 
+    from smartmoney_cub_harness.control_cli import register_control_commands
+    register_control_commands(sub)
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if getattr(args, "control_operation", False):
+        from smartmoney_cub_harness.control_cli import run_control
+        return run_control(args)
 
     if args.command == "validate-manifest":
         result = validate_run_manifest(_read_json(args.manifest))
@@ -883,6 +892,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.source,
                 profile_name=args.profile,
                 state_db=args.state_db,
+                permissions_confirmed=args.confirm,
             )
             _print_json(result)
             return 0 if result["status"] == "ok" else 2

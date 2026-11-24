@@ -9,7 +9,7 @@ from typing import Any
 from smartmoney_cub_harness.evaluator import evaluate_decision
 from smartmoney_cub_harness.manifest import validate_run_manifest
 from smartmoney_cub_harness.registry import promotion_blockers
-from smartmoney_cub_harness.safety import is_relative_artifact_path, safety_envelope
+from smartmoney_cub_harness.safety import confined_artifact_path, is_relative_artifact_path, safety_envelope
 from smartmoney_cub_harness.schemas import EVIDENCE_PACK_SCHEMA, EVIDENCE_REPLAY_SCHEMA, SAFETY_DECLARATION
 
 PACK_MANIFEST_NAME = "evidence_pack.json"
@@ -74,7 +74,7 @@ def _review_status(failure_count: int, trailing_failures: int, metrics: dict[str
 
 
 def _write_replay_report(root: Path, report: dict[str, Any]) -> dict[str, Any]:
-    (root / "replay_report.json").write_bytes(_canonical_bytes(report))
+    confined_artifact_path(root, "replay_report.json").write_bytes(_canonical_bytes(report))
     return report
 
 
@@ -265,7 +265,7 @@ def build_evidence_pack(
     failures: list[bool] = []
 
     rule_path = "rule_candidate.json"
-    hashes[rule_path] = _write_frozen(output_path / rule_path, rule_candidate)
+    hashes[rule_path] = _write_frozen(confined_artifact_path(output_path, rule_path), rule_candidate)
 
     used_ids: set[str] = set()
     for index, source_dir in enumerate(sample_dirs):
@@ -297,7 +297,9 @@ def build_evidence_pack(
             "evaluation": evaluation,
         }
         for name, relative_path in paths.items():
-            hashes[relative_path] = _write_frozen(output_path / relative_path, frozen_payloads[name])
+            hashes[relative_path] = _write_frozen(
+                confined_artifact_path(output_path, relative_path), frozen_payloads[name]
+            )
 
         scores = evaluation.get("scores") or {}
         for score_name in score_totals:
@@ -354,8 +356,8 @@ def build_evidence_pack(
         }
     )
     manifest_bytes = _canonical_bytes(pack)
-    (output_path / PACK_MANIFEST_NAME).write_bytes(manifest_bytes)
-    (output_path / PACK_SEAL_NAME).write_text(
+    confined_artifact_path(output_path, PACK_MANIFEST_NAME).write_bytes(manifest_bytes)
+    confined_artifact_path(output_path, PACK_SEAL_NAME).write_text(
         hashlib.sha256(manifest_bytes).hexdigest() + "\n", encoding="ascii"
     )
     return pack

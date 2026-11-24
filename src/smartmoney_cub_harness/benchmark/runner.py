@@ -772,6 +772,8 @@ def _evaluate_jev_system(
                 estimate = estimator(case.state, questions)
             except TypeError:
                 estimate = estimator(questions)
+            if estimate is None:
+                return None
             try:
                 estimate_float = float(estimate)
             except (TypeError, ValueError, OverflowError) as exc:

@@ -921,16 +921,19 @@ def _open(
     effort: str = "off",
 ) -> Any:
     url = provider["base_url"].rstrip("/") + "/chat/completions"
+    body = build_request_body(
+        model=model,
+        messages=messages,
+        tools=tools,
+        stream=stream,
+        effort=effort,
+        provider=provider,
+    )
+    from smartmoney_cub_harness.control_budget import reserve_provider_request
+    reserve_provider_request(model, body, max_tokens=MAX_TOKENS)
     request = urllib.request.Request(
         url,
-        data=build_request_body(
-            model=model,
-            messages=messages,
-            tools=tools,
-            stream=stream,
-            effort=effort,
-            provider=provider,
-        ),
+        data=body,
         headers={
             **_auth_headers(provider),
             "Accept": "text/event-stream" if stream else "application/json",

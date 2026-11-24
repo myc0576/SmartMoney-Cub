@@ -16,7 +16,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
+from smartmoney_cub_harness.benchmark.runner import verify_run, verify_typesafe_public_run
 
 
 def publish_benchmark_images(
@@ -31,6 +31,16 @@ def publish_benchmark_images(
         raise FileNotFoundError(f"run.json not found under {run_path}")
 
     data = json.loads(run_json_path.read_text(encoding="utf-8"))
+
+    # Validate before touching tracked assets. TypeSafe numbers require the
+    # complete 240-case gate even when this helper is called directly.
+    verify_run(run_json_path)
+    if any(
+        system.get("system_id") in {"typesafe_direct", "typesafe-direct"}
+        and system.get("status") != "not_run"
+        for system in data.get("systems", [])
+    ):
+        verify_typesafe_public_run(run_json_path)
 
     # Safety check: refuse circular-label runs
     systems = data.get("systems", [])

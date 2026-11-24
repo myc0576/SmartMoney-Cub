@@ -1,0 +1,71 @@
+{
+  "schema": "smartmoney_cub_plugin_manifest.v1",
+  "plugin_id": "research.numerical",
+  "name": "Numerical Analysis Plugin",
+  "version": "0.1.0",
+  "source_repo": "https://github.com/myc0576/SmartMoney-Cub",
+  "license": "MIT",
+  "maintainer": "smartmoney-cub-harness contributors",
+  "kind": "subprocess",
+  "trust_level": "review-only",
+  "api_range": ">=1,<2",
+  "entrypoint": [
+    "python3",
+    "-m",
+    "smartmoney_cub_harness.numerical.provider"
+  ],
+  "capabilities": [
+    "numerical_analysis"
+  ],
+  "provides": [
+    "research.numerical_analysis"
+  ],
+  "required_services": [],
+  "optional_services": [],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "enum": [
+          "inverse_linear",
+          "markov_propagate"
+        ]
+      }
+    },
+    "required": [
+      "operation"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      },
+      "operation": {
+        "type": "string"
+      },
+      "safety": {
+        "type": "string"
+      },
+      "result_kind": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status",
+      "operation",
+      "safety"
+    ]
+  },
+  "required_permissions": [],
+  "network_required": false,
+  "credential_requirements": [],
+  "supported_markets": [],
+  "data_time_semantics": "derived_static",
+  "health_check": "always_ok",
+  "provenance_policy": "evidence_envelope_required",
+  "description": "Read-only offline numerical analysis plugin providing inverse linear solving and Markov probability propagation.",
+  "safety": "READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE"
+}

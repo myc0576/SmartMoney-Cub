@@ -375,7 +375,17 @@ def classify_provider_error(
     # 1. Quota exhaustion (403, 429 with insufficient_quota, 400 with quota message)
     is_quota_code = http_status in (403, 429, 400)
     has_quota_kw = any(kw in combined_text for kw in QUOTA_KEYWORDS)
-    if is_quota_code and has_quota_kw:
+    # AlphaTech's gateway uses a bare 403 for exhausted account allowance in
+    # some edge responses. Keep explicit key/authorization wording on the auth
+    # path, but classify an otherwise opaque 403 as quota so the user gets a
+    # recoverable, non-secret diagnostic instead of a misleading key failure.
+    opaque_alphatech_403 = (
+        http_status == 403
+        and provider_id == "alphatech"
+        and not body.strip()
+        and not any(keyword in combined_text for keyword in AUTH_KEYWORDS if keyword != "forbidden")
+    )
+    if is_quota_code and (has_quota_kw or opaque_alphatech_403):
         code = ProviderErrorCode.INSUFFICIENT_QUOTA
         msg = f"模型服务额度不足 (HTTP {http_status}: insufficient_quota)。"
         if portal_url:

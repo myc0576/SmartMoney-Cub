@@ -8,6 +8,7 @@ and deterministic health probes.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -30,18 +31,53 @@ class PluginInstaller:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
-        self.plugins_dir = (self.root / "plugins").resolve()
-        self.venv_dir = (self.plugins_dir / "venv").resolve()
-        self.sources_dir = (self.plugins_dir / "sources").resolve()
+        self.plugins_dir = self.root / "plugins"
+        self.venv_dir = self.plugins_dir / "venv"
+        self.sources_dir = self.plugins_dir / "sources"
         self._lock = threading.RLock()
 
     def _ensure_within_root(self, path: Path) -> Path:
-        resolved = path.resolve()
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = self.root / candidate
+        candidate = Path(os.path.abspath(str(candidate)))
         try:
-            resolved.relative_to(self.plugins_dir)
+            relative = candidate.relative_to(self.plugins_dir)
+        except ValueError:
+            raise PermissionError(f"Path outside plugin root: {candidate}")
+
+        current = self.plugins_dir
+        if current.is_symlink():
+            raise PermissionError(f"Path uses a symlinked plugin root: {current}")
+        if current.exists() and not current.is_dir():
+            raise PermissionError(f"Plugin root is not a directory: {current}")
+        for index, part in enumerate(relative.parts):
+            current = current / part
+            if current.is_symlink():
+                raise PermissionError(f"Path uses a symlink component: {current}")
+            if index < len(relative.parts) - 1 and current.exists() and not current.is_dir():
+                raise PermissionError(f"Path component is not a directory: {current}")
+
+        resolved_root = self.plugins_dir.resolve(strict=False)
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(resolved_root)
         except ValueError:
             raise PermissionError(f"Path outside plugin root: {resolved}")
         return resolved
+
+    @staticmethod
+    def _valid_module_name(module: Any) -> bool:
+        if not isinstance(module, str) or not module.strip():
+            return False
+        return all(part.isidentifier() for part in module.strip().split("."))
+
+    @staticmethod
+    def _run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        """Run a trusted argv command without shell interpolation."""
+        if not command or not all(isinstance(arg, str) and chr(0) not in arg for arg in command):
+            raise ValueError("invalid subprocess command")
+        return subprocess.run(command, shell=False, **kwargs)
 
     def _venv_python(self) -> Path:
         if sys.platform == "win32":
@@ -59,13 +95,13 @@ class PluginInstaller:
         created = False
         if uv_path:
             cmd = [uv_path, "venv", str(self.venv_dir)]
-            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            res = self._run(cmd, capture_output=True, text=True, check=False)
             if res.returncode == 0 and python_bin.is_file():
                 created = True
 
         if not created:
             cmd = [sys.executable, "-m", "venv", str(self.venv_dir)]
-            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            res = self._run(cmd, capture_output=True, text=True, check=False)
             if res.returncode != 0:
                 raise RuntimeError(f"Failed to create venv: {res.stderr}")
 
@@ -101,11 +137,11 @@ class PluginInstaller:
             }
 
         module = spec.get("module")
-        if not module:
+        if not self._valid_module_name(module):
             return {
                 "status": "error",
                 "healthy": False,
-                "detail": "no import module specified for health check",
+                "detail": "invalid import module specified for health check",
                 "safety": SAFETY_DECLARATION,
             }
 
@@ -120,7 +156,7 @@ class PluginInstaller:
 
         cmd = [str(python_bin), "-c", f"import {module}"]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+            res = self._run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
             if res.returncode == 0:
                 return {
                     "status": "ok",
@@ -261,7 +297,7 @@ class PluginInstaller:
                     else:
                         cmd = [str(python_bin), "-m", "pip", "install", pkg_req]
 
-                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+                    res = self._run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
                     if res.returncode != 0:
                         stderr_summary = (res.stderr or "").strip().splitlines()
                         err_msg = stderr_summary[-1] if stderr_summary else f"exit code {res.returncode}"
@@ -307,7 +343,7 @@ class PluginInstaller:
                         cmd.extend(["--branch", str(tag)])
                     cmd.extend([str(repo), str(target)])
 
-                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+                    res = self._run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
                     if res.returncode != 0:
                         if target.exists():
                             shutil.rmtree(target, ignore_errors=True)
@@ -428,7 +464,7 @@ class PluginInstaller:
             whitelist = catalog_index()
             entry = whitelist.get(plugin_id)
             source_dir = self.sources_dir / plugin_id
-            if source_dir.exists():
+            if source_dir.exists() or source_dir.is_symlink():
                 self._ensure_within_root(source_dir)
                 shutil.rmtree(source_dir, ignore_errors=True)
 
@@ -441,7 +477,7 @@ class PluginInstaller:
                         cmd = [uv_path, "pip", "uninstall", "--python", str(python_bin), package, "-y"]
                     else:
                         cmd = [str(python_bin), "-m", "pip", "uninstall", package, "-y"]
-                    subprocess.run(cmd, capture_output=True, text=True, check=False)
+                    self._run(cmd, capture_output=True, text=True, check=False)
 
             return {
                 "status": "ok",

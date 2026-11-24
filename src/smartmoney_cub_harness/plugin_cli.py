@@ -129,14 +129,15 @@ def plugin_install(
     *,
     profile_name: str = "default-offline",
     state_db: str | None = None,
-    permissions_confirmed: bool = True,
+    permissions_confirmed: bool = False,
     credentials: dict[str, Any] | None = None,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Register or install a plugin.
 
     If source matches a plugin_id in the curated catalog, route to PluginInstaller.
-    Otherwise, maintain existing local directory discovery and registration behavior.
+    Catalog installation is human-gated by default. Local directory registration
+    remains available because it does not download or execute third-party code.
     """
     clean_source = source.strip()
     whitelist = catalog_index()

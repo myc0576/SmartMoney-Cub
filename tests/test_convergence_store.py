@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import multiprocessing
+from queue import Empty
 import importlib
 from pathlib import Path
 
@@ -54,6 +56,46 @@ import json
 
 from smartmoney_cub_harness import analytics
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
+
+
+def _open_store_in_process(root: str, start: multiprocessing.synchronize.Event, results: multiprocessing.queues.Queue) -> None:
+    start.wait(10)
+    try:
+        store = Store(root)
+        results.put(("ok", len(store.list_portfolios()), store.get_portfolio(DEFAULT_PORTFOLIO_ID)["portfolio_id"]))
+        store.close()
+    except Exception as error:  # test transport only; assert the concrete error in the parent
+        results.put(("error", type(error).__name__, str(error)))
+
+
+def test_concurrent_fresh_roots_create_one_default_portfolio(tmp_path) -> None:
+    root = str(tmp_path / "shared-root")
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(target=_open_store_in_process, args=(root, start, results))
+        for _ in range(6)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(15)
+        assert process.exitcode == 0
+
+    observed = []
+    for _ in processes:
+        try:
+            observed.append(results.get(timeout=5))
+        except Empty:
+            raise AssertionError("a concurrent Store initializer produced no result")
+    assert observed == [("ok", 1, DEFAULT_PORTFOLIO_ID)] * len(processes)
+    final = Store(root)
+    try:
+        assert [item["portfolio_id"] for item in final.list_portfolios()] == [DEFAULT_PORTFOLIO_ID]
+    finally:
+        final.close()
 
 
 def _fill(**overrides):

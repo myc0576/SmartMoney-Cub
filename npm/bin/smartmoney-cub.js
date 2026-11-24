@@ -12,7 +12,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const PACKAGE_NAME = 'smartmoney-cub-harness';
 const MIN_PYTHON = [3, 10];
 const ENV_PREFIX = process.env.SMCUB_HOME || path.join(os.homedir(), '.smartmoney-cub');
 
@@ -52,6 +51,13 @@ function repositoryRoot() {
 }
 
 function install(extras) {
+  const local = repositoryRoot();
+  const isCheckout = fs.existsSync(path.join(local, 'pyproject.toml'));
+  if (!isCheckout) {
+    log('The npm launcher cannot find an installed Python harness.');
+    log('The Python package is not published to PyPI; install the matching harness wheel or source checkout first.');
+    process.exit(1);
+  }
   const python = findPython();
   if (!python) {
     log('SmartMoney-Cub needs Python 3.10 or newer on PATH.');
@@ -69,10 +75,8 @@ function install(extras) {
   }
   // Inside a source checkout the local package is installed, so contributors do
   // not have to reinstall on every edit.
-  const local = repositoryRoot();
-  const isCheckout = fs.existsSync(path.join(local, 'pyproject.toml'));
   const suffix = extras ? '[' + extras + ']' : '';
-  const source = isCheckout ? local + suffix : PACKAGE_NAME + suffix;
+  const source = local + suffix;
   log('Installing ' + source);
   const installed = spawnSync(venv.python, ['-m', 'pip', 'install', '--upgrade', '--quiet', source], {
     stdio: 'inherit',
@@ -87,6 +91,11 @@ function install(extras) {
 function resolve() {
   const venv = venvPaths();
   if (fs.existsSync(venv.smcub)) return venv;
+  if (fs.existsSync(venv.dir)) {
+    log('The private environment is missing the installed CLI.');
+    log('The Python package is not published to PyPI; install the matching harness wheel or source checkout first.');
+    process.exit(1);
+  }
   return install('');
 }
 
@@ -96,7 +105,24 @@ function run(args) {
     stdio: 'inherit',
     env: process.env,
   });
-  child.on('exit', function (code) { process.exit(code === null ? 0 : code); });
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'];
+  const forwardSignal = function (signal) {
+    if (!child.killed) child.kill(signal);
+  };
+  signals.forEach((signal) => process.on(signal, forwardSignal));
+  child.on('error', function (error) {
+    signals.forEach((signal) => process.removeListener(signal, forwardSignal));
+    log('Could not start the installed CLI: ' + error.message);
+    process.exit(1);
+  });
+  child.on('exit', function (code, signal) {
+    signals.forEach((name) => process.removeListener(name, forwardSignal));
+    if (signal) {
+      const signalNumber = { SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGTERM: 15 }[signal] || 1;
+      process.exit(128 + signalNumber);
+    }
+    process.exit(code === null ? 1 : code);
+  });
 }
 
 function main() {
@@ -105,8 +131,12 @@ function main() {
     install(args.indexOf('--with-ocr') >= 0 ? 'ocr' : '');
     return;
   }
-  if (args[0] === 'doctor' || args[0] === '--doctor') {
-    run(['doctor']);
+  if (args[0] === 'doctor') {
+    run(args);
+    return;
+  }
+  if (args[0] === '--doctor') {
+    run(['doctor'].concat(args.slice(1)));
     return;
   }
   run(args.length ? args : ['workbench']);

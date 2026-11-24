@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -95,6 +96,15 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     b_cost = float(b_metrics.get("cost_per_case", 0.0))
     b_model = str(baseline.get("model_resolved") or baseline.get("model_requested") or "v1")
 
+    item_count = sum(len(case.get("items", [])) for case in baseline.get("case_evaluations", []))
+    ci_label = (
+        "case-level, track-stratified 95% CI"
+        if b_metrics.get("confidence_interval_unit") == "case"
+        else "legacy item-level 95% CI"
+    )
+    count_label = f"{sample_count} cases / {item_count:,} items" if item_count else f"{sample_count} cases"
+    hero_subtitle = f"Early-stage offline review; {count_label}; {ci_label}"
+
     Image, ImageDraw, ImageFont = _require_pillow()
 
     font_title = _load_font(ImageFont, 28, bold=True)
@@ -112,7 +122,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         draw.rectangle([(0, 0), (width, 85)], fill=(30, 41, 59))
         draw.line([(0, 85), (width, 85)], fill=(71, 85, 105), width=1)
 
-        badge_text = f"DATASET: {dataset_id} | N={sample_count}"
+        badge_text = f"DATASET: {dataset_id} | Cases={sample_count}"
         draw.rectangle([(width - 320, 20), (width - 20, 45)], fill=(51, 65, 85))
         draw.text((width - 310, 25), badge_text, fill=(226, 232, 240), font=font_badge)
 
@@ -136,14 +146,14 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     # 1. benchmark-hero-1200x630
     hero_img, h_draw = draw_card(
         1200, 630,
-        "Finance-Jev Benchmark Suite — Official Run Results",
-        "Autonomous financial reasoning evaluation across 4 frozen tracks"
+        "Finance-Jev — Synthetic Benchmark",
+        hero_subtitle
     )
     cards = [
         ("Accuracy", f"{b_acc:.2%}", f"95% CI: [{b_ci[0]:.2%}, {b_ci[1]:.2%}]", (59, 130, 246)),
         ("Macro F1", f"{b_f1:.4f}", f"Recall: {b_metrics.get('recall', 0):.4f}", (16, 185, 129)),
         ("Calibration ECE", f"{b_metrics.get('ece', 0):.4f}", f"Brier: {b_metrics.get('brier', 0):.4f}", (245, 158, 11)),
-        ("Latency & Cost", f"{b_p50:.1f} ms", f"Cost: ${b_cost:.4f}/case", (139, 92, 246)),
+        ("Latency & Cost", f"{b_p50:.1f} ms", f"Cost: ${b_cost:.6f}/case", (139, 92, 246)),
     ]
     card_w, card_h = 265, 130
     for idx, (lbl, val, sub, col) in enumerate(cards):
@@ -156,7 +166,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
 
     ty = 265
     h_draw.rounded_rectangle([(24, ty), (1176, ty + 295)], radius=8, fill=(30, 41, 59), outline=(51, 65, 85), width=1)
-    h_draw.text((44, ty + 16), "Systems Summary & McNemar Significance Against Baseline", fill=(248, 250, 252), font=font_heading)
+    h_draw.text((44, ty + 16), "Systems Summary — Synthetic Cases", fill=(248, 250, 252), font=font_heading)
     h_draw.line([(44, ty + 50), (1156, ty + 50)], fill=(71, 85, 105), width=1)
     headers = ["System ID", "Status", "Model Resolved", "Accuracy (95% CI)", "Macro F1", "ECE", "P50 Latency", "Cost / Case"]
     cols_x = [44, 230, 360, 560, 750, 840, 930, 1040]
@@ -175,7 +185,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
             f1_str = f"{met.get('macro_f1', 0):.4f}"
             ece_str = f"{met.get('ece', 0):.4f}"
             lat_str = f"{met.get('p50_latency_ms', 0):.1f} ms"
-            cst_str = f"${met.get('cost_per_case', 0):.4f}"
+            cst_str = f"${met.get('cost_per_case', 0):.6f}"
         else:
             acc_str = f"not_run ({s.get('reason', 'no cred')})"
             f1_str = "—"
@@ -210,7 +220,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         sid = s.get("system_id", "unknown")
         if st == "completed":
             met = s.get("metrics", {})
-            row_vals = [f"#{r_idx}", sid, st, f"{met.get('accuracy', 0):.2%}", f"{met.get('macro_f1', 0):.4f}", f"{met.get('ece', 0):.4f}", f"${met.get('cost_per_case', 0):.4f}"]
+            row_vals = [f"#{r_idx}", sid, st, f"{met.get('accuracy', 0):.2%}", f"{met.get('macro_f1', 0):.4f}", f"{met.get('ece', 0):.4f}", f"${met.get('cost_per_case', 0):.6f}"]
         else:
             row_vals = [f"#{r_idx}", sid, "not_run", "N/A", "N/A", "N/A", "$0.0000"]
         for lx, rv in zip(l_cols, row_vals):
@@ -289,7 +299,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     dot_x = 120
     dot_y = int(qy + 240 - (b_acc * 140))
     q_draw.ellipse([(dot_x - 8, dot_y - 8), (dot_x + 8, dot_y + 8)], fill=(16, 185, 129), outline=(248, 250, 252), width=2)
-    q_draw.text((dot_x + 14, dot_y - 6), f"Deterministic Baseline ({b_acc:.2%}, {b_p50:.1f}ms, ${b_cost:.4f})", fill=(226, 232, 240), font=font_bold)
+    q_draw.text((dot_x + 14, dot_y - 6), f"Deterministic Baseline ({b_acc:.2%}, {b_p50:.1f}ms, ${b_cost:.6f})", fill=(226, 232, 240), font=font_bold)
     q_draw.text((44, qy + 275), f"Deterministic Baseline: P50={b_p50:.2f}ms, P95={b_metrics.get('p95_latency_ms', 0):.2f}ms, P99={b_metrics.get('p99_latency_ms', 0):.2f}ms", fill=(203, 213, 225), font=font_body)
     q_draw.text((44, qy + 300), f"Cost Per Case: ${b_cost:.6f} | Retry Rate: {b_metrics.get('retry_rate', 0):.2%}", fill=(203, 213, 225), font=font_body)
 
@@ -304,7 +314,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     k_draw.text((40, ky + 16), f"Model: {b_model}", fill=(248, 250, 252), font=font_heading)
     k_draw.text((40, ky + 46), f"Accuracy: {b_acc:.2%}  (95% CI: [{b_ci[0]:.2%}, {b_ci[1]:.2%}])", fill=(59, 130, 246), font=font_bold)
     k_draw.text((40, ky + 72), f"Macro F1: {b_f1:.4f}  |  ECE: {b_metrics.get('ece', 0):.4f}", fill=(226, 232, 240), font=font_body)
-    k_draw.text((40, ky + 98), f"P50 Latency: {b_p50:.1f} ms  |  Cost: ${b_cost:.4f}/case", fill=(226, 232, 240), font=font_body)
+    k_draw.text((40, ky + 98), f"P50 Latency: {b_p50:.1f} ms  |  Cost: ${b_cost:.6f}/case", fill=(226, 232, 240), font=font_body)
     k_draw.text((40, ky + 124), f"Sample Count: {sample_count} across 4 tracks", fill=(148, 163, 184), font=font_meta)
 
     card_png = target_out / "benchmark-card-compact.png"
@@ -328,13 +338,13 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
             f'  <rect width="{width}" height="85" fill="#1e293b" />\n'
             f'  <line x1="0" y1="85" x2="{width}" y2="85" stroke="#475569" stroke-width="1" />\n'
             f'  <rect x="{width - 320}" y="20" width="300" height="26" rx="4" fill="#334155" />\n'
-            f'  <text x="{width - 310}" y="38" class="body" font-weight="bold">DATASET: {dataset_id} | N={sample_count}</text>\n'
-            f'  <text x="24" y="40" class="title">{title}</text>\n'
-            f'  <text x="25" y="68" class="subtitle">{subtitle}</text>\n'
+            f'  <text x="{width - 310}" y="38" class="body" font-weight="bold">DATASET: {escape(dataset_id)} | Cases={sample_count}</text>\n'
+            f'  <text x="24" y="40" class="title">{escape(title)}</text>\n'
+            f'  <text x="25" y="68" class="subtitle">{escape(subtitle)}</text>\n'
             f'  {content_xml}\n'
             f'  <line x1="0" y1="{height - 48}" x2="{width}" y2="{height - 48}" stroke="#334155" stroke-width="1" />\n'
-            f'  <text x="24" y="{height - 30}" class="safety">SAFETY DECLARATION: {safety}</text>\n'
-            f'  <text x="24" y="{height - 12}" class="meta">Date: {run_date} | Git: {git_sha} | Run Hash: {run_hash[:16]}... | Model: {b_model}</text>\n'
+            f'  <text x="24" y="{height - 30}" class="safety">SAFETY DECLARATION: {escape(safety)}</text>\n'
+            f'  <text x="24" y="{height - 12}" class="meta">Date: {escape(run_date)} | Git: {escape(git_sha)} | Run Hash: {escape(run_hash[:16])}... | Model: {escape(b_model)}</text>\n'
             '</svg>'
         )
 
@@ -354,7 +364,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         else:
             reason = s.get("reason", "no cred")
             line_str = f"System: {sid} | Status: not_run ({reason}) | Accuracy: N/A | Macro F1: N/A | ECE: N/A | Latency: —"
-        hero_sys_lines.append(f'  <text x="44" y="{hero_y}" class="body">{line_str}</text>')
+        hero_sys_lines.append(f'  <text x="44" y="{hero_y}" class="body">{escape(line_str)}</text>')
         hero_y += 35
     hero_systems_svg = "\n".join(hero_sys_lines)
 
@@ -374,13 +384,13 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
         '  <rect x="894" y="110" width="265" height="130" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="2" />\n'
         '  <text x="910" y="140" class="subtitle">Latency &amp; Cost</text>\n'
         f'  <text x="910" y="180" class="heading" font-size="28px">{b_p50:.1f} ms</text>\n'
-        f'  <text x="910" y="220" class="meta">Cost: ${b_cost:.4f}/case</text>\n'
+        f'  <text x="910" y="220" class="meta">Cost: ${b_cost:.6f}/case</text>\n'
         '  <rect x="24" y="265" width="1152" height="295" rx="8" fill="#1e293b" stroke="#334155" />\n'
-        '  <text x="44" y="295" class="heading">Systems Summary &amp; McNemar Significance Against Baseline</text>\n'
+        '  <text x="44" y="295" class="heading">Systems Summary — Synthetic Cases</text>\n'
         f'{hero_systems_svg}'
     )
     hero_svg = target_out / "benchmark-hero-1200x630.svg"
-    hero_svg.write_text(make_svg(1200, 630, "Finance-Jev Benchmark Suite — Official Run Results", "Autonomous financial reasoning evaluation across 4 frozen tracks", hero_svg_content), encoding="utf-8")
+    hero_svg.write_text(make_svg(1200, 630, "Finance-Jev — Synthetic Benchmark", hero_subtitle, hero_svg_content), encoding="utf-8")
     created_files.append(str(hero_svg))
 
     # Leaderboard SVG
@@ -395,11 +405,11 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
             f1 = float(met.get("macro_f1", 0.0))
             ece = float(met.get("ece", 0.0))
             cost = float(met.get("cost_per_case", 0.0))
-            row_str = f"#{r_idx}  {sid}  |  Status: completed  |  Acc: {acc:.2%}  |  F1: {f1:.4f}  |  ECE: {ece:.4f}  |  Cost: ${cost:.4f}"
+            row_str = f"#{r_idx}  {sid}  |  Status: completed  |  Acc: {acc:.2%}  |  F1: {f1:.4f}  |  ECE: {ece:.4f}  |  Cost: ${cost:.6f}"
         else:
             reason = s.get("reason", "no cred")
             row_str = f"#{r_idx}  {sid}  |  Status: not_run ({reason})  |  Acc: N/A  |  F1: N/A  |  ECE: N/A  |  Cost: $0.0000"
-        lead_sys_lines.append(f'  <text x="44" y="{lead_y}" class="body">{row_str}</text>')
+        lead_sys_lines.append(f'  <text x="44" y="{lead_y}" class="body">{escape(row_str)}</text>')
         lead_y += 35
     lead_systems_svg = "\n".join(lead_sys_lines)
 
@@ -430,7 +440,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     # Calibration SVG
     cal_svg_content = (
         '  <rect x="24" y="110" width="752" height="320" rx="8" fill="#1e293b" stroke="#334155" />\n'
-        '  <text x="44" y="145" class="heading">Expected Calibration Error: {b_metrics.get("ece", 0):.4f} | Brier Score: {b_metrics.get("brier", 0):.4f}</text>\n'
+        f'  <text x="44" y="145" class="heading">Expected Calibration Error: {b_metrics.get("ece", 0):.4f} | Brier Score: {b_metrics.get("brier", 0):.4f}</text>\n'
         f'  <text x="44" y="190" class="body">Accuracy: {b_acc:.2%}  |  Coverage: {b_metrics.get("coverage", 1):.2%}  |  Abstention: {b_metrics.get("abstention_rate", 0):.2%}</text>'
     )
     cal_svg = target_out / "benchmark-calibration.svg"
@@ -441,7 +451,7 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     qcl_svg_content = (
         '  <rect x="24" y="110" width="752" height="320" rx="8" fill="#1e293b" stroke="#334155" />\n'
         '  <text x="44" y="145" class="heading">Pareto Efficiency: Accuracy vs. P50 Latency vs. Cost</text>\n'
-        f'  <text x="44" y="190" class="body">Baseline: Acc={b_acc:.2%}, P50={b_p50:.1f}ms, Cost=${b_cost:.4f}/case</text>\n'
+        f'  <text x="44" y="190" class="body">Baseline: Acc={b_acc:.2%}, P50={b_p50:.1f}ms, Cost=${b_cost:.6f}/case</text>\n'
         f'  <text x="44" y="225" class="body">P95 Latency: {b_metrics.get("p95_latency_ms", 0):.2f}ms  |  P99 Latency: {b_metrics.get("p99_latency_ms", 0):.2f}ms</text>'
     )
     qcl_svg = target_out / "benchmark-quality-cost-latency.svg"
@@ -451,10 +461,10 @@ def render_images(run_dir: str | Path, out_dir: str | Path | None = None) -> lis
     # Compact Card SVG
     card_svg_content = (
         '  <rect x="24" y="100" width="552" height="190" rx="8" fill="#1e293b" stroke="#334155" />\n'
-        f'  <text x="40" y="130" class="heading">Model: {b_model}</text>\n'
+        f'  <text x="40" y="130" class="heading">Model: {escape(b_model)}</text>\n'
         f'  <text x="40" y="160" class="body" fill="#3b82f6" font-weight="bold">Accuracy: {b_acc:.2%} (95% CI: [{b_ci[0]:.2%}, {b_ci[1]:.2%}])</text>\n'
         f'  <text x="40" y="190" class="body">Macro F1: {b_f1:.4f}  |  ECE: {b_metrics.get("ece", 0):.4f}</text>\n'
-        f'  <text x="40" y="220" class="body">P50 Latency: {b_p50:.1f} ms  |  Cost: ${b_cost:.4f}/case</text>\n'
+        f'  <text x="40" y="220" class="body">P50 Latency: {b_p50:.1f} ms  |  Cost: ${b_cost:.6f}/case</text>\n'
         f'  <text x="40" y="250" class="meta">Sample Count: {sample_count} across 4 tracks</text>'
     )
     card_svg = target_out / "benchmark-card-compact.svg"

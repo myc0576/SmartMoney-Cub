@@ -12,15 +12,14 @@
   <rect width="900" height="85" fill="#1e293b" />
   <line x1="0" y1="85" x2="900" y2="85" stroke="#475569" stroke-width="1" />
   <rect x="580" y="20" width="300" height="26" rx="4" fill="#334155" />
-  <text x="590" y="38" class="body" font-weight="bold">DATASET: finance-jev-v1 | N=240</text>
+  <text x="590" y="38" class="body" font-weight="bold">DATASET: finance-jev-v1 | Cases=240</text>
   <text x="24" y="40" class="title">Benchmark Leaderboard</text>
   <text x="25" y="68" class="subtitle">Standardized Model Ranking and Calibration</text>
     <rect x="24" y="110" width="852" height="320" rx="8" fill="#1e293b" stroke="#334155" />
   <text x="44" y="145" class="heading">Ranked Systems — Overall Performance</text>
-  <text x="44" y="190" class="body">#1  deterministic_baseline  |  Status: completed  |  Acc: 83.33%  |  F1: 0.7792  |  ECE: 0.1667  |  Cost: $0.0000</text>
-  <text x="44" y="225" class="body">#2  typesafe_direct  |  Status: completed  |  Acc: 78.43%  |  F1: 0.7319  |  ECE: 0.1464  |  Cost: $0.0000</text>
-  <text x="44" y="260" class="body">#3  openrouter_jev  |  Status: not_run (missing_credential)  |  Acc: N/A  |  F1: N/A  |  ECE: N/A  |  Cost: $0.0000</text>
+  <text x="44" y="190" class="body">#1  deterministic_baseline  |  Status: completed  |  Acc: 83.33%  |  F1: 0.7792  |  ECE: 0.1667  |  Cost: $0.000000</text>
+  <text x="44" y="225" class="body">#2  typesafe_direct  |  Status: completed  |  Acc: 78.43%  |  F1: 0.7350  |  ECE: 0.1504  |  Cost: $0.000038</text>
   <line x1="0" y1="452" x2="900" y2="452" stroke="#334155" stroke-width="1" />
   <text x="24" y="470" class="safety">SAFETY DECLARATION: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE</text>
-  <text x="24" y="488" class="meta">Date: 2026-09-20T10:50:46 | Git: bdc78e9c | Run Hash: 00e9ef2f5a9c919c... | Model: deterministic_rules_v1</text>
+  <text x="24" y="488" class="meta">Date: 2026-09-29T10:13:32 | Git: 74d14bd5 | Run Hash: 7a40b49e57d594da... | Model: deterministic_rules_v1</text>
 </svg>

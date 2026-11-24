@@ -26,7 +26,9 @@ import csv
 import hashlib
 import io
 import math
+import os
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
@@ -262,11 +264,13 @@ class TraderService:
         fetch_bars_fn: Callable[..., ProviderResult] | None = None,
         connection_root: str | Path | None = None,
         connection_factory: Callable | None = None,
+        resume_watch: bool = True,
     ) -> None:
         self.store = store
         self.auth_mode = str(auth_mode or "local").strip().lower()
         self._fetch_bars = fetch_bars_fn or fetch_bars
         self._replay_lock = threading.RLock()
+        self._replay_lock_path = self._replay_lock_path_for_store(store)
         # The store is the product's own journal, so its schema is created on
         # open. Both engines make this call idempotent.
         self.store.migrate()
@@ -274,10 +278,43 @@ class TraderService:
         database_path = getattr(store, "database_path", None)
         inferred_root = Path(database_path).parent / "connections" if database_path and str(database_path) != ":memory:" else None
         self.connections = ConnectionController(self, Path(connection_root) if connection_root else inferred_root, connection_factory)
-        self.connections.resume_local_watch()
+        if resume_watch:
+            self.connections.resume_local_watch()
 
     def close(self) -> None:
         self.connections.close()
+
+    @staticmethod
+    def _replay_lock_path_for_store(store: TenantStore) -> Path | None:
+        database_path = getattr(store, "database_path", None)
+        if database_path is None or str(database_path) in {":memory:", ""}:
+            return None
+        return Path(str(database_path)).with_name(Path(str(database_path)).name + ".replay.lock")
+
+    @contextmanager
+    def _replay_guard(self):
+        """Serialize replay RMW operations across service instances and processes."""
+        with self._replay_lock:
+            lock_path = self._replay_lock_path
+            if lock_path is None:
+                yield
+                return
+            try:
+                import fcntl
+
+                nofollow = getattr(os, "O_NOFOLLOW", 0)
+                descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | nofollow, 0o600)
+                handle = os.fdopen(descriptor, "a+")
+            except OSError:
+                raise
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                yield
+            finally:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                finally:
+                    handle.close()
 
     # ---- helpers -------------------------------------------------------
 
@@ -733,9 +770,18 @@ class TraderService:
         account_id: str | None = None,
     ) -> dict[str, Any]:
         ledger = self._ledger(ctx, start=start, end=end, account_id=account_id)
+        summary = analytics.summarize(ledger)
+        total_net_pnl = summary.get("total_net_pnl") or 0.0
+        trade_count = int(summary.get("trade_count") or 0)
+        total_fees = summary.get("total_fees") or 0.0
+        gross = abs(total_net_pnl) + abs(total_fees)
+        summary["expectancy"] = total_net_pnl / trade_count if trade_count else 0.0
+        summary["fee_share"] = (
+            "—" if not gross else f"{(abs(total_fees) / gross) * 100:.1f}%"
+        )
         return {
             "status": "ok",
-            "summary": analytics.summarize(ledger),
+            "summary": summary,
             "counts": ledger["counts"],
             "ledger_status": ledger["status"],
             "filters": {
@@ -821,13 +867,24 @@ class TraderService:
         if not 1 <= resolved_month <= 12:
             raise TraderRequestError("month must be between 1 and 12")
         ledger = self._ledger(ctx, account_id=account_id)
+        days = analytics.calendar_days(
+            ledger, year=resolved_year, month=resolved_month
+        )
+        active_days = [day for day in days if day.get("trade_count", 0) > 0]
+        comparable_days = [
+            day for day in active_days if isinstance(day.get("net_pnl"), (int, float))
+        ]
+        best_day = max(comparable_days, key=lambda day: day["net_pnl"], default=None)
+        worst_day = min(comparable_days, key=lambda day: day["net_pnl"], default=None)
         return {
             "status": "ok",
             "year": resolved_year,
             "month": resolved_month,
-            "days": analytics.calendar_days(
-                ledger, year=resolved_year, month=resolved_month
-            ),
+            "days": days,
+            "best_day": best_day,
+            "worst_day": worst_day,
+            "profitable_day_count": sum(1 for day in comparable_days if day["net_pnl"] > 0),
+            "loss_day_count": sum(1 for day in comparable_days if day["net_pnl"] < 0),
             "safety": SAFETY_DECLARATION,
         }
 
@@ -1359,7 +1416,7 @@ class TraderService:
         )
         record["index"] = index or 0
         self._ensure_tenant(ctx)
-        with self._replay_lock:
+        with self._replay_guard():
             self.store.put_document(ctx.user_id, "replay_session", record["session_id"], record)
         return {
             "status": "ok",
@@ -1373,7 +1430,7 @@ class TraderService:
         """Compatibility read/step; all mutations retain the cursor boundary."""
         if not session_id:
             raise TraderRequestError("a session id is required")
-        with self._replay_lock:
+        with self._replay_guard():
             document = self.store.get_document(ctx.user_id, "replay_session", session_id)
             if document is None:
                 raise TraderRequestError("no such replay session for this tenant", status=404, code="not_found")
@@ -1389,7 +1446,8 @@ class TraderService:
         }
 
     def replay_sessions(self, ctx: AuthContext) -> dict[str, Any]:
-        records = self.store.list_documents(ctx.user_id, "replay_session", limit=100)
+        with self._replay_guard():
+            records = self.store.list_documents(ctx.user_id, "replay_session", limit=100)
         # A history list must not disclose the unrevealed series either.
         views = [public_view(record["payload"]) for record in records]
         return {"status": "ok", "sessions": [{k: v for k, v in view.items() if k not in ("bars", "markers", "training")} for view in views],
@@ -1398,7 +1456,7 @@ class TraderService:
     def replay_action(self, ctx: AuthContext, session_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, Mapping):
             raise TraderRequestError("the request body must be a JSON object")
-        with self._replay_lock:
+        with self._replay_guard():
             document = self.store.get_document(ctx.user_id, "replay_session", session_id)
             if document is None:
                 raise TraderRequestError("no such replay session for this tenant", status=404, code="not_found")

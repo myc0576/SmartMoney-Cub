@@ -1,6 +1,6 @@
 # Jev 生态接入、四轨架构与金融评测基准指南 (Jev Ecosystem & Benchmark Guide)
 
-`smartmoney-cub-harness` 深度对齐并集成了 Jev 生态规范，旨在为量化与交易复盘场景提供确定性、高置信度且完全只读的 AI 决策审查能力。
+`smartmoney-cub-harness` 深度对齐并集成了 Jev 生态规范，旨在为量化与交易复盘场景提供类型化 AI 审查与确定性规则校验；市场与执行只读，用户的本地评测、日志和复盘产物可写。
 
 `READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`
 
@@ -86,7 +86,7 @@ class JevBackend(Protocol):
   - `fpr` (假阳性率) & `recall` (召回率)
   - `brier` & `ece` (校准误差)
   - `coverage` & `abstention_rate` (弃权/防胡言乱语率)
-  - 95% Wilson 得分置信区间与对标基线的 McNemar 显著性检验。
+  - accuracy 使用按四个 track 分层的 case-level bootstrap percentile 95% CI（seed `20260927`, 10,000 replicates）；旧 v1 产物的 Wilson 区间仅作为 legacy 方法保留。
 - **评测执行与图像生成**：
   ```bash
   # 运行完整离线基准评测 (默认评测全量 4 赛道 240 例，产物保存至 artifacts/benchmark/)
@@ -120,3 +120,17 @@ class JevBackend(Protocol):
 3. **提交规范**：
    - 提交 Issue 或 Pull Request 至 `awesome-jev` 仓库，分类归属至 **Trading & Financial Review Systems**。
    - 在 PR 说明中附上本地测试用例复现命令与只读安全声明。
+
+
+## 7. 2026-09-27 生态维护记录
+
+- **已合并收录**：[`leoncuhk/awesome-quant-ai#63`](https://github.com/leoncuhk/awesome-quant-ai/pull/63)，于 2026-09-27 合并，merge SHA `ac89cce6148322db6cbca6587aad00faabce6a4a`。
+- **上游最终条目**：上游 README 将 SmartMoney-Cub 描述为 synthetic、early-stage 项目，并保留 canonical repository 链接；维护者合并时删除了 hosted relay 链接。
+- **评测反馈**：维护者指出公开规模应表述为 240 cases / 1,020 evaluated items，accuracy 区间应按 case-level bootstrap 计算，而不能把同一 case 内的问题当作独立样本。
+- **本地落地（2026-09-29 待人工审查）**：v2 benchmark 支持逐 case/question 记录与按 track 分层 bootstrap；[assets/benchmark/run.json](../assets/benchmark/run.json) 的 run hash 为 `7a40b49e57d594da8b45e835417e6f7880d7fa48583349da4559ff1b15f8be45`。基线 83.33%，95% CI [81.57%, 85.10%]；TypeSafe 78.43%，95% CI [76.08%, 80.69%]。
+- **TypeSafe 状态**：从原 62-case checkpoint 续跑到 240/240 cases、1,020 items，原 62 条记录保持不变；`jev-latest` 全程解析为 `jev-1.13.0`。记录 218,438 输入、43,836 输出 token，成功响应 usage 计价为 $0.009175，预算上限 $4.00。历史中断请求的账单不能由成功响应反推；不将此数值称为服务商最终账单。
+- **严格验证**：`./scripts/dev-env.sh benchmark verify assets/benchmark --require-typesafe-public`。现在开发入口会保留此标志，拷贝到 tracked assets 的脚本也在写入前执行严格门禁。
+- **远端差异**：以上为本地待审结果，尚未推送。2026-09-29 检查时远端 main 仍提供 2026-09-20 v1 产物；不能用远端旧链接证明本地 v2 数据已经发布。
+- **意见清单**：[2026-09-29 远端意见与本地审查记录](maintenance-review-2026-09-29.md) 逐项记录 Quant AI、Hermes、Awesome-Evals 及其他已发现投稿的意见、SHA、检查结果和后续事项。
+
+`READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE`

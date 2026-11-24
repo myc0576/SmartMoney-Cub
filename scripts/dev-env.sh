@@ -133,7 +133,7 @@ case "$cmd" in
       verify)
         run_arg="${3:-assets/benchmark}"
         echo "[dev-env] 验证评测运行产物完整性与防篡改哈希..."
-        python3 -m smartmoney_cub_harness.cli benchmark verify "$run_arg"
+        python3 -m smartmoney_cub_harness.cli benchmark verify "$run_arg" "${@:4}"
         ;;
       render)
         run_arg="${3:-assets/benchmark}"

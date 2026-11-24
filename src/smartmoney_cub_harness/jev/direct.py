@@ -19,6 +19,12 @@ from smartmoney_cub_harness.jev.questions import (
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 _DEFAULT_CLIENT = object()
+# Official model card, checked 2026-09-28: https://docs.typesafe.ai/models
+# Prices apply only to this immutable version; aliases are not price guarantees.
+JEV_113_INPUT_USD_PER_MILLION = 0.042
+JEV_113_MAX_INPUT_TOKENS = 65_536
+DIRECT_MAX_ATTEMPTS = 3
+JEV_LATEST_RESOLVED_MODEL = "jev-1.13.0"
 
 
 class TypeSafeDirectJevBackend:
@@ -40,6 +46,12 @@ class TypeSafeDirectJevBackend:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.http_client = http_client
+
+    def estimate_cost_usd(self, state: Any, questions: Any) -> float | None:
+        """Reserve the full context cost for a currently verifiable model alias."""
+        if self.model_requested not in (JEV_LATEST_RESOLVED_MODEL, "jev-latest"):
+            return None
+        return JEV_113_MAX_INPUT_TOKENS * JEV_113_INPUT_USD_PER_MILLION / 1_000_000 * DIRECT_MAX_ATTEMPTS
 
     def health(self) -> dict[str, Any]:
         """Report backend health and credential status without network side effects."""
@@ -239,7 +251,13 @@ class TypeSafeDirectJevBackend:
                 raise JevProtocolError(f"TypeSafe response has invalid {target}")
             usage[target] = value
         try:
-            estimated_cost_usd = float(resp_data["estimated_cost_usd"])
+            if resp_data.get("estimated_cost_usd") is not None:
+                estimated_cost_usd = float(resp_data["estimated_cost_usd"])
+            elif model_resolved == "jev-1.13.0":
+                # The documented API returns usage, not a dollar-cost field.
+                estimated_cost_usd = usage["input_tokens"] * JEV_113_INPUT_USD_PER_MILLION / 1_000_000
+            else:
+                raise KeyError("unknown model price")
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise JevProtocolError("TypeSafe response missing verifiable estimated_cost_usd") from exc
         if not math.isfinite(estimated_cost_usd) or estimated_cost_usd < 0:
@@ -287,7 +305,7 @@ class TypeSafeDirectJevBackend:
                     raise
                 raise JevUnavailable(f"TypeSafe direct request failed: {exc}") from exc
 
-        max_attempts = 3
+        max_attempts = DIRECT_MAX_ATTEMPTS
         for attempt in range(1, max_attempts + 1):
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:

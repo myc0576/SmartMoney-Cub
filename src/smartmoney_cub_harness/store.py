@@ -5,6 +5,7 @@ import json
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 from functools import wraps
 from datetime import datetime, timezone
@@ -25,6 +26,8 @@ STORE_BASENAME = "review_store.db"
 DOCUMENTS_DIRNAME = "documents"
 DEFAULT_PORTFOLIO_ID = "PORT-DEFAULT"
 DEFAULT_PORTFOLIO_NAME = "默认组合"
+SQLITE_INIT_TIMEOUT_SECONDS = 30.0
+SQLITE_INIT_RETRIES = 8
 
 
 def _now_iso() -> str:
@@ -63,11 +66,33 @@ class Store:
         self.db_path = self.root / STORE_BASENAME
         # The local service is threaded, so the connection is shared explicitly
         # and every write below takes the lock.
-        self._db = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        # Several worker processes can cold-start the same state directory.
+        # SQLite's default timeout is too short for concurrent schema setup,
+        # which can otherwise surface a transient lock as an initialization
+        # failure.
+        self._db = sqlite3.connect(
+            str(self.db_path),
+            timeout=SQLITE_INIT_TIMEOUT_SECONDS,
+            check_same_thread=False,
+        )
         self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.execute("PRAGMA journal_mode = WAL")
-        self._ensure_schema()
+        self._db.execute(
+            "PRAGMA busy_timeout = 30000"
+        )
+        # A busy timeout covers individual statements, but cold-start schema
+        # setup spans several statements and can still lose a process-level
+        # race while another initializer commits. Retry only that transient
+        # SQLite condition; unrelated initialization errors remain visible.
+        for attempt in range(SQLITE_INIT_RETRIES):
+            try:
+                self._db.execute("PRAGMA foreign_keys = ON")
+                self._db.execute("PRAGMA journal_mode = WAL")
+                self._ensure_schema()
+                break
+            except sqlite3.OperationalError as error:
+                if "locked" not in str(error).lower() or attempt == SQLITE_INIT_RETRIES - 1:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     # ---- schema --------------------------------------------------------
 
@@ -213,22 +238,22 @@ class Store:
 
     @_synchronized
     def _ensure_default_portfolio(self) -> None:
-        row = self._db.execute(
-            "SELECT portfolio_id FROM portfolio WHERE portfolio_id = ?",
-            (DEFAULT_PORTFOLIO_ID,),
-        ).fetchone()
-        if row is None:
-            self._db.execute(
-                "INSERT INTO portfolio (portfolio_id, name, description, created_at)"
-                " VALUES (?, ?, ?, ?)",
-                (
-                    DEFAULT_PORTFOLIO_ID,
-                    DEFAULT_PORTFOLIO_NAME,
-                    "本地默认组合。示例与演示数据全部为虚构数据。",
-                    _now_iso(),
-                ),
-            )
-            self._db.commit()
+        # This is initialization of one known idempotent row. Keep the
+        # conflict handling narrow so concurrent processes opening a fresh
+        # root cannot race between SELECT and INSERT, while other constraint
+        # failures still propagate to the caller.
+        self._db.execute(
+            "INSERT INTO portfolio (portfolio_id, name, description, created_at)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (portfolio_id) DO NOTHING",
+            (
+                DEFAULT_PORTFOLIO_ID,
+                DEFAULT_PORTFOLIO_NAME,
+                "本地默认组合。示例与演示数据全部为虚构数据。",
+                _now_iso(),
+            ),
+        )
+        self._db.commit()
 
     @_synchronized
     def close(self) -> None:

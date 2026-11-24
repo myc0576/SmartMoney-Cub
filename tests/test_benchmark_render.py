@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import pytest
 
@@ -95,6 +96,8 @@ def test_render_images_full_suite_and_exact_match(tmp_path: Path):
     for fname in expected_files:
         fpath = images_dir / fname
         assert fpath.exists(), f"Expected file {fname} not found"
+        if fpath.suffix == ".svg":
+            ET.parse(fpath)
 
     # Verify hero PNG dimensions
     hero_png = images_dir / "benchmark-hero-1200x630.png"

@@ -1,0 +1,68 @@
+name: smartmoney-cub
+version: 0.2.0
+manifest_version: 2
+api_version: 1
+license: MIT
+homepage: https://github.com/myc0576/SmartMoney-Cub
+reviewed_snapshot:
+  repository: https://github.com/myc0576/hermes-smartmoney-cub
+  commit: 74279466a019d0ff3ccd1615ff660e224fa644d5
+description: >-
+  No-trading journal and review harness. Wraps the local smcub CLI to
+  validate run envelopes, build and replay evidence packs, evaluate a run
+  directory, report harness health, and call only operations advertised by the
+  required cli.capabilities.v1 / protocol_version 1 core protocol. Offline-first:
+  no order placement or cancellation, broker automation, or financial advice.
+  The plugin exposes eight tools.
+  READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE. evaluate-run writes eval.json in the
+  run directory; build-evidence-pack writes rule_candidate.json, evidence_pack.json,
+  evidence_pack.sha256, and samples/<id> descendants under output_dir; replay writes
+  replay_report.json, including unsuccessful reports. Application-level run_root
+  checks constrain these paths; run_root is not an OS sandbox. Path-sensitive
+  tools fail closed without it.
+  smcub_operation supplies principal=hermes and human-configured state_dir/run_root;
+  permissions.request is proposal-only and Hermes cannot grant approvals. The
+  plugin does not claim an unpinned user-installed smcub binary is safe.
+required_core_protocol:
+  schema: cli.capabilities.v1
+  protocol_version: 1
+  authority: core_permission_store
+network_required: false
+credential_requirements: []
+database_disclosure: Core operations may use PermissionStore under the human-configured state_dir; the plugin opens no database itself.
+cache_disclosure: Host and Python runtime caches may be written; no plugin cache is required.
+safety: READ_ONLY_NO_ORDER_NO_CANCEL_NO_TRADE
+author: myc0576
+tags: [trading, review, journal, evidence, offline, read-only]
+provides_tools:
+  - smcub_doctor
+  - smcub_validate_envelope
+  - smcub_build_evidence_pack
+  - smcub_replay_evidence_pack
+  - smcub_evaluate_run
+  - smcub_inspect_artifacts
+  - smcub_capabilities
+  - smcub_operation
+provides_hooks: []
+config_schema:
+  smcub_command:
+    type: str
+    default: smcub
+    description: Command used to invoke the harness (override if it is not on PATH).
+  timeout_seconds:
+    type: int
+    default: 120
+    description: Per-invocation timeout for smcub subprocesses.
+  run_root:
+    type: str
+    default: ""
+    description: >-
+      Required non-empty directory root for every path-sensitive tool. Existing
+      inputs and output directories must remain inside this root after resolving
+      symlinks; smcub_doctor does not require it.
+  state_dir:
+    type: str
+    default: ""
+    description: >-
+      Required human-configured core state directory for smcub_operation. Hermes
+      cannot supply or override this path.

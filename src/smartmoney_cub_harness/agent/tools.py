@@ -394,6 +394,19 @@ class ToolBox:
 
         workspace = Workspace(self.workspace_db)
         try:
+            existing = workspace.get_rule(rule_id)
+            if existing and existing.get("status") == "champion":
+                # A challenger proposal must never demote an already promoted
+                # rule. Champion replacement belongs exclusively to the explicit
+                # human promotion path.
+                return {
+                    "status": "blocked",
+                    "rule": existing,
+                    "metrics": metrics,
+                    "champion_mutated": False,
+                    "note": "Existing champion preserved. Promotion still requires the human confirmation gate.",
+                    "safety": SAFETY_DECLARATION,
+                }
             record = workspace.set_rule_state(
                 rule_id=rule_id,
                 status="challenger",

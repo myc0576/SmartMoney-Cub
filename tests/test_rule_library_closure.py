@@ -13,6 +13,8 @@ from smartmoney_cub_harness.workspace_cli import (
     sync_registry_candidate_to_workspace,
     sync_registry_file_to_workspace,
 )
+from smartmoney_cub_harness.agent.tools import ToolBox
+from smartmoney_cub_harness.store import Store
 
 
 def _run(capsys, *argv: str) -> dict:
@@ -51,6 +53,34 @@ def test_assistant_challenger_is_listed_with_its_sample_size_blocker(tmp_path: P
     assert rules[0]["promotion_recommendable"] is False
     assert rules[0]["safety"] == SAFETY_DECLARATION
     workspace.close()
+
+
+def test_assistant_proposal_preserves_an_existing_champion(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    workspace = Workspace(tmp_path / "workspace.db")
+    workspace.set_rule_state(
+        rule_id="T-CHAMPION",
+        status="champion",
+        family="toy-family",
+        title="approved rule",
+        metrics={"sample_count": 30},
+        promotion_note="human approved",
+    )
+    workspace.close()
+    try:
+        result = ToolBox(store, workspace_db=str(tmp_path / "workspace.db")).propose_challenger_rule(
+            rule_id="T-CHAMPION",
+            title="replacement proposal",
+            family="toy-family",
+            sample_count=3,
+        )
+        assert result["status"] == "blocked"
+        assert result["champion_mutated"] is False
+        preserved = Workspace(tmp_path / "workspace.db").get_rule("T-CHAMPION")
+        assert preserved["status"] == "champion"
+        assert preserved["promotion_note"] == "human approved"
+    finally:
+        store.close()
 
 
 def test_promote_rule_refuses_a_blank_note_and_leaves_the_status_unchanged(tmp_path: Path) -> None:

@@ -44,6 +44,7 @@ dependencies = []
 benchmark = ["Pillow>=10"]
 dev = ["pytest>=8"]
 hosted = ["psycopg[binary]>=3.2"]
+numerical = ["numpy>=1.24", "scipy>=1.10"]
 ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pypdfium2>=4.30", "pypdf>=4.0"]
 pdf = ["pypdf>=4.0"]
 

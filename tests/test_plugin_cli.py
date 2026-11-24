@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from smartmoney_cub_harness.cli import main
+from smartmoney_cub_harness.plugin_cli import plugin_install
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 
 TOY_PLUGIN_DIR = Path(__file__).resolve().parents[1] / "examples" / "toy_plugin"
@@ -182,6 +183,13 @@ def test_cli_plugin_install_registers_local_plugin_disabled(capsys, tmp_path: Pa
     assert refused["status"] == "not_enabled"
 
 
+def test_catalog_plugin_install_requires_explicit_permission_confirmation(tmp_path: Path) -> None:
+    result = plugin_install("tencent-quotes", state_db=str(tmp_path / "plugins.db"))
+
+    assert result["status"] == "error"
+    assert result["error"] == "permissions_not_confirmed"
+
+
 def test_cli_plugin_install_reports_missing_path(capsys, tmp_path: Path) -> None:
     db = str(tmp_path / "plugins.db")
     result = _run(capsys, "plugin", "install", str(tmp_path / "nope"), "--state-db", db)
@@ -219,4 +227,3 @@ def test_cli_plugin_run_records_evidence_into_workspace(capsys, tmp_path: Path) 
 
     summary = _run(capsys, "workspace", "summary", "--db", workspace_db)
     assert summary["summary"]["evidence_count"] == 1
-

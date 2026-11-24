@@ -1,0 +1,12 @@
+{
+  "operation": "inverse_linear",
+  "matrix": [
+    [1.0, 0.5],
+    [0.5, 1.0]
+  ],
+  "observations": [1.5, 1.5],
+  "lower_bounds": [0.0, 0.0],
+  "upper_bounds": [5.0, 5.0],
+  "regularization": 0.01,
+  "max_iterations": 100
+}

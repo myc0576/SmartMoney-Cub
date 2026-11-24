@@ -1,0 +1,11 @@
+{
+  "operation": "markov_propagate",
+  "transition_matrix": [
+    [0.7, 0.3],
+    [0.4, 0.6]
+  ],
+  "initial_distribution": [1.0, 0.0],
+  "steps": 5,
+  "state_labels": ["stable", "unstable"],
+  "time_step": "1 observation interval"
+}

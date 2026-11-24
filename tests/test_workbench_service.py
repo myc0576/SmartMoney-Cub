@@ -926,8 +926,32 @@ def test_cancel_resume_and_restart_recovery_are_durable(tmp_path) -> None:
     orphan = raw.create_session(title="中断会话")
     raw.update_session(orphan["session_id"], status="running")
     raw.close()
-    recovered_service = _service(tmp_path / "recovery")
+    direct_service = _service(tmp_path / "recovery")
     try:
+        assert direct_service.recovered_sessions == []
+        assert direct_service.store.get_session(orphan["session_id"])["status"] == "running"
+
+        active_owner_contender = WorkbenchService(
+            tmp_path / "recovery", recover_interrupted_sessions=True
+        )
+        try:
+            assert active_owner_contender.session_owner_acquired is False
+            assert active_owner_contender.recovery_lock_acquired is False
+            assert active_owner_contender.recovered_sessions == []
+            assert active_owner_contender.store.get_session(orphan["session_id"])["status"] == "running"
+            with active_owner_contender.claim_session_owner() as claimed:
+                assert claimed is False
+        finally:
+            active_owner_contender.close()
+    finally:
+        direct_service.close()
+
+    recovered_service = WorkbenchService(
+        tmp_path / "recovery", recover_interrupted_sessions=True
+    )
+    try:
+        assert recovered_service.session_owner_acquired is True
+        assert recovered_service.recovery_lock_acquired is True
         assert recovered_service.recovered_sessions[0]["status"] == "interrupted"
         detail = recovered_service.session_detail(orphan["session_id"], {})
         assert detail["session"]["status"] == "interrupted"

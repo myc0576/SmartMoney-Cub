@@ -18,6 +18,7 @@
 | 全球复盘与调研决策 | [global-journal-decisions.md](global-journal-decisions.md) | 模式归因、回放用途、只读账户连接覆盖与验证限制 | 检查全球化功能的产品依据及实际边界时 |
 | 外部服务集成 | [integrations.md](integrations.md) (12.1KB) | 27项收录开源项目矩阵、只读连接器与格式转换适配器 | 新增数据导入或只读市场连接器时 |
 | 开源维护与上游贡献 | [open-source-maintenance.md](open-source-maintenance.md) (6.6KB) | Fork、上游 PR、合并后同步与持续维护检查清单，含 Awesome Jev 收录记录 | Fork、公开发布、提交或更新上游 PR 时 |
+| 生态反馈与本地审查 | [maintenance-review-2026-09-29.md](maintenance-review-2026-09-29.md) | 240-case 续跑结果、远端反馈来源与状态、Hermes 写入契约、待审事项 | 审查本轮 benchmark 与生态维护结果时 |
 | Jev生态与评测基准 | [jev-ecosystem.md](jev-ecosystem.md) (5.9KB) | Jev 四轨金融审查架构、JevBackend协议与finance-jev-v1基准评测指南 | 接入Jev审查后端或运行金融基准评测时 |
 | 记忆循环系统 | [memory-loop.md](memory-loop.md) (1.1KB) | 短期会话上下文与长期交易日志经验检索 | 排查交易记忆召回或历史对账时 |
 | 设计哲学 | [philosophy.md](philosophy.md) (3.7KB) | Smartmoney-Cub 设计理念、核心权衡与不可妥协边界 | 做重大设计决策或架构评审时 |

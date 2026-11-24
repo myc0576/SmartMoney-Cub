@@ -225,7 +225,13 @@ def _analytics_summary(request: Request) -> dict[str, Any]:
 
 
 def _connections(request: Request) -> dict[str, Any]:
-    return request.service.connections.view(request.ctx)
+    result = request.service.connections.view(request.ctx)
+    provider = _one(request.query, "provider_id") or _one(request.query, "provider")
+    if provider:
+        result["manifests"] = [v for v in result.get("manifests", []) if v.get("provider_id") == provider]
+        result["statuses"] = [v for v in result.get("statuses", []) if v.get("provider_id") == provider]
+        result["accounts"] = [v for v in result.get("accounts", []) if v.get("provider") == provider]
+    return result
 
 
 def _connection_oauth_start(request: Request) -> dict[str, Any]:

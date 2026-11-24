@@ -90,3 +90,18 @@ def safety_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     wrapped = dict(payload)
     wrapped.setdefault("safety", SAFETY_DECLARATION)
     return redact(wrapped)
+
+
+def confined_artifact_path(root: Path, relative: str) -> Path:
+    """Resolve an artifact destination, refusing existing symlink escapes.
+
+    This checks the filesystem at call time; it is not an OS sandbox against
+    another process concurrently replacing directories.
+    """
+    if not is_relative_artifact_path(relative):
+        raise ValueError("artifact destination is outside its output directory")
+    resolved_root = root.resolve(strict=True)
+    destination = (resolved_root / relative).resolve(strict=False)
+    if not destination.is_relative_to(resolved_root):
+        raise ValueError("artifact destination is outside its output directory")
+    return destination

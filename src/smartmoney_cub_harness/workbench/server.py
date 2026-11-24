@@ -6,11 +6,12 @@ import os
 import threading
 import urllib.parse
 import webbrowser
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from smartmoney_cub_harness import __version__, analytics
 from smartmoney_cub_harness import extractors
@@ -42,6 +43,7 @@ from smartmoney_cub_harness.agent.runtime import ReviewAgentRuntime, ReviewLifec
 from smartmoney_cub_harness.governance import GovernanceStore, profile_facts_from_trades
 from smartmoney_cub_harness.local_state import LOCAL_STATE_DIR
 from smartmoney_cub_harness.plugin_marketplace import MarketplaceStore
+from smartmoney_cub_harness.preferences import PreferencesError, PreferencesStore
 from smartmoney_cub_harness.redaction import REDACTION_POLICY_VERSION
 from smartmoney_cub_harness.schemas import SAFETY_DECLARATION
 from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
@@ -54,6 +56,59 @@ from smartmoney_cub_harness.store import DEFAULT_PORTFOLIO_ID, Store
 
 ASSET_DIR_ENV = "SMCUB_ASSET_DIR"
 MAX_UPLOAD_BYTES = 32 * 1024 * 1024
+
+
+class _SessionOwnerLock:
+    """Hold a root-local process lock before mutating live session state."""
+
+    def __init__(self, root: Path) -> None:
+        self.path = root / ".workbench-session.lock"
+        self._handle: Any = None
+
+    def acquire(self) -> bool:
+        try:
+            import fcntl
+        except ImportError:
+            return False
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            return False
+        try:
+            flags = os.O_RDWR | os.O_CREAT | nofollow
+            descriptor = os.open(self.path, flags, 0o600)
+            self._handle = os.fdopen(descriptor, "a+", encoding="utf-8")
+            try:
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError):
+                self._close_handle()
+                return False
+            self._handle.seek(0)
+            self._handle.truncate()
+            self._handle.write(json.dumps({"pid": os.getpid()}, separators=(",", ":")))
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+            return True
+        except OSError:
+            self._close_handle()
+            return False
+
+    def release(self) -> None:
+        if self._handle is None:
+            return
+        try:
+            import fcntl
+
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError):
+            pass
+        self._close_handle()
+
+    def _close_handle(self) -> None:
+        if self._handle is not None:
+            try:
+                self._handle.close()
+            finally:
+                self._handle = None
 
 
 def bundled_asset_dir() -> Path | None:
@@ -90,10 +145,26 @@ class WorkbenchService:
         workspace_db: str | None = None,
         trader_service: Any = None,
         dsh_bridge: Any = None,
+        recover_interrupted_sessions: bool = False,
     ) -> None:
-        self.root = Path(root)
+        self.root = Path(root).expanduser().resolve()
         self.store = Store(self.root)
-        self.recovered_sessions = self.store.recover_interrupted_sessions()
+        self.preferences_store = PreferencesStore(self.root)
+        self.recovered_sessions: list[dict[str, Any]] = []
+        self.session_owner_acquired = False
+        self.recovery_lock_acquired = False
+        self._session_owner_guard = threading.RLock()
+        self._session_owner_lock = _SessionOwnerLock(self.root)
+        self.session_owner_acquired = self._session_owner_lock.acquire()
+        self.recovery_lock_acquired = recover_interrupted_sessions and self.session_owner_acquired
+        if recover_interrupted_sessions and self.session_owner_acquired:
+            try:
+                self.recovered_sessions = self.store.recover_interrupted_sessions()
+            except Exception:
+                self._session_owner_lock.release()
+                self.session_owner_acquired = False
+                self.recovery_lock_acquired = False
+                raise
         self.workspace_db = workspace_db or str(self.root / "workspace" / "review.db")
         self.trader_service = trader_service
         self._owned_trader_service = False
@@ -116,11 +187,33 @@ class WorkbenchService:
         self._lock = threading.Lock()
 
     def close(self) -> None:
-        self.store.close()
-        if getattr(self, "_owned_trader_service", False) and self.trader_service is not None:
-            close = getattr(getattr(self.trader_service, "store", None), "close", None)
-            if callable(close):
-                close()
+        try:
+            self.store.close()
+        finally:
+            with self._session_owner_guard:
+                self._session_owner_lock.release()
+                self.session_owner_acquired = False
+            if getattr(self, "_owned_trader_service", False) and self.trader_service is not None:
+                close = getattr(getattr(self.trader_service, "store", None), "close", None)
+                if callable(close):
+                    close()
+
+    @contextmanager
+    def claim_session_owner(self) -> Iterator[bool]:
+        """Claim this root's session owner lock for a direct streaming operation."""
+        with self._session_owner_guard:
+            if self.session_owner_acquired:
+                yield True
+                return
+
+            acquired = self._session_owner_lock.acquire()
+            self.session_owner_acquired = acquired
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    self._session_owner_lock.release()
+                    self.session_owner_acquired = False
 
 
     # ---- profile / strategy governance --------------------------------
@@ -220,6 +313,20 @@ class WorkbenchService:
             "store_counts": self.store.counts(),
             "trend_color_scheme": self.store.get_setting("trend_color_scheme", "cn"),
         }
+
+    def preferences(self) -> dict[str, Any]:
+        try:
+            snapshot = self.preferences_store.read()
+        except PreferencesError as error:
+            raise ApiError(str(error), code="invalid_preferences") from error
+        return {"status": "ok", **snapshot, "safety": SAFETY_DECLARATION}
+
+    def update_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            snapshot = self.preferences_store.update(payload)
+        except PreferencesError as error:
+            raise ApiError(str(error), code="invalid_preferences") from error
+        return {"status": "ok", **snapshot, "safety": SAFETY_DECLARATION}
 
     def _analysis(
         self,
@@ -1859,8 +1966,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
         try:
+            if path == "/api/control/capabilities":
+                from smartmoney_cub_harness.control_http import describe
+                self._json(describe())
+                return
             if path == "/api/meta":
                 self._json(self.service.meta())
+                return
+            if path == "/api/preferences":
+                self._json(self.service.preferences())
                 return
             if path == "/api/overview":
                 self._json(self.service.overview(query))
@@ -2021,6 +2135,10 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if urllib.parse.urlparse(self.path).path == "/api/control/execute":
+            from smartmoney_cub_harness.control_http import execute
+            execute(self)
+            return
         if self._trader("POST"):
             return
         parsed = urllib.parse.urlparse(self.path)
@@ -2133,6 +2251,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                     return
             if path == "/api/settings":
                 self._json(self.service.update_settings(self._read_json()))
+                return
+            if path == "/api/preferences":
+                self._json(self.service.update_preferences(self._read_json()))
                 return
             if path == "/api/settings/open-file":
                 if not is_loopback(self.client_address[0]):
@@ -2324,7 +2445,11 @@ def start_workbench(
         owned_trader_store = trader_store
 
     service = WorkbenchService(
-        root, workspace_db=workspace_db, trader_service=trader_service, dsh_bridge=dsh_bridge
+        root,
+        workspace_db=workspace_db,
+        trader_service=trader_service,
+        dsh_bridge=dsh_bridge,
+        recover_interrupted_sessions=True,
     )
     if trader_service is None and service.trader_service is not None:
         trader_service = service.trader_service

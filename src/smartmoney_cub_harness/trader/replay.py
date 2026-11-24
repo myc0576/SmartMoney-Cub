@@ -124,6 +124,7 @@ def public_view(record: Mapping[str, Any]) -> dict[str, Any]:
             "symbol": record["symbol"], "interval": record["interval"],
             "account_id": record.get("account_id"), "created_at": record["created_at"],
             "index": index, "cursor": index, "frame_count": len(record["bars"]),
+            "playing": bool(record.get("playing", False)),
             "bar_count": len(record["bars"]), "bars": deepcopy(record["bars"][:index + 1]),
             "markers": [dict(m) for m in record["all_markers"] if m["index"] <= index] if record["mode"] == "review" else [],
             "training": training if record["mode"] == "training" else None,
@@ -163,6 +164,16 @@ def apply_action(record: Mapping[str, Any], payload: Mapping[str, Any]) -> dict[
     result = deepcopy(dict(record))
     action = str(payload.get("action") or "")
     current = int(result["index"])
+    if action in ("play", "pause"):
+        result["playing"] = action == "play"
+        return result
+    if action == "tick":
+        if not result.get("playing"):
+            return result
+        if current >= len(result["bars"]) - 1:
+            result["playing"] = False
+            return result
+        action = "step"
     if action == "simulate":
         if result["mode"] != "training":
             raise ValueError("simulated requests require training mode")
@@ -178,7 +189,7 @@ def apply_action(record: Mapping[str, Any], payload: Mapping[str, Any]) -> dict[
         return result
     if action not in ("step", "seek", "rewind"):
         raise ValueError("unknown replay action")
-    raw_index = payload.get("index", current + 1 if action == "step" else None)
+    raw_index = payload.get("index", current + 1 if action == "step" else 0 if action == "rewind" else None)
     if isinstance(raw_index, bool) or not isinstance(raw_index, int):
         raise ValueError("index must be an integer")
     index = raw_index

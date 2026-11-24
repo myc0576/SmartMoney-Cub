@@ -354,3 +354,35 @@ def test_typesafe_direct_backend_live_smoke_skipped_without_key():
     assert len(decision.answers) == 1
     assert isinstance(decision.answers[0].value, bool)
     assert 0.0 <= decision.answers[0].confidence <= 1.0
+
+
+def test_typesafe_documented_usage_cost_and_request_reserve():
+    backend = TypeSafeDirectJevBackend(
+        api_key="toy-test-key", model_requested="jev-1.13.0",
+        http_client=lambda request: {
+            "model": "jev-1.13.0",
+            "answers": {"q1": {"type": "noul", "noul": 0.9}},
+            "usage": {"input_tokens": 1000, "output_tokens": 20},
+        },
+    )
+    questions = (JevQuestion("q1", "noul", "Is this a toy example?"),)
+    result = backend.evaluate({"example": "toy"}, questions, decision_time="2026-09-28T00:00:00Z")
+    assert result.estimated_cost_usd == pytest.approx(0.000042)
+    assert backend.estimate_cost_usd({}, questions) == pytest.approx(65536 * 0.042 / 1_000_000 * 3)
+    backend.model_requested = "jev-latest"
+    assert backend.estimate_cost_usd({}, questions) == pytest.approx(65536 * 0.042 / 1_000_000 * 3)
+    backend.model_requested = "jev-future"
+    assert backend.estimate_cost_usd({}, questions) is None
+
+
+def test_typesafe_unknown_model_without_cost_fails_closed():
+    backend = TypeSafeDirectJevBackend(
+        api_key="toy-test-key",
+        http_client=lambda request: {
+            "model": "unknown-model",
+            "answers": {"q1": {"type": "noul", "noul": 0.9}},
+            "usage": {"input_tokens": 1000, "output_tokens": 20},
+        },
+    )
+    with pytest.raises(JevProtocolError, match="verifiable"):
+        backend.evaluate({}, (JevQuestion("q1", "noul", "Toy?"),), decision_time="2026-09-28T00:00:00Z")
